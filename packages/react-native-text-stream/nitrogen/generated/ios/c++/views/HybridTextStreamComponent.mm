@@ -122,6 +122,12 @@ using namespace margelo::nitro::textstream::views;
           : !newViewProps.showStats.hasSameValue(oldViewProps->showStats)) {
       swiftPart.setShowStats(newViewProps.showStats.get());
     }
+    // recordDisplayLog: optional
+    if (oldViewProps == nullptr
+          ? newViewProps.recordDisplayLog.isProvided()
+          : !newViewProps.recordDisplayLog.hasSameValue(oldViewProps->recordDisplayLog)) {
+      swiftPart.setRecordDisplayLog(newViewProps.recordDisplayLog.get());
+    }
 
     // Update hybridRef if it changed
     if (oldViewProps == nullptr

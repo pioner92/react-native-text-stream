@@ -23,4 +23,16 @@ public final class TextStreamAutolinking {
   public static func isTextStreamRecyclable() -> Bool {
     return HybridTextStream.self is any RecyclableView.Type
   }
+  
+  public static func createFrameMonitor() -> bridge.std__shared_ptr_HybridFrameMonitorSpec_ {
+    let hybridObject = HybridFrameMonitor()
+    return { () -> bridge.std__shared_ptr_HybridFrameMonitorSpec_ in
+      let __cxxWrapped = hybridObject.getCxxWrapper()
+      return __cxxWrapped.getCxxPart()
+    }()
+  }
+  
+  public static func isFrameMonitorRecyclable() -> Bool {
+    return HybridFrameMonitor.self is any RecyclableView.Type
+  }
 }

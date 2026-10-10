@@ -8,6 +8,7 @@
     "fontSize": true,
     "color": true,
     "showStats": true,
+    "recordDisplayLog": true,
     "hybridRef": true
   }
 }

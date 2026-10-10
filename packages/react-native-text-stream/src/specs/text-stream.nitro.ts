@@ -15,9 +15,17 @@ export interface TextStreamProps extends HybridViewProps {
   color?: string
   /** Shows a native "status · bytes" pill, updated without JS. */
   showStats?: boolean
+  /** Benchmarks only: record when bytes reach the screen, read with `getDisplayLog()`. */
+  recordDisplayLog?: boolean
 }
 
-export interface TextStreamMethods extends HybridViewMethods {}
+export interface TextStreamMethods extends HybridViewMethods {
+  /**
+   * Benchmark hook: `[wallClockMs, bytesShown, ...]` pairs, one per frame
+   * that appended text since the current `source` was attached.
+   */
+  getDisplayLog(): number[]
+}
 
 export type TextStream = HybridView<
   TextStreamProps,

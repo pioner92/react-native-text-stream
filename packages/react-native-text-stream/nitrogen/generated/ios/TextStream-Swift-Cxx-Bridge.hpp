@@ -10,20 +10,34 @@
 // Forward declarations of C++ defined types
 // Forward declaration of `ArrayBufferHolder` to properly resolve imports.
 namespace NitroModules { class ArrayBufferHolder; }
+// Forward declaration of `FrameStats` to properly resolve imports.
+namespace margelo::nitro::textstream { struct FrameStats; }
+// Forward declaration of `HybridFrameMonitorSpec` to properly resolve imports.
+namespace margelo::nitro::textstream { class HybridFrameMonitorSpec; }
 // Forward declaration of `HybridTextStreamSpec` to properly resolve imports.
 namespace margelo::nitro::textstream { class HybridTextStreamSpec; }
 
 // Forward declarations of Swift defined types
+// Forward declaration of `HybridFrameMonitorSpec_cxx` to properly resolve imports.
+namespace TextStream { class HybridFrameMonitorSpec_cxx; }
 // Forward declaration of `HybridTextStreamSpec_cxx` to properly resolve imports.
 namespace TextStream { class HybridTextStreamSpec_cxx; }
 
 // Include C++ defined types
+#include "FrameStats.hpp"
+#include "HybridFrameMonitorSpec.hpp"
 #include "HybridTextStreamSpec.hpp"
 #include <NitroModules/ArrayBuffer.hpp>
 #include <NitroModules/ArrayBufferHolder.hpp>
+#include <NitroModules/Promise.hpp>
+#include <NitroModules/PromiseHolder.hpp>
+#include <NitroModules/Result.hpp>
+#include <exception>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
+#include <vector>
 
 /**
  * Contains specialized versions of C++ templated types so they can be accessed from Swift,
@@ -31,6 +45,135 @@ namespace TextStream { class HybridTextStreamSpec_cxx; }
  */
 namespace margelo::nitro::textstream::bridge::swift {
 
+  // pragma MARK: std::shared_ptr<Promise<FrameStats>>
+  /**
+   * Specialized version of `std::shared_ptr<Promise<FrameStats>>`.
+   */
+  using std__shared_ptr_Promise_FrameStats__ = std::shared_ptr<Promise<FrameStats>>;
+  inline std::shared_ptr<Promise<FrameStats>> create_std__shared_ptr_Promise_FrameStats__() noexcept {
+    return Promise<FrameStats>::create();
+  }
+  inline PromiseHolder<FrameStats> wrap_std__shared_ptr_Promise_FrameStats__(std::shared_ptr<Promise<FrameStats>> promise) noexcept {
+    return PromiseHolder<FrameStats>(std::move(promise));
+  }
+  
+  // pragma MARK: std::function<void(const FrameStats& /* result */)>
+  /**
+   * Specialized version of `std::function<void(const FrameStats&)>`.
+   */
+  using Func_void_FrameStats = std::function<void(const FrameStats& /* result */)>;
+  /**
+   * Wrapper class for a `std::function<void(const FrameStats& / * result * /)>`, this can be used from Swift.
+   */
+  class Func_void_FrameStats_Wrapper final {
+  public:
+    explicit Func_void_FrameStats_Wrapper(std::function<void(const FrameStats& /* result */)>&& func): _function(std::make_unique<std::function<void(const FrameStats& /* result */)>>(std::move(func))) {}
+    inline void call(FrameStats result) const noexcept {
+      _function->operator()(result);
+    }
+  private:
+    std::unique_ptr<std::function<void(const FrameStats& /* result */)>> _function;
+  } SWIFT_NONCOPYABLE;
+  Func_void_FrameStats create_Func_void_FrameStats(void* NON_NULL swiftClosureWrapper) noexcept;
+  inline Func_void_FrameStats_Wrapper wrap_Func_void_FrameStats(Func_void_FrameStats value) noexcept {
+    return Func_void_FrameStats_Wrapper(std::move(value));
+  }
+  
+  // pragma MARK: std::function<void(const std::exception_ptr& /* error */)>
+  /**
+   * Specialized version of `std::function<void(const std::exception_ptr&)>`.
+   */
+  using Func_void_std__exception_ptr = std::function<void(const std::exception_ptr& /* error */)>;
+  /**
+   * Wrapper class for a `std::function<void(const std::exception_ptr& / * error * /)>`, this can be used from Swift.
+   */
+  class Func_void_std__exception_ptr_Wrapper final {
+  public:
+    explicit Func_void_std__exception_ptr_Wrapper(std::function<void(const std::exception_ptr& /* error */)>&& func): _function(std::make_unique<std::function<void(const std::exception_ptr& /* error */)>>(std::move(func))) {}
+    inline void call(std::exception_ptr error) const noexcept {
+      _function->operator()(error);
+    }
+  private:
+    std::unique_ptr<std::function<void(const std::exception_ptr& /* error */)>> _function;
+  } SWIFT_NONCOPYABLE;
+  Func_void_std__exception_ptr create_Func_void_std__exception_ptr(void* NON_NULL swiftClosureWrapper) noexcept;
+  inline Func_void_std__exception_ptr_Wrapper wrap_Func_void_std__exception_ptr(Func_void_std__exception_ptr value) noexcept {
+    return Func_void_std__exception_ptr_Wrapper(std::move(value));
+  }
+  
+  // pragma MARK: std::shared_ptr<Promise<double>>
+  /**
+   * Specialized version of `std::shared_ptr<Promise<double>>`.
+   */
+  using std__shared_ptr_Promise_double__ = std::shared_ptr<Promise<double>>;
+  inline std::shared_ptr<Promise<double>> create_std__shared_ptr_Promise_double__() noexcept {
+    return Promise<double>::create();
+  }
+  inline PromiseHolder<double> wrap_std__shared_ptr_Promise_double__(std::shared_ptr<Promise<double>> promise) noexcept {
+    return PromiseHolder<double>(std::move(promise));
+  }
+  
+  // pragma MARK: std::function<void(double /* result */)>
+  /**
+   * Specialized version of `std::function<void(double)>`.
+   */
+  using Func_void_double = std::function<void(double /* result */)>;
+  /**
+   * Wrapper class for a `std::function<void(double / * result * /)>`, this can be used from Swift.
+   */
+  class Func_void_double_Wrapper final {
+  public:
+    explicit Func_void_double_Wrapper(std::function<void(double /* result */)>&& func): _function(std::make_unique<std::function<void(double /* result */)>>(std::move(func))) {}
+    inline void call(double result) const noexcept {
+      _function->operator()(result);
+    }
+  private:
+    std::unique_ptr<std::function<void(double /* result */)>> _function;
+  } SWIFT_NONCOPYABLE;
+  Func_void_double create_Func_void_double(void* NON_NULL swiftClosureWrapper) noexcept;
+  inline Func_void_double_Wrapper wrap_Func_void_double(Func_void_double value) noexcept {
+    return Func_void_double_Wrapper(std::move(value));
+  }
+  
+  // pragma MARK: std::shared_ptr<HybridFrameMonitorSpec>
+  /**
+   * Specialized version of `std::shared_ptr<HybridFrameMonitorSpec>`.
+   */
+  using std__shared_ptr_HybridFrameMonitorSpec_ = std::shared_ptr<HybridFrameMonitorSpec>;
+  std::shared_ptr<HybridFrameMonitorSpec> create_std__shared_ptr_HybridFrameMonitorSpec_(void* NON_NULL swiftUnsafePointer) noexcept;
+  void* NON_NULL get_std__shared_ptr_HybridFrameMonitorSpec_(std__shared_ptr_HybridFrameMonitorSpec_ cppType);
+  
+  // pragma MARK: std::weak_ptr<HybridFrameMonitorSpec>
+  using std__weak_ptr_HybridFrameMonitorSpec_ = std::weak_ptr<HybridFrameMonitorSpec>;
+  inline std__weak_ptr_HybridFrameMonitorSpec_ weakify_std__shared_ptr_HybridFrameMonitorSpec_(const std::shared_ptr<HybridFrameMonitorSpec>& strong) noexcept { return strong; }
+  
+  // pragma MARK: Result<void>
+  using Result_void_ = Result<void>;
+  inline Result_void_ create_Result_void_() noexcept {
+    return Result<void>::withValue();
+  }
+  inline Result_void_ create_Result_void_(const std::exception_ptr& error) noexcept {
+    return Result<void>::withError(error);
+  }
+  
+  // pragma MARK: Result<std::shared_ptr<Promise<FrameStats>>>
+  using Result_std__shared_ptr_Promise_FrameStats___ = Result<std::shared_ptr<Promise<FrameStats>>>;
+  inline Result_std__shared_ptr_Promise_FrameStats___ create_Result_std__shared_ptr_Promise_FrameStats___(const std::shared_ptr<Promise<FrameStats>>& value) noexcept {
+    return Result<std::shared_ptr<Promise<FrameStats>>>::withValue(value);
+  }
+  inline Result_std__shared_ptr_Promise_FrameStats___ create_Result_std__shared_ptr_Promise_FrameStats___(const std::exception_ptr& error) noexcept {
+    return Result<std::shared_ptr<Promise<FrameStats>>>::withError(error);
+  }
+  
+  // pragma MARK: Result<std::shared_ptr<Promise<double>>>
+  using Result_std__shared_ptr_Promise_double___ = Result<std::shared_ptr<Promise<double>>>;
+  inline Result_std__shared_ptr_Promise_double___ create_Result_std__shared_ptr_Promise_double___(const std::shared_ptr<Promise<double>>& value) noexcept {
+    return Result<std::shared_ptr<Promise<double>>>::withValue(value);
+  }
+  inline Result_std__shared_ptr_Promise_double___ create_Result_std__shared_ptr_Promise_double___(const std::exception_ptr& error) noexcept {
+    return Result<std::shared_ptr<Promise<double>>>::withError(error);
+  }
+  
   // pragma MARK: std::optional<std::shared_ptr<ArrayBuffer>>
   /**
    * Specialized version of `std::optional<std::shared_ptr<ArrayBuffer>>`.
@@ -91,6 +234,20 @@ namespace margelo::nitro::textstream::bridge::swift {
     return optional.value();
   }
   
+  // pragma MARK: std::vector<double>
+  /**
+   * Specialized version of `std::vector<double>`.
+   */
+  using std__vector_double_ = std::vector<double>;
+  inline std::vector<double> create_std__vector_double_(size_t size) noexcept {
+    std::vector<double> vector;
+    vector.reserve(size);
+    return vector;
+  }
+  inline double get_std__vector_double_(const std::vector<double>& vector, size_t index) noexcept {
+    return vector[index];
+  }
+  
   // pragma MARK: std::shared_ptr<HybridTextStreamSpec>
   /**
    * Specialized version of `std::shared_ptr<HybridTextStreamSpec>`.
@@ -102,5 +259,14 @@ namespace margelo::nitro::textstream::bridge::swift {
   // pragma MARK: std::weak_ptr<HybridTextStreamSpec>
   using std__weak_ptr_HybridTextStreamSpec_ = std::weak_ptr<HybridTextStreamSpec>;
   inline std__weak_ptr_HybridTextStreamSpec_ weakify_std__shared_ptr_HybridTextStreamSpec_(const std::shared_ptr<HybridTextStreamSpec>& strong) noexcept { return strong; }
+  
+  // pragma MARK: Result<std::vector<double>>
+  using Result_std__vector_double__ = Result<std::vector<double>>;
+  inline Result_std__vector_double__ create_Result_std__vector_double__(const std::vector<double>& value) noexcept {
+    return Result<std::vector<double>>::withValue(value);
+  }
+  inline Result_std__vector_double__ create_Result_std__vector_double__(const std::exception_ptr& error) noexcept {
+    return Result<std::vector<double>>::withError(error);
+  }
 
 } // namespace margelo::nitro::textstream::bridge::swift

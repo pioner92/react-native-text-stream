@@ -8,12 +8,53 @@
 #include "TextStream-Swift-Cxx-Bridge.hpp"
 
 // Include C++ implementation defined types
+#include "HybridFrameMonitorSpecSwift.hpp"
 #include "HybridTextStreamSpecSwift.hpp"
 #include "TextStream-Swift-Cxx-Umbrella.hpp"
 #include <NitroModules/NitroDefines.hpp>
 
 namespace margelo::nitro::textstream::bridge::swift {
 
+  // pragma MARK: std::function<void(const FrameStats& /* result */)>
+  Func_void_FrameStats create_Func_void_FrameStats(void* NON_NULL swiftClosureWrapper) noexcept {
+    auto swiftClosure = TextStream::Func_void_FrameStats::fromUnsafe(swiftClosureWrapper);
+    return [swiftClosure = std::move(swiftClosure)](const FrameStats& result) mutable -> void {
+      swiftClosure.call(result);
+    };
+  }
+  
+  // pragma MARK: std::function<void(const std::exception_ptr& /* error */)>
+  Func_void_std__exception_ptr create_Func_void_std__exception_ptr(void* NON_NULL swiftClosureWrapper) noexcept {
+    auto swiftClosure = TextStream::Func_void_std__exception_ptr::fromUnsafe(swiftClosureWrapper);
+    return [swiftClosure = std::move(swiftClosure)](const std::exception_ptr& error) mutable -> void {
+      swiftClosure.call(error);
+    };
+  }
+  
+  // pragma MARK: std::function<void(double /* result */)>
+  Func_void_double create_Func_void_double(void* NON_NULL swiftClosureWrapper) noexcept {
+    auto swiftClosure = TextStream::Func_void_double::fromUnsafe(swiftClosureWrapper);
+    return [swiftClosure = std::move(swiftClosure)](double result) mutable -> void {
+      swiftClosure.call(result);
+    };
+  }
+  
+  // pragma MARK: std::shared_ptr<HybridFrameMonitorSpec>
+  std::shared_ptr<HybridFrameMonitorSpec> create_std__shared_ptr_HybridFrameMonitorSpec_(void* NON_NULL swiftUnsafePointer) noexcept {
+    TextStream::HybridFrameMonitorSpec_cxx swiftPart = TextStream::HybridFrameMonitorSpec_cxx::fromUnsafe(swiftUnsafePointer);
+    return std::make_shared<margelo::nitro::textstream::HybridFrameMonitorSpecSwift>(swiftPart);
+  }
+  void* NON_NULL get_std__shared_ptr_HybridFrameMonitorSpec_(std__shared_ptr_HybridFrameMonitorSpec_ cppType) {
+    std::shared_ptr<margelo::nitro::textstream::HybridFrameMonitorSpecSwift> swiftWrapper = std::dynamic_pointer_cast<margelo::nitro::textstream::HybridFrameMonitorSpecSwift>(cppType);
+    #ifdef NITRO_DEBUG
+    if (swiftWrapper == nullptr) [[unlikely]] {
+      throw std::runtime_error("Class \"HybridFrameMonitorSpec\" is not implemented in Swift!");
+    }
+    #endif
+    TextStream::HybridFrameMonitorSpec_cxx& swiftPart = swiftWrapper->getSwiftPart();
+    return swiftPart.toUnsafe();
+  }
+  
   // pragma MARK: std::shared_ptr<HybridTextStreamSpec>
   std::shared_ptr<HybridTextStreamSpec> create_std__shared_ptr_HybridTextStreamSpec_(void* NON_NULL swiftUnsafePointer) noexcept {
     TextStream::HybridTextStreamSpec_cxx swiftPart = TextStream::HybridTextStreamSpec_cxx::fromUnsafe(swiftUnsafePointer);

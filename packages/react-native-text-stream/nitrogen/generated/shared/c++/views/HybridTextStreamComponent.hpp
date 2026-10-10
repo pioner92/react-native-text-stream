@@ -48,6 +48,7 @@ namespace margelo::nitro::textstream::views {
     nitro::ReactProp<std::optional<double>> fontSize;
     nitro::ReactProp<std::optional<std::string>> color;
     nitro::ReactProp<std::optional<bool>> showStats;
+    nitro::ReactProp<std::optional<bool>> recordDisplayLog;
     nitro::ReactProp<std::optional<std::function<void(const std::shared_ptr<HybridTextStreamSpec>& /* ref */)>>> hybridRef;
 
     [[nodiscard]]
@@ -56,6 +57,7 @@ namespace margelo::nitro::textstream::views {
              fontSize.hasSameValue(other.fontSize) &&
              color.hasSameValue(other.color) &&
              showStats.hasSameValue(other.showStats) &&
+             recordDisplayLog.hasSameValue(other.recordDisplayLog) &&
              hybridRef.hasSameValue(other.hybridRef);
     }
 
@@ -65,6 +67,7 @@ namespace margelo::nitro::textstream::views {
              fontSize.isProvided() ||
              color.isProvided() ||
              showStats.isProvided() ||
+             recordDisplayLog.isProvided() ||
              hybridRef.isProvided();
     }
 

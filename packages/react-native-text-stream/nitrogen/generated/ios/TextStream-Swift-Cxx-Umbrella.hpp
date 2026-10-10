@@ -8,15 +8,25 @@
 #pragma once
 
 // Forward declarations of C++ defined types
+// Forward declaration of `FrameStats` to properly resolve imports.
+namespace margelo::nitro::textstream { struct FrameStats; }
+// Forward declaration of `HybridFrameMonitorSpec` to properly resolve imports.
+namespace margelo::nitro::textstream { class HybridFrameMonitorSpec; }
 // Forward declaration of `HybridTextStreamSpec` to properly resolve imports.
 namespace margelo::nitro::textstream { class HybridTextStreamSpec; }
 
 // Include C++ defined types
+#include "FrameStats.hpp"
+#include "HybridFrameMonitorSpec.hpp"
 #include "HybridTextStreamSpec.hpp"
 #include <NitroModules/ArrayBuffer.hpp>
+#include <NitroModules/Promise.hpp>
+#include <NitroModules/Result.hpp>
+#include <exception>
 #include <memory>
 #include <optional>
 #include <string>
+#include <vector>
 
 // C++ helpers for Swift
 #include "TextStream-Swift-Cxx-Bridge.hpp"
@@ -28,6 +38,8 @@ namespace margelo::nitro::textstream { class HybridTextStreamSpec; }
 #include <NitroModules/DateToChronoDate.hpp>
 
 // Forward declarations of Swift defined types
+// Forward declaration of `HybridFrameMonitorSpec_cxx` to properly resolve imports.
+namespace TextStream { class HybridFrameMonitorSpec_cxx; }
 // Forward declaration of `HybridTextStreamSpec_cxx` to properly resolve imports.
 namespace TextStream { class HybridTextStreamSpec_cxx; }
 

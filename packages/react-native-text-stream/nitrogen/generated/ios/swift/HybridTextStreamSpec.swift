@@ -14,9 +14,10 @@ public protocol HybridTextStreamSpec_protocol: HybridObject, HybridView {
   var fontSize: Double? { get set }
   var color: String? { get set }
   var showStats: Bool? { get set }
+  var recordDisplayLog: Bool? { get set }
 
   // Methods
-  
+  func getDisplayLog() throws -> [Double]
 }
 
 public extension HybridTextStreamSpec_protocol {

@@ -24,6 +24,7 @@ namespace margelo::nitro::textstream::views {
     fontSize(nitro::ReactProp<std::optional<double>>::fromRawValue("TextStream", "fontSize", rawProps, sourceProps.fontSize)),
     color(nitro::ReactProp<std::optional<std::string>>::fromRawValue("TextStream", "color", rawProps, sourceProps.color)),
     showStats(nitro::ReactProp<std::optional<bool>>::fromRawValue("TextStream", "showStats", rawProps, sourceProps.showStats)),
+    recordDisplayLog(nitro::ReactProp<std::optional<bool>>::fromRawValue("TextStream", "recordDisplayLog", rawProps, sourceProps.recordDisplayLog)),
     hybridRef(nitro::ReactProp<std::optional<std::function<void(const std::shared_ptr<HybridTextStreamSpec>& /* ref */)>>>::fromRawValue("TextStream", "hybridRef", rawProps, sourceProps.hybridRef)) { }
 
   bool HybridTextStreamProps::filterObjectKeys(const std::string& propName) {
@@ -32,6 +33,7 @@ namespace margelo::nitro::textstream::views {
       case hashString("fontSize"): return true;
       case hashString("color"): return true;
       case hashString("showStats"): return true;
+      case hashString("recordDisplayLog"): return true;
       case hashString("hybridRef"): return true;
       default: return false;
     }

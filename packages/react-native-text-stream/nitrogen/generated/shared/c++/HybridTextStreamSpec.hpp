@@ -18,6 +18,7 @@
 #include <NitroModules/ArrayBuffer.hpp>
 #include <optional>
 #include <string>
+#include <vector>
 
 namespace margelo::nitro::textstream {
 
@@ -54,10 +55,12 @@ namespace margelo::nitro::textstream {
       virtual void setColor(const std::optional<std::string>& color) = 0;
       virtual std::optional<bool> getShowStats() = 0;
       virtual void setShowStats(std::optional<bool> showStats) = 0;
+      virtual std::optional<bool> getRecordDisplayLog() = 0;
+      virtual void setRecordDisplayLog(std::optional<bool> recordDisplayLog) = 0;
 
     public:
       // Methods
-      
+      virtual std::vector<double> getDisplayLog() = 0;
 
     protected:
       // Hybrid Setup

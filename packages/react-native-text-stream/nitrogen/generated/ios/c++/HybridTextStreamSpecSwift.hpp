@@ -19,6 +19,7 @@ namespace NitroModules { class ArrayBufferHolder; }
 #include <optional>
 #include <NitroModules/ArrayBufferHolder.hpp>
 #include <string>
+#include <vector>
 
 #include "TextStream-Swift-Cxx-Umbrella.hpp"
 
@@ -94,10 +95,24 @@ namespace margelo::nitro::textstream {
     inline void setShowStats(std::optional<bool> showStats) noexcept override {
       _swiftPart.setShowStats(showStats);
     }
+    inline std::optional<bool> getRecordDisplayLog() noexcept override {
+      auto __result = _swiftPart.getRecordDisplayLog();
+      return __result;
+    }
+    inline void setRecordDisplayLog(std::optional<bool> recordDisplayLog) noexcept override {
+      _swiftPart.setRecordDisplayLog(recordDisplayLog);
+    }
 
   public:
     // Methods
-    
+    inline std::vector<double> getDisplayLog() override {
+      auto __result = _swiftPart.getDisplayLog();
+      if (__result.hasError()) [[unlikely]] {
+        std::rethrow_exception(__result.error());
+      }
+      auto __value = std::move(__result.value());
+      return __value;
+    }
 
   private:
     TextStream::HybridTextStreamSpec_cxx _swiftPart;
