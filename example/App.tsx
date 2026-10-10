@@ -14,6 +14,7 @@ import { fetch } from 'react-native-nitro-fetch';
 import { StreamText, useStreamTextRef } from 'react-native-text-stream';
 import { createUtf8StreamDecoder } from './src/utf8';
 import { BenchScreen } from './src/bench/BenchScreen';
+import { ChatSpike } from './src/ChatSpike';
 
 // iOS simulator reaches the host's localhost directly.
 const SERVER = 'http://localhost:9877';
@@ -35,6 +36,17 @@ const C = {
 
 export default function App(): React.JSX.Element {
   const [bench, setBench] = useState(false);
+  // Spike: opens straight on the chat bubble test; remove after the experiment.
+  const [spike, setSpike] = useState(true);
+  if (spike) {
+    return (
+      <SafeAreaProvider>
+        <SafeAreaView style={styles.screen} edges={['top', 'bottom']}>
+          <ChatSpike onBack={() => setSpike(false)} />
+        </SafeAreaView>
+      </SafeAreaProvider>
+    );
+  }
   if (!bench) return <Demo onOpenBench={() => setBench(true)} />;
   return (
     <SafeAreaProvider>
