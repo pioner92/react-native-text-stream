@@ -5,7 +5,7 @@
     "build": "npm --prefix packages/react-native-text-stream run build",
     "codegen": "npm --prefix packages/react-native-text-stream run codegen",
     "release": "npm --prefix packages/react-native-text-stream run release",
-    "postinstall": "patch -p1 -N -s -d node_modules/nitrogen < patches/nitrogen@0.37.1.patch || true"
+    "postinstall": "sh scripts/apply-patches.sh"
   },
   "workspaces": [
     "packages/*",
