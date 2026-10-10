@@ -1,6 +1,7 @@
 const { getDefaultConfig, mergeConfig } = require('@react-native/metro-config');
 const path = require('path');
-const root = path.resolve(__dirname, '../packages/react-native-text-stream');
+// Workspace packages (text-stream, vendored nitro-fetch) are symlinked from the root node_modules.
+const root = path.resolve(__dirname, '..');
 
 /**
  * Metro configuration
