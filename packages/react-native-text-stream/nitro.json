@@ -1,0 +1,26 @@
+{
+  "$schema": "https://nitro.margelo.com/nitro.schema.json",
+  "cxxNamespace": [
+    "textstream"
+  ],
+  "ios": {
+    "iosModuleName": "TextStream"
+  },
+  "android": {
+    "androidNamespace": [
+      "textstream"
+    ],
+    "androidCxxLibName": "TextStream"
+  },
+  "autolinking": {
+    "TextStream": {
+      "ios": {
+        "language": "swift",
+        "implementationClassName": "HybridTextStream"
+      }
+    }
+  },
+  "ignorePaths": [
+    "**/node_modules"
+  ]
+}
