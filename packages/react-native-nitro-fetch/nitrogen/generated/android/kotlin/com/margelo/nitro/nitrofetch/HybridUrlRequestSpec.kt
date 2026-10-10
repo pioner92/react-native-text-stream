@@ -11,6 +11,7 @@ import androidx.annotation.Keep
 import com.facebook.jni.HybridData
 import com.facebook.proguard.annotations.DoNotStrip
 import dalvik.annotation.optimization.FastNative
+import com.margelo.nitro.core.ArrayBuffer
 import com.margelo.nitro.core.HybridObject
 
 /**
@@ -48,6 +49,10 @@ abstract class HybridUrlRequestSpec: HybridObject() {
   @DoNotStrip
   @Keep
   abstract fun isDone(): Boolean
+  
+  @DoNotStrip
+  @Keep
+  abstract fun getNativeBuffer(): ArrayBuffer?
 
   // Default implementation of `HybridObject.toString()`
   override fun toString(): String {

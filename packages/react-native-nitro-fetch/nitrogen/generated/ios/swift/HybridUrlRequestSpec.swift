@@ -18,6 +18,7 @@ public protocol HybridUrlRequestSpec_protocol: HybridObject {
   func read() throws -> Void
   func cancel() throws -> Void
   func isDone() throws -> Bool
+  func getNativeBuffer() throws -> ArrayBuffer?
 }
 
 public extension HybridUrlRequestSpec_protocol {

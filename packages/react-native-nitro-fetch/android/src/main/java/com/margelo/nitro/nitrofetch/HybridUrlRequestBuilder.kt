@@ -212,6 +212,10 @@ class HybridUrlRequestBuilder(
     builder.setPriority(priority.cronetPriority)
   }
 
+  override fun enableNativeBuffer(capacity: Double) {
+    throw UnsupportedOperationException("nativeBuffer is not implemented on Android yet")
+  }
+
   override fun onSucceeded(callback: (info: UrlResponseInfo) -> Unit) {
     this.onSucceededCallback = callback
   }

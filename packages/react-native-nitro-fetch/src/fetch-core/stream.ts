@@ -12,6 +12,9 @@ import { normalizeBody } from './body';
 import { getUrlString } from './url';
 import { createAbortError } from './errors';
 
+// Virtual reservation only: pages are committed as the body is written.
+const DEFAULT_NATIVE_BUFFER_CAPACITY = 16 * 1024 * 1024;
+
 export async function nitroStreamFetch(
   input: RequestInfo | URL,
   init?: RequestInit
@@ -56,6 +59,18 @@ export async function nitroStreamFetch(
   if (normalized?.bodyBytes) builder.setUploadBody(normalized.bodyBytes);
   else if (normalized?.bodyString != null)
     builder.setUploadBody(normalized.bodyString);
+
+  const nativeBufferOption = (init as any)?.nativeBuffer as
+    | boolean
+    | { capacity?: number }
+    | undefined;
+  if (nativeBufferOption) {
+    const capacity =
+      typeof nativeBufferOption === 'object' && nativeBufferOption.capacity
+        ? nativeBufferOption.capacity
+        : DEFAULT_NATIVE_BUFFER_CAPACITY;
+    builder.enableNativeBuffer(capacity);
+  }
 
   return new Promise((resolveResponse, rejectResponse) => {
     let streamController: ReadableStreamDefaultController<
@@ -127,6 +142,7 @@ export async function nitroStreamFetch(
         headers: responseHeaders,
         redirected: false,
         body: stream,
+        nativeBuffer: nativeBufferOption ? request.getNativeBuffer() : undefined,
       });
       resolveResponse(response as unknown as Response);
       // Android/Cronet: kick off the first buffer read.

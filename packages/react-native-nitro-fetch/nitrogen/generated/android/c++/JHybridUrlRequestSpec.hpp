@@ -59,6 +59,7 @@ namespace margelo::nitro::nitrofetch {
     void read() override;
     void cancel() override;
     bool isDone() override;
+    std::optional<std::shared_ptr<ArrayBuffer>> getNativeBuffer() override;
 
   private:
     jni::global_ref<JHybridUrlRequestSpec::JavaPart> _javaPart;

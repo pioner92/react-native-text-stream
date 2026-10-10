@@ -16,6 +16,7 @@ class HybridUrlRequestBuilder: HybridUrlRequestBuilderSpec {
 
   private var urlRequest: URLRequest
   private var priority: Float = 0.5
+  private var nativeBufferCapacity: Int?
   private let devToolsRequestId: String = {
     #if DEBUG
     return UUID().uuidString
@@ -95,7 +96,28 @@ class HybridUrlRequestBuilder: HybridUrlRequestBuilderSpec {
     self.priority = priority.taskPriority
   }
 
+  func enableNativeBuffer(capacity: Double) throws {
+    guard capacity > 0, capacity <= Double(Int32.max) else {
+      throw RuntimeError.error(withMessage: "Invalid native buffer capacity: \(capacity)")
+    }
+    self.nativeBufferCapacity = Int(capacity)
+  }
+
+  /// Allocates a TSB1 buffer; anonymous mmap pages are only committed once written.
+  private static func makeNativeBuffer(capacity: Int) throws -> (buffer: ArrayBuffer, base: UnsafeMutableRawPointer) {
+    let size = Int(TSB_HEADER_SIZE) + capacity
+    guard let base = mmap(nil, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON, -1, 0),
+          base != MAP_FAILED else {
+      throw RuntimeError.error(withMessage: "mmap of \(size) bytes failed (errno \(errno))")
+    }
+    tsb_init(base, UInt64(capacity))
+    let buffer = ArrayBuffer.wrap(dataWithoutCopy: base, size: size, onDelete: { munmap(base, size) })
+    return (buffer, base)
+  }
+
   func build() throws -> any HybridUrlRequestSpec {
+    let nativeLog = try nativeBufferCapacity.map { try Self.makeNativeBuffer(capacity: $0) }
+
     let delegate = URLSessionDelegateAdapter(
       onRedirectReceived: onRedirectReceivedCallback,
       onResponseStarted: onResponseStartedCallback,
@@ -105,7 +127,9 @@ class HybridUrlRequestBuilder: HybridUrlRequestBuilderSpec {
       onCanceled: onCanceledCallback,
       executor: executor,
       hybridRequest: nil,
-      devToolsRequestId: devToolsRequestId
+      devToolsRequestId: devToolsRequestId,
+      nativeBuffer: nativeLog?.buffer,
+      nativeBase: nativeLog?.base
     )
 
     let task: URLSessionDataTask = session.dataTask(with: urlRequest)
@@ -120,7 +144,7 @@ class HybridUrlRequestBuilder: HybridUrlRequestBuilderSpec {
     }
     #endif
 
-    let request = HybridUrlRequest(task: task, delegate: delegate)
+    let request = HybridUrlRequest(task: task, delegate: delegate, nativeBuffer: nativeLog?.buffer)
     delegate.hybridRequest = request
 
     return request
@@ -146,6 +170,10 @@ private class URLSessionDelegateAdapter: NSObject, URLSessionDataDelegate, URLSe
   private var devToolsBytes: Int = 0
   private var devToolsTextual: Bool = false
 
+  // Strong ref keeps the mapping alive while URLSession writes, even if JS drops its ArrayBuffer.
+  private let nativeBuffer: ArrayBuffer?
+  private let nativeBase: UnsafeMutableRawPointer?
+
   init(
     onRedirectReceived: ((_ info: UrlResponseInfo, _ newLocationUrl: String) -> Void)?,
     onResponseStarted: ((_ info: UrlResponseInfo) -> Void)?,
@@ -155,7 +183,9 @@ private class URLSessionDelegateAdapter: NSObject, URLSessionDataDelegate, URLSe
     onCanceled: ((_ info: UrlResponseInfo?) -> Void)?,
     executor: DispatchQueue,
     hybridRequest: HybridUrlRequest?,
-    devToolsRequestId: String
+    devToolsRequestId: String,
+    nativeBuffer: ArrayBuffer?,
+    nativeBase: UnsafeMutableRawPointer?
   ) {
     self.onRedirectReceived = onRedirectReceived
     self.onResponseStarted = onResponseStarted
@@ -166,6 +196,8 @@ private class URLSessionDelegateAdapter: NSObject, URLSessionDataDelegate, URLSe
     self.executor = executor
     self.hybridRequest = hybridRequest
     self.devToolsRequestId = devToolsRequestId
+    self.nativeBuffer = nativeBuffer
+    self.nativeBase = nativeBase
     super.init()
   }
 
@@ -192,6 +224,17 @@ private class URLSessionDelegateAdapter: NSObject, URLSessionDataDelegate, URLSe
     task: URLSessionTask,
     didCompleteWithError error: Error?
   ) {
+    if let base = nativeBase {
+      // Published before the JS callbacks run, after the final committed store.
+      let status: Int
+      if let error = error {
+        status = (error as NSError).code == NSURLErrorCancelled ? TSB_STATUS_CANCELLED : TSB_STATUS_ERROR
+      } else {
+        status = TSB_STATUS_DONE
+      }
+      tsb_set_status(base, UInt32(status))
+    }
+
     executor.sync { [weak self] in
       guard let self = self else { return }
       self.hybridRequest?.markDone()
@@ -279,6 +322,15 @@ private class URLSessionDelegateAdapter: NSObject, URLSessionDataDelegate, URLSe
     dataTask: URLSessionDataTask,
     didReceive data: Data
   ) {
+    if let base = nativeBase {
+      // Native mode: the body never crosses into JS; URLSession delivers on one serial queue.
+      data.withUnsafeBytes { raw in
+        if let src = raw.baseAddress, raw.count > 0 {
+          _ = tsb_append(base, src, UInt64(raw.count))
+        }
+      }
+      return
+    }
     if let callback = self.onReadCompleted {
       executor.sync { [weak self] in
         guard let self = self, let response = self.response else { return }

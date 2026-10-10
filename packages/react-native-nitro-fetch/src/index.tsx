@@ -7,7 +7,7 @@ export {
   removeAllFromAutoprefetch,
   __readAutoPrefetchQueue,
 } from './fetch-core';
-export type { NitroFormDataPart } from './fetch-core';
+export type { NitroFormDataPart, NitroFetchResponse } from './fetch-core';
 export type {
   NitroRequestNativeType as NitroRequest,
   NitroResponseNativeType as NitroResponse,

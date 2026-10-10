@@ -179,4 +179,22 @@ open class HybridUrlRequestSpec_cxx {
       return bridge.create_Result_bool_(__exceptionPtr)
     }
   }
+  
+  @inline(__always)
+  public final func getNativeBuffer() -> bridge.Result_std__optional_std__shared_ptr_ArrayBuffer___ {
+    do {
+      let __result = try self.__implementation.getNativeBuffer()
+      let __resultCpp = { () -> bridge.std__optional_std__shared_ptr_ArrayBuffer__ in
+        if let __unwrappedValue = __result {
+          return bridge.create_std__optional_std__shared_ptr_ArrayBuffer__(__unwrappedValue.getArrayBuffer())
+        } else {
+          return .init()
+        }
+      }()
+      return bridge.create_Result_std__optional_std__shared_ptr_ArrayBuffer___(__resultCpp)
+    } catch (let __error) {
+      let __exceptionPtr = __error.toCpp()
+      return bridge.create_Result_std__optional_std__shared_ptr_ArrayBuffer___(__exceptionPtr)
+    }
+  }
 }

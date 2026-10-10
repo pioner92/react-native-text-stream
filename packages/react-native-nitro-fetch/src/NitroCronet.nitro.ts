@@ -32,6 +32,11 @@ export interface UrlRequest extends HybridObject<{
   read(): void;
   cancel(): void;
   isDone(): boolean;
+  /**
+   * The native TSB1 buffer the body is written into, if `enableNativeBuffer`
+   * was called on the builder.
+   */
+  getNativeBuffer(): ArrayBuffer | undefined;
 }
 
 export interface UrlRequestBuilder extends HybridObject<{
@@ -44,6 +49,11 @@ export interface UrlRequestBuilder extends HybridObject<{
   disableCache(): void;
   disableCookies(): void;
   setPriority(priority: NitroRequestPriority): void;
+  /**
+   * Writes the response body natively into a TSB1 buffer of `capacity` data
+   * bytes instead of delivering it through `onReadCompleted`.
+   */
+  enableNativeBuffer(capacity: number): void;
   onSucceeded(callback: (info: UrlResponseInfo) => void): void;
   onFailed(
     callback: (

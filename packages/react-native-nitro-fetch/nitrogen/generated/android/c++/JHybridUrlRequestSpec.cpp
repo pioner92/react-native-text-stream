@@ -9,7 +9,9 @@
 
 
 
-
+#include <NitroModules/ArrayBuffer.hpp>
+#include <optional>
+#include <NitroModules/JArrayBuffer.hpp>
 
 namespace margelo::nitro::nitrofetch {
 
@@ -64,6 +66,11 @@ namespace margelo::nitro::nitrofetch {
     static const auto method = _javaPart->javaClassStatic()->getMethod<jboolean()>("isDone");
     auto __result = method(_javaPart);
     return static_cast<bool>(__result);
+  }
+  std::optional<std::shared_ptr<ArrayBuffer>> JHybridUrlRequestSpec::getNativeBuffer() {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<JArrayBuffer::javaobject>()>("getNativeBuffer");
+    auto __result = method(_javaPart);
+    return __result != nullptr ? std::make_optional(__result->cthis()->getArrayBuffer()) : std::nullopt;
   }
 
 } // namespace margelo::nitro::nitrofetch

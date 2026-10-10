@@ -15,7 +15,8 @@
 
 
 
-
+#include <NitroModules/ArrayBuffer.hpp>
+#include <optional>
 
 namespace margelo::nitro::nitrofetch {
 
@@ -53,6 +54,7 @@ namespace margelo::nitro::nitrofetch {
       virtual void read() = 0;
       virtual void cancel() = 0;
       virtual bool isDone() = 0;
+      virtual std::optional<std::shared_ptr<ArrayBuffer>> getNativeBuffer() = 0;
 
     protected:
       // Hybrid Setup

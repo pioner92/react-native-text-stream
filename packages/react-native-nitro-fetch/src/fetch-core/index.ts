@@ -2,6 +2,7 @@
 import 'web-streams-polyfill/dist/polyfill.js';
 
 export { nitroFetch } from './fetch';
+export type { NitroFetchResponse } from './fetch';
 export {
   prefetch,
   prefetchOnAppStart,

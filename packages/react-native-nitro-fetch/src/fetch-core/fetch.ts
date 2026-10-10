@@ -10,6 +10,10 @@ import { isHttpUrl, getUrlString } from './url';
 import { nitroFetchRaw } from './raw';
 import { nitroStreamFetch } from './stream';
 
+export type NitroFetchResponse = Response & {
+  readonly nativeBuffer?: ArrayBuffer;
+};
+
 export async function nitroFetch(
   input: RequestInfo | URL,
   init?: RequestInit & {
@@ -33,12 +37,18 @@ export async function nitroFetch(
      * @default false
      */
     stream?: boolean;
+    /**
+     * With `stream: true` (iOS): write the body natively into a TSB1 buffer
+     * exposed as `response.nativeBuffer` instead of `response.body`. The body
+     * then never crosses into JS. `true` uses a 16 MB capacity.
+     */
+    nativeBuffer?: boolean | { capacity?: number };
     redirect?: RequestRedirect;
     cache?: RequestCache;
     timeoutMs?: number;
     priority?: RequestPriority;
   }
-): Promise<Response> {
+): Promise<NitroFetchResponse> {
   // Merge defaults from NitroRequestClass if input is one
   if (input instanceof NitroRequestClass) {
     init = {

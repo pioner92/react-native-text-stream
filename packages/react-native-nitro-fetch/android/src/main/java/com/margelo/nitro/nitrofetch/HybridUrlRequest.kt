@@ -32,4 +32,7 @@ class HybridUrlRequest(
   override fun isDone(): Boolean {
     return cronetRequest.isDone
   }
+
+  // Native TSB1 buffers are iOS-only for now.
+  override fun getNativeBuffer(): com.margelo.nitro.core.ArrayBuffer? = null
 }

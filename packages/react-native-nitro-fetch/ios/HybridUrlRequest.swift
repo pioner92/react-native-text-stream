@@ -5,11 +5,17 @@ class HybridUrlRequest: HybridUrlRequestSpec {
   private weak var task: URLSessionDataTask?
   private weak var delegate: URLSessionDelegate?
   private var isDoneFlag = false
+  private let nativeBuffer: ArrayBuffer?
 
-  init(task: URLSessionDataTask, delegate: URLSessionDelegate) {
+  init(task: URLSessionDataTask, delegate: URLSessionDelegate, nativeBuffer: ArrayBuffer? = nil) {
     self.task = task
     self.delegate = delegate
+    self.nativeBuffer = nativeBuffer
     super.init()
+  }
+
+  func getNativeBuffer() throws -> ArrayBuffer? {
+    return nativeBuffer
   }
 
   func start() throws {
