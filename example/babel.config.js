@@ -15,6 +15,11 @@ module.exports = api => {
           },
         },
       ],
+      // Must stay last. Bundle Mode + remend forwarding are required by react-native-streamdown.
+      [
+        'react-native-worklets/plugin',
+        { bundleMode: true, importForwarding: { moduleNames: ['remend'] } },
+      ],
     ],
   };
 };

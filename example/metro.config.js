@@ -1,4 +1,5 @@
 const { getDefaultConfig, mergeConfig } = require('@react-native/metro-config');
+const { getBundleModeMetroConfig } = require('react-native-worklets/bundleMode');
 const path = require('path');
 // Workspace packages (text-stream, vendored nitro-fetch) are symlinked from the root node_modules.
 const root = path.resolve(__dirname, '..');
@@ -10,7 +11,9 @@ const root = path.resolve(__dirname, '..');
  * @type {import('metro-config').MetroConfig}
  */
 const config = {
+  // The root covers node_modules/react-native-worklets/.worklets, where Bundle Mode writes worklets.
   watchFolders: [root],
 };
 
-module.exports = mergeConfig(getDefaultConfig(__dirname), config);
+// Worklets Bundle Mode (needed by react-native-streamdown).
+module.exports = getBundleModeMetroConfig(mergeConfig(getDefaultConfig(__dirname), config));

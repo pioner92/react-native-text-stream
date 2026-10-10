@@ -13,6 +13,7 @@ import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { fetch } from 'react-native-nitro-fetch';
 import { StreamText } from 'react-native-text-stream';
 import { createUtf8StreamDecoder } from './src/utf8';
+import { BenchScreen } from './src/bench/BenchScreen';
 
 // iOS simulator reaches the host's localhost directly.
 const SERVER = 'http://localhost:9877';
@@ -33,6 +34,19 @@ const C = {
 };
 
 export default function App(): React.JSX.Element {
+  const [bench, setBench] = useState(false);
+  if (!bench) return <Demo onOpenBench={() => setBench(true)} />;
+  return (
+    <SafeAreaProvider>
+      <StatusBar barStyle="light-content" />
+      <SafeAreaView style={styles.screen} edges={['top', 'bottom']}>
+        <BenchScreen onBack={() => setBench(false)} />
+      </SafeAreaView>
+    </SafeAreaProvider>
+  );
+}
+
+function Demo({ onOpenBench }: { onOpenBench: () => void }): React.JSX.Element {
   const [buffer, setBuffer] = useState<ArrayBuffer>();
   const [jsText, setJsText] = useState('');
   const [jsBytes, setJsBytes] = useState(0);
@@ -97,7 +111,12 @@ export default function App(): React.JSX.Element {
       <StatusBar barStyle="light-content" />
       <SafeAreaView style={styles.screen} edges={['top', 'bottom']}>
         <View style={styles.header}>
-          <Text style={styles.eyebrow}>REACT NATIVE · NITRO</Text>
+          <View style={styles.eyebrowRow}>
+            <Text style={styles.eyebrow}>REACT NATIVE · NITRO</Text>
+            <Pressable onPress={onOpenBench} hitSlop={12}>
+              <Text style={styles.benchLink}>Benchmarks ›</Text>
+            </Pressable>
+          </View>
           <Text style={styles.title}>Native Text Streaming</Text>
           <Text style={styles.subtitle}>
             fetch → ArrayBuffer → native view.{'\n'}Zero JS on the hot path.
@@ -280,7 +299,9 @@ const buttonVariants = {
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: C.bg, paddingHorizontal: 16 },
   header: { paddingTop: 8, paddingBottom: 14 },
+  eyebrowRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   eyebrow: { color: C.native, fontSize: 11, fontWeight: '700', letterSpacing: 1.6 },
+  benchLink: { color: C.muted, fontSize: 13, fontWeight: '600' },
   title: { color: C.text, fontSize: 30, fontWeight: '800', letterSpacing: -0.6, marginTop: 4 },
   subtitle: { color: C.muted, fontSize: 14, lineHeight: 20, marginTop: 6 },
   threads: { flexDirection: 'row', gap: 10, marginTop: 14 },
