@@ -1,10 +1,9 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { ScrollView, StyleSheet, Text, TextInput } from 'react-native';
 import Animated, { useAnimatedProps, useSharedValue } from 'react-native-reanimated';
-import { callback } from 'react-native-nitro-modules';
 import { fetch } from 'react-native-nitro-fetch';
 import { TextDecoder } from 'react-native-nitro-text-decoder';
-import { StreamText, type StreamTextRef } from 'react-native-text-stream';
+import { StreamText, type StreamTextHandle } from 'react-native-text-stream';
 import { StreamdownText } from 'react-native-streamdown';
 import { pairs, type Point } from './stats';
 import type { VariantId } from './config';
@@ -232,7 +231,7 @@ const STREAMDOWN_STYLE = { paragraph: { color: TEXT_COLOR, fontSize: 14, lineHei
 // C: the native path; JS only hands the buffer over and polls for completion.
 function NativeStream({ url, onFinish }: VariantProps) {
   const [buffer, setBuffer] = useState<ArrayBuffer>();
-  const view = useRef<StreamTextRef | null>(null);
+  const view = useRef<StreamTextHandle>(null);
 
   useEffect(() => {
     fetch(url, { stream: true, nativeBuffer: true })
@@ -263,9 +262,7 @@ function NativeStream({ url, onFinish }: VariantProps) {
       fontSize={14}
       color={TEXT_COLOR}
       recordDisplayLog
-      hybridRef={callback((ref: StreamTextRef) => {
-        view.current = ref;
-      })}
+      ref={view}
       style={StyleSheet.absoluteFill}
     />
   );
