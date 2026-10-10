@@ -11,7 +11,8 @@ import {
 } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { fetch } from 'react-native-nitro-fetch';
-import { StreamText } from 'react-native-text-stream';
+import { callback } from 'react-native-nitro-modules';
+import { StreamText, type StreamTextRef } from 'react-native-text-stream';
 import { createUtf8StreamDecoder } from './src/utf8';
 import { BenchScreen } from './src/bench/BenchScreen';
 
@@ -47,7 +48,8 @@ export default function App(): React.JSX.Element {
 }
 
 function Demo({ onOpenBench }: { onOpenBench: () => void }): React.JSX.Element {
-  const [buffer, setBuffer] = useState<ArrayBuffer>();
+  // The buffer goes through the ref: starting a stream doesn't re-render this screen.
+  const streamView = useRef<StreamTextRef | null>(null);
   const [jsText, setJsText] = useState('');
   const [jsBytes, setJsBytes] = useState(0);
   const [jsCallbacks, setJsCallbacks] = useState(0);
@@ -57,7 +59,7 @@ function Demo({ onOpenBench }: { onOpenBench: () => void }): React.JSX.Element {
 
   const reset = useCallback(() => {
     runId.current++;
-    setBuffer(undefined);
+    streamView.current?.attachSource(undefined);
     setJsText('');
     setJsBytes(0);
     setJsCallbacks(0);
@@ -70,7 +72,7 @@ function Demo({ onOpenBench }: { onOpenBench: () => void }): React.JSX.Element {
 
     // Native: URLSession -> TSB1 buffer -> StreamText. JS only hands the buffer over.
     fetch(STREAM_URL, { stream: true, nativeBuffer: true })
-      .then((res) => run === runId.current && setBuffer(res.nativeBuffer))
+      .then((res) => run === runId.current && streamView.current?.attachSource(res.nativeBuffer))
       .catch((e) => console.warn('native stream failed', e));
 
     // Baseline: every chunk crosses into JS, gets decoded and re-rendered.
@@ -134,7 +136,7 @@ function Demo({ onOpenBench }: { onOpenBench: () => void }): React.JSX.Element {
           caption="URLSession → TSB1 buffer → UITextView · 0 JS callbacks"
         >
           <StreamText
-            source={buffer}
+            hybridRef={callback((ref: StreamTextRef) => (streamView.current = ref))}
             fontSize={14}
             color={C.text}
             showStats

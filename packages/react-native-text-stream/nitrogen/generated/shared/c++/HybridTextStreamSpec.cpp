@@ -24,6 +24,7 @@ namespace margelo::nitro::textstream {
       prototype.registerHybridSetter("showStats", &HybridTextStreamSpec::setShowStats);
       prototype.registerHybridGetter("recordDisplayLog", &HybridTextStreamSpec::getRecordDisplayLog);
       prototype.registerHybridSetter("recordDisplayLog", &HybridTextStreamSpec::setRecordDisplayLog);
+      prototype.registerHybridMethod("attachSource", &HybridTextStreamSpec::attachSource);
       prototype.registerHybridMethod("getDisplayLog", &HybridTextStreamSpec::getDisplayLog);
     });
   }

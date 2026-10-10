@@ -262,6 +262,24 @@ open class HybridTextStreamSpec_cxx {
 
   // Methods
   @inline(__always)
+  public final func attachSource(source: bridge.std__optional_std__shared_ptr_ArrayBuffer__) -> bridge.Result_void_ {
+    do {
+      try self.__implementation.attachSource(source: { () -> ArrayBuffer? in
+        if bridge.has_value_std__optional_std__shared_ptr_ArrayBuffer__(source) {
+          let __unwrapped = bridge.get_std__optional_std__shared_ptr_ArrayBuffer__(source)
+          return ArrayBuffer(__unwrapped)
+        } else {
+          return nil
+        }
+      }())
+      return bridge.create_Result_void_()
+    } catch (let __error) {
+      let __exceptionPtr = __error.toCpp()
+      return bridge.create_Result_void_(__exceptionPtr)
+    }
+  }
+  
+  @inline(__always)
   public final func getDisplayLog() -> bridge.Result_std__vector_double__ {
     do {
       let __result = try self.__implementation.getDisplayLog()

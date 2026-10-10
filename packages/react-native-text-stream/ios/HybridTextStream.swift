@@ -246,6 +246,16 @@ class HybridTextStream: HybridTextStreamSpec {
     }
   }
 
+  // Called on the JS thread; the view state lives on main.
+  func attachSource(source: ArrayBuffer?) throws {
+    if let source, !source.isOwner {
+      // A JS-created buffer must not leave the JS thread.
+      NSLog("[TextStream] attachSource: not a native-owned ArrayBuffer; ignoring it")
+      return
+    }
+    DispatchQueue.main.async { [weak self] in self?.attach(source) }
+  }
+
   func getDisplayLog() throws -> [Double] {
     displayLogLock.withLock { displayLog }
   }

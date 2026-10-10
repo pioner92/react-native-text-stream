@@ -17,6 +17,7 @@ public protocol HybridTextStreamSpec_protocol: HybridObject, HybridView {
   var recordDisplayLog: Bool? { get set }
 
   // Methods
+  func attachSource(source: ArrayBuffer?) throws -> Void
   func getDisplayLog() throws -> [Double]
 }
 

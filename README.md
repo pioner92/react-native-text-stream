@@ -31,6 +31,22 @@ export function Chat() {
 No `setState` per chunk and no re-renders: the view reads new bytes from the buffer on every frame,
 even while the JS thread is busy.
 
+Or skip the one `setState` too and hand the buffer over through the ref (the demo screen does this):
+
+```tsx
+import { callback } from 'react-native-nitro-modules';
+import { StreamText, type StreamTextRef } from 'react-native-text-stream';
+
+const view = useRef<StreamTextRef | null>(null);
+
+const res = await fetch(url, { stream: true, nativeBuffer: true });
+view.current?.attachSource(res.nativeBuffer); // attachSource(undefined) clears
+
+<StreamText hybridRef={callback((ref: StreamTextRef) => (view.current = ref))} style={{ flex: 1 }} />
+```
+
+Both work; whichever was set last (`source` prop or `attachSource`) wins.
+
 `res.nativeBuffer` is a Nitro-owned `ArrayBuffer` in the **TSB1** layout: a 64-byte header
 (`magic`, `version`, `committed`, `capacity`, `status`) followed by an append-only byte log
 (`packages/react-native-text-stream/ios/TextStreamBuffer.h`). URLSession appends to it on its own

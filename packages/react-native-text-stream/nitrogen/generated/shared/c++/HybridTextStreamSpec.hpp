@@ -62,6 +62,7 @@ namespace margelo::nitro::textstream {
 
     public:
       // Methods
+      virtual void attachSource(const std::optional<std::shared_ptr<ArrayBuffer>>& source) = 0;
       virtual std::vector<double> getDisplayLog() = 0;
 
     protected:

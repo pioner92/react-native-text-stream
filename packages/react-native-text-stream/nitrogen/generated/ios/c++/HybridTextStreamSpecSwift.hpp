@@ -107,6 +107,12 @@ namespace margelo::nitro::textstream {
 
   public:
     // Methods
+    inline void attachSource(const std::optional<std::shared_ptr<ArrayBuffer>>& source) override {
+      auto __result = _swiftPart.attachSource(source);
+      if (__result.hasError()) [[unlikely]] {
+        std::rethrow_exception(__result.error());
+      }
+    }
     inline std::vector<double> getDisplayLog() override {
       auto __result = _swiftPart.getDisplayLog();
       if (__result.hasError()) [[unlikely]] {

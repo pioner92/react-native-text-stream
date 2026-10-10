@@ -22,6 +22,11 @@ export interface TextStreamProps extends HybridViewProps {
 
 export interface TextStreamMethods extends HybridViewMethods {
   /**
+   * Same as the `source` prop, without a React render: `ref.attachSource(res.nativeBuffer)`.
+   * Whichever of the two was set last wins; `undefined` detaches.
+   */
+  attachSource(source?: ArrayBuffer): void
+  /**
    * Benchmark hook: `[wallClockMs, bytesShown, ...]` pairs, one per frame
    * that appended text since the current `source` was attached.
    */
