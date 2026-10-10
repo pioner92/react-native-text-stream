@@ -1,12 +1,15 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { ScrollView, StyleSheet, Text, TextInput } from 'react-native';
+import { ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import Animated, { useAnimatedProps, useSharedValue } from 'react-native-reanimated';
 import { fetch } from 'react-native-nitro-fetch';
 import { TextDecoder } from 'react-native-nitro-text-decoder';
-import { StreamText, type StreamTextHandle } from 'react-native-text-stream';
+import { createFrameMonitor, StreamText, type StreamTextHandle } from 'react-native-text-stream';
 import { StreamdownText } from 'react-native-streamdown';
 import { pairs, type Point } from './stats';
-import type { VariantId } from './config';
+import { LAYOUT, type VariantId } from './config';
+import { StreamTextView } from '../StreamTextView';
+
+const BUBBLE = LAYOUT === 'bubble';
 
 export interface VariantResult {
   /**
@@ -121,6 +124,7 @@ function JsPerFrame({ url, markPainted, onFinish }: VariantProps) {
 
 function JsTextView({ text }: { text: string }) {
   const scroll = useRef<ScrollView>(null);
+  if (BUBBLE) return <Text style={styles.text}>{text}</Text>;
   return (
     <ScrollView
       ref={scroll}
@@ -170,9 +174,9 @@ function ReanimatedText({ url, markPainted, onFinish }: VariantProps) {
     <AnimatedTextInput
       editable={false}
       multiline
-      scrollEnabled
+      scrollEnabled={!BUBBLE}
       animatedProps={animatedProps}
-      style={[StyleSheet.absoluteFill, styles.content, styles.text]}
+      style={BUBBLE ? [styles.text, styles.bubbleInput] : [StyleSheet.absoluteFill, styles.content, styles.text]}
     />
   );
 }
@@ -219,6 +223,7 @@ function StreamdownVariant({ url, markPainted, onFinish }: VariantProps) {
     };
   }, [url, onFinish]);
 
+  if (BUBBLE) return <StreamdownText markdown={state.text} markdownStyle={STREAMDOWN_STYLE} />;
   return (
     <ScrollView style={StyleSheet.absoluteFill} contentContainerStyle={styles.content}>
       <StreamdownText markdown={state.text} markdownStyle={STREAMDOWN_STYLE} />
@@ -271,15 +276,74 @@ function NativeStream({ url, onFinish }: VariantProps) {
   );
 }
 
+// C in a bubble: the Fabric StreamTextView sizes itself to its text through native state updates.
+const displayLogs = createFrameMonitor();
+
+function NativeStreamBubble({ url, onFinish }: VariantProps) {
+  const [buffer, setBuffer] = useState<ArrayBuffer>();
+  // The view records its display log under its nativeID.
+  const logKey = url;
+
+  useEffect(() => {
+    fetch(url, { stream: true, nativeBuffer: true })
+      .then((res) => setBuffer(res.nativeBuffer))
+      .catch((e) => onFinish({ shown: [], jsChunks: 0, error: String(e) }));
+  }, [url, onFinish]);
+
+  useEffect(() => {
+    if (!buffer) return;
+    const header = new DataView(buffer, 0, 64);
+    const id = setInterval(() => {
+      const status = header.getUint32(24, true);
+      const committed = header.getUint32(8, true) + header.getUint32(12, true) * 2 ** 32;
+      const log = displayLogs.streamTextDisplayLog(logKey);
+      const lastShown = log.length ? log[log.length - 1] : 0;
+      if (status !== 0 && lastShown >= committed) {
+        clearInterval(id);
+        onFinish({ shown: pairs(log), jsChunks: 0 });
+      }
+    }, 100);
+    return () => clearInterval(id);
+  }, [buffer, onFinish, logKey]);
+
+  return <StreamTextView source={buffer} fontSize={14} color={TEXT_COLOR} nativeID={logKey} />;
+}
+
 export const VARIANT_COMPONENTS: Record<VariantId, React.ComponentType<VariantProps>> = {
   A1: JsPerChunk,
   A2: JsPerFrame,
   B1: ReanimatedText,
   B2: StreamdownVariant,
-  C: NativeStream,
+  C: BUBBLE ? NativeStreamBubble : NativeStream,
 };
+
+const HISTORY = [
+  { mine: true, text: 'Hey! Can you explain how native text streaming works?' },
+  { mine: false, text: 'Sure. The response is written into a native buffer, and the view reads it every frame.' },
+  { mine: true, text: 'Show me a longer answer, streamed.' },
+];
+
+/** A chat list whose last bubble holds the variant; the bubble grows with the text. */
+export function ChatFrame({ children }: { children: React.ReactNode }) {
+  return (
+    <ScrollView style={StyleSheet.absoluteFill} contentContainerStyle={styles.chat}>
+      {HISTORY.map((m, i) => (
+        <View key={i} style={[styles.bubble, m.mine ? styles.mine : styles.theirs]}>
+          <Text style={styles.text}>{m.text}</Text>
+        </View>
+      ))}
+      <View style={[styles.bubble, styles.theirs, styles.answer]}>{children}</View>
+    </ScrollView>
+  );
+}
 
 const styles = StyleSheet.create({
   content: { paddingHorizontal: 12, paddingTop: 14, paddingBottom: 40 },
   text: { color: TEXT_COLOR, fontSize: 14, lineHeight: 21 },
+  bubbleInput: { padding: 0 },
+  chat: { padding: 12, gap: 10 },
+  bubble: { maxWidth: '85%', borderRadius: 18, paddingHorizontal: 14, paddingVertical: 10 },
+  mine: { alignSelf: 'flex-end', backgroundColor: '#8B5CF6' },
+  theirs: { alignSelf: 'flex-start', backgroundColor: '#24242E' },
+  answer: { width: '85%' },
 });

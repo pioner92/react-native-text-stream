@@ -11,10 +11,11 @@ import {
   streamUrl,
   type Scenario,
   type VariantId,
+  LAYOUT,
 } from './config';
 import { startJsLoad, startJsProbe } from './probes';
 import { latencyStats, median, type LatencyStats, type Point } from './stats';
-import { VARIANT_COMPONENTS, type VariantResult } from './variants';
+import { ChatFrame, VARIANT_COMPONENTS, type VariantResult } from './variants';
 
 const SCENARIOS = ALL_SCENARIOS.filter((s) => !FOCUS.scenarios || FOCUS.scenarios.includes(s.id));
 const VARIANTS = ALL_VARIANTS.filter((v) => !FOCUS.variants || FOCUS.variants.includes(v.id));
@@ -151,10 +152,10 @@ export function BenchScreen({ onBack }: { onBack: () => void }) {
           }
         }
       }
-      const name = `bench-${startedAt.replace(/[:.]/g, '-')}`;
+      const name = `bench-${LAYOUT === 'bubble' ? 'bubble-' : ''}${startedAt.replace(/[:.]/g, '-')}`;
       await globalThis.fetch(`${SERVER}/results?name=${name}`, {
         method: 'POST',
-        body: JSON.stringify({ startedAt, reps: REPS, scenarios: SCENARIOS, runs: all }, null, 2),
+        body: JSON.stringify({ startedAt, layout: LAYOUT, reps: REPS, scenarios: SCENARIOS, runs: all }, null, 2),
       });
       setStatus(`Done · saved bench-results/${name}.json`);
     } catch (e) {
@@ -181,7 +182,13 @@ export function BenchScreen({ onBack }: { onBack: () => void }) {
 
       <View style={styles.stage}>
         {mounted && Variant ? (
-          <Variant key={mounted.key} url={mounted.url} markPainted={markPainted} onFinish={mounted.onFinish} />
+          LAYOUT === 'bubble' ? (
+            <ChatFrame key={mounted.key}>
+              <Variant url={mounted.url} markPainted={markPainted} onFinish={mounted.onFinish} />
+            </ChatFrame>
+          ) : (
+            <Variant key={mounted.key} url={mounted.url} markPainted={markPainted} onFinish={mounted.onFinish} />
+          )
         ) : null}
       </View>
 

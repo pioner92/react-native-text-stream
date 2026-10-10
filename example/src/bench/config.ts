@@ -48,6 +48,12 @@ export const FOCUS: {
   holdMs?: number;
 } = {};
 
+/**
+ * `box`: each variant fills a fixed area and scrolls itself. `bubble`: the text sits in a
+ * chat bubble that grows with it, inside a scrolling list (C uses the Fabric StreamTextView).
+ */
+export const LAYOUT: 'box' | 'bubble' = 'bubble';
+
 export const RUN_TIMEOUT_MS = 30_000;
 export const COOLDOWN_MS = 1_500;
 
