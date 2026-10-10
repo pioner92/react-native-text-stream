@@ -12,12 +12,28 @@ public protocol HybridTextStreamSpec_protocol: HybridObject, HybridView {
   // Properties
   var source: Variant_ArrayBuffer_NullType? { get set }
   var fontSize: Double? { get set }
+  var fontFamily: String? { get set }
+  var fontWeight: String? { get set }
   var color: String? { get set }
+  var lineHeight: Double? { get set }
+  var letterSpacing: Double? { get set }
+  var textAlign: StreamTextAlign? { get set }
+  var contentInset: StreamTextInsets? { get set }
+  var selectable: Bool? { get set }
+  var selectionColor: String? { get set }
+  var showsVerticalScrollIndicator: Bool? { get set }
+  var indicatorStyle: StreamTextIndicatorStyle? { get set }
+  var onStatusChange: ((_ status: StreamTextStatus, _ bytes: Double) -> Void)? { get set }
+  var onAtEndChange: ((_ atEnd: Bool) -> Void)? { get set }
+  var onContentSizeChange: ((_ width: Double, _ height: Double) -> Void)? { get set }
   var showStats: Bool? { get set }
   var recordDisplayLog: Bool? { get set }
 
   // Methods
   func attachSource(source: ArrayBuffer?) throws -> Void
+  func scrollToEnd(animated: Bool) throws -> Void
+  func getStatus() throws -> StreamTextState
+  func getText() throws -> Promise<String>
   func getDisplayLog() throws -> [Double]
 }
 

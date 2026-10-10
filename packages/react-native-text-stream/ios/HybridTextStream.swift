@@ -64,17 +64,69 @@ class HybridTextStream: HybridTextStreamSpec {
 
   private var textAttributes: [NSAttributedString.Key: Any] = [:]
 
+  // Events: the last values sent to JS, so each change is reported once.
+  private var reportedStatus: StreamTextStatus?
+  private var reportedAtEnd = true
+  private var reportedSize: CGSize = .zero
+  private var lastSizeReportAt: CFTimeInterval = 0
+  private var sizeReportScheduled = false
+  private static let sizeReportInterval: CFTimeInterval = 0.1
+
+  // getStatus() snapshot, read from the JS thread.
+  private let stateLock = NSLock()
+  private var stateSnapshot: (status: StreamTextStatus, bytes: UInt64, shown: UInt64) = (.idle, 0, 0)
+
   var source: Variant_ArrayBuffer_NullType? {
     // null arrives when React removes a previously set prop; treat it like undefined.
     didSet { attach(source?.asType(ArrayBuffer.self)) }
   }
 
-  var fontSize: Double? {
-    didSet { updateTextAttributes() }
+  var fontSize: Double? { didSet { updateTextAttributes() } }
+  var fontFamily: String? { didSet { updateTextAttributes() } }
+  var fontWeight: String? { didSet { updateTextAttributes() } }
+  var color: String? { didSet { updateTextAttributes() } }
+  var lineHeight: Double? { didSet { updateTextAttributes() } }
+  var letterSpacing: Double? { didSet { updateTextAttributes() } }
+  var textAlign: StreamTextAlign? { didSet { updateTextAttributes() } }
+
+  var contentInset: StreamTextInsets? {
+    didSet {
+      textView.textContainerInset = UIEdgeInsets(
+        top: CGFloat(contentInset?.top ?? 0),
+        left: CGFloat(contentInset?.left ?? 0),
+        bottom: CGFloat(contentInset?.bottom ?? 0),
+        right: CGFloat(contentInset?.right ?? 0)
+      )
+    }
   }
 
-  var color: String? {
-    didSet { updateTextAttributes() }
+  var selectable: Bool? {
+    didSet { textView.isSelectable = selectable ?? true }
+  }
+
+  var selectionColor: String? {
+    // nil restores the inherited tint.
+    didSet { textView.tintColor = UIColor(hex: selectionColor) }
+  }
+
+  var showsVerticalScrollIndicator: Bool? {
+    didSet { textView.showsVerticalScrollIndicator = showsVerticalScrollIndicator ?? true }
+  }
+
+  var indicatorStyle: StreamTextIndicatorStyle? {
+    didSet {
+      switch indicatorStyle {
+      case .black: textView.indicatorStyle = .black
+      case .white: textView.indicatorStyle = .white
+      default: textView.indicatorStyle = .default
+      }
+    }
+  }
+
+  var onStatusChange: ((_ status: StreamTextStatus, _ bytes: Double) -> Void)?
+  var onAtEndChange: ((_ atEnd: Bool) -> Void)?
+  var onContentSizeChange: ((_ width: Double, _ height: Double) -> Void)? {
+    didSet { reportedSize = .zero }
   }
 
   var showStats: Bool? {
@@ -100,8 +152,10 @@ class HybridTextStream: HybridTextStreamSpec {
     textView.isSelectable = true
     textView.alwaysBounceVertical = true
     textView.backgroundColor = .clear
-    textView.indicatorStyle = .white
-    textView.textContainerInset = UIEdgeInsets(top: 14, left: 12, bottom: 40, right: 12)
+    // Padding comes only from `contentInset`, like a plain <Text>.
+    textView.textContainerInset = .zero
+    textView.textContainer.lineFragmentPadding = 0
+    textView.contentInsetAdjustmentBehavior = .never
     textView.frame = container.bounds
     textView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
     container.addSubview(textView)
@@ -127,7 +181,15 @@ class HybridTextStream: HybridTextStreamSpec {
       guard let self else { return }
       self.setTicking(inWindow && self.base != nil && !self.finished)
     }
+    textView.delegate = scrollDelegate
+    scrollDelegate.onScroll = { [weak self] in self?.reportAtEnd() }
+    textView.onContentSizeChange = { [weak self] in
+      self?.reportAtEnd()
+      self?.reportContentSize()
+    }
   }
+
+  private let scrollDelegate = ScrollDelegate()
 
   deinit {
     displayLink?.invalidate()
@@ -135,17 +197,49 @@ class HybridTextStream: HybridTextStreamSpec {
   }
 
   private func updateTextAttributes() {
+    let font = makeFont()
     let paragraph = NSMutableParagraphStyle()
-    paragraph.lineHeightMultiple = 1.25
-    paragraph.paragraphSpacing = 4
-    textAttributes = [
-      .font: UIFont.systemFont(ofSize: CGFloat(fontSize ?? 15)),
+    switch textAlign {
+    case .left: paragraph.alignment = .left
+    case .right: paragraph.alignment = .right
+    case .center: paragraph.alignment = .center
+    case .justify: paragraph.alignment = .justified
+    default: paragraph.alignment = .natural
+    }
+    var attributes: [NSAttributedString.Key: Any] = [
+      .font: font,
       .foregroundColor: UIColor(hex: color) ?? .label,
       .paragraphStyle: paragraph,
     ]
+    if let lineHeight, lineHeight > 0 {
+      let height = CGFloat(lineHeight)
+      paragraph.minimumLineHeight = height
+      paragraph.maximumLineHeight = height
+      // TextKit puts the extra height above the glyphs; centre them like RN <Text> does.
+      attributes[.baselineOffset] = (height - font.lineHeight) / 2
+    }
+    if let letterSpacing {
+      attributes[.kern] = CGFloat(letterSpacing)
+    }
+    textAttributes = attributes
     textView.typingAttributes = textAttributes
     let storage = textView.textStorage
     storage.setAttributes(textAttributes, range: NSRange(location: 0, length: storage.length))
+  }
+
+  private func makeFont() -> UIFont {
+    let size = CGFloat(fontSize ?? 15)
+    let weight = parseFontWeight(fontWeight)
+    guard let family = fontFamily, !family.isEmpty else {
+      return .systemFont(ofSize: size, weight: weight ?? .regular)
+    }
+    // A PostScript name ("Menlo-Bold") resolves directly; a family name goes through a descriptor.
+    if weight == nil, let named = UIFont(name: family, size: size) { return named }
+    var descriptor = UIFontDescriptor(fontAttributes: [.family: family])
+    if let weight {
+      descriptor = descriptor.addingAttributes([.traits: [UIFontDescriptor.TraitKey.weight: weight]])
+    }
+    return UIFont(descriptor: descriptor, size: size)
   }
 
   // MARK: - Source
@@ -165,31 +259,84 @@ class HybridTextStream: HybridTextStreamSpec {
     displayLogLock.withLock { displayLog.removeAll() }
     unloggedShown = nil
 
-    guard let newBuffer else { return }
-    // A non-owning buffer was created by JS and may only be touched on the JS thread.
-    guard newBuffer.isOwner else {
-      NSLog("[TextStream] source is not a native-owned ArrayBuffer; ignoring it")
-      return
-    }
-    let size = newBuffer.size
-    guard size >= Int(TSB_HEADER_SIZE) else {
-      NSLog("[TextStream] source is too small for a TSB1 header (%d bytes)", size)
-      return
-    }
-    let raw = UnsafeMutableRawPointer(newBuffer.data)
-    let header = raw.assumingMemoryBound(to: TSBHeader.self).pointee
-    guard header.magic == TSB_MAGIC, Int(header.version) == Int(TSB_VERSION),
-          header.capacity <= UInt64(size - Int(TSB_HEADER_SIZE)) else {
-      NSLog("[TextStream] source is not a valid TSB1 buffer")
+    guard let newBuffer, isValidSource(newBuffer) else {
+      publishState(.idle, bytes: 0)
       return
     }
 
     buffer = newBuffer  // keeps the memory alive while we read it
-    base = raw
-    capacity = header.capacity
+    base = UnsafeMutableRawPointer(newBuffer.data)
+    capacity = base!.assumingMemoryBound(to: TSBHeader.self).pointee.capacity
     lastDataAt = CACurrentMediaTime()
+    publishState(.streaming, bytes: 0)
     setTicking(container.window != nil)
     tick()
+  }
+
+  private func isValidSource(_ buffer: ArrayBuffer) -> Bool {
+    // A non-owning buffer was created by JS and may only be touched on the JS thread.
+    guard buffer.isOwner else {
+      NSLog("[TextStream] source is not a native-owned ArrayBuffer; ignoring it")
+      return false
+    }
+    let size = buffer.size
+    guard size >= Int(TSB_HEADER_SIZE) else {
+      NSLog("[TextStream] source is too small for a TSB1 header (%d bytes)", size)
+      return false
+    }
+    let header = UnsafeRawPointer(buffer.data).assumingMemoryBound(to: TSBHeader.self).pointee
+    guard header.magic == TSB_MAGIC, Int(header.version) == Int(TSB_VERSION),
+          header.capacity <= UInt64(size - Int(TSB_HEADER_SIZE)) else {
+      NSLog("[TextStream] source is not a valid TSB1 buffer")
+      return false
+    }
+    return true
+  }
+
+  // MARK: - State and events
+
+  /// Updates the getStatus() snapshot and reports a status change once.
+  private func publishState(_ status: StreamTextStatus, bytes: UInt64) {
+    stateLock.withLock { stateSnapshot = (status, bytes, offset) }
+    guard status != reportedStatus else { return }
+    reportedStatus = status
+    onStatusChange?(status, Double(bytes))
+  }
+
+  private func terminalStatus(_ status: UInt32) -> StreamTextStatus {
+    switch status {
+    case UInt32(TSB_STATUS_DONE): return .done
+    case UInt32(TSB_STATUS_CANCELLED): return .cancelled
+    case UInt32(TSB_STATUS_OVERFLOW): return .truncated
+    default: return .error
+    }
+  }
+
+  private func reportAtEnd() {
+    let atEnd = distanceToEnd() <= Self.atEndThreshold
+    guard atEnd != reportedAtEnd else { return }
+    reportedAtEnd = atEnd
+    onAtEndChange?(atEnd)
+  }
+
+  /// Reports the content size at most every `sizeReportInterval`, always ending on the latest size.
+  private func reportContentSize() {
+    guard onContentSizeChange != nil, !sizeReportScheduled else { return }
+    let wait = lastSizeReportAt + Self.sizeReportInterval - CACurrentMediaTime()
+    guard wait > 0 else { return sendContentSize() }
+    sizeReportScheduled = true
+    DispatchQueue.main.asyncAfter(deadline: .now() + wait) { [weak self] in
+      self?.sizeReportScheduled = false
+      self?.sendContentSize()
+    }
+  }
+
+  private func sendContentSize() {
+    let size = textView.contentSize
+    guard size != reportedSize, let onContentSizeChange else { return }
+    reportedSize = size
+    lastSizeReportAt = CACurrentMediaTime()
+    onContentSizeChange(Double(size.width), Double(size.height))
   }
 
   // MARK: - Frame loop
@@ -256,6 +403,23 @@ class HybridTextStream: HybridTextStreamSpec {
     DispatchQueue.main.async { [weak self] in self?.attach(source) }
   }
 
+  func scrollToEnd(animated: Bool) throws {
+    DispatchQueue.main.async { [weak self] in self?.scrollToTail(animated: animated) }
+  }
+
+  func getStatus() throws -> StreamTextState {
+    let s = stateLock.withLock { stateSnapshot }
+    return StreamTextState(status: s.status, bytes: Double(s.bytes), shownBytes: Double(s.shown))
+  }
+
+  func getText() throws -> Promise<String> {
+    let promise = Promise<String>()
+    DispatchQueue.main.async { [weak self] in
+      promise.resolve(withResult: self?.textView.textStorage.string ?? "")
+    }
+    return promise
+  }
+
   func getDisplayLog() throws -> [Double] {
     displayLogLock.withLock { displayLog }
   }
@@ -319,6 +483,8 @@ class HybridTextStream: HybridTextStreamSpec {
     // Logs consumed bytes, a split character included, like the JS decoders' byte counts.
     if recordDisplayLog == true && offset > consumedBefore { unloggedShown = offset }
     updateStats(committed: committed)
+    // Terminal statuses are reported only once all the text is on screen.
+    publishState(finished ? terminalStatus(finalStatus) : .streaming, bytes: committed)
 
     // One more tick when finished, so the last append can still be logged.
     if !finished && offset >= committed && now - lastDataAt > Self.idleAfter {
@@ -357,17 +523,22 @@ class HybridTextStream: HybridTextStreamSpec {
     textView.textStorage.append(NSAttributedString(string: text, attributes: textAttributes))
   }
 
+  private static let atEndThreshold: CGFloat = 40
+
+  private func distanceToEnd() -> CGFloat {
+    textView.contentSize.height - textView.bounds.height - textView.contentOffset.y
+  }
+
   /// Follow the tail unless the user is scrolling or has scrolled away from the bottom.
   private func isAtTail() -> Bool {
     if textView.isTracking || textView.isDecelerating { return false }
-    let distanceToBottom = textView.contentSize.height - textView.bounds.height - textView.contentOffset.y
-    return distanceToBottom <= 40
+    return distanceToEnd() <= Self.atEndThreshold
   }
 
-  private func scrollToTail() {
+  private func scrollToTail(animated: Bool = false) {
     textView.layoutIfNeeded()
     let maxY = textView.contentSize.height - textView.bounds.height + textView.adjustedContentInset.bottom
-    textView.setContentOffset(CGPoint(x: 0, y: max(-textView.adjustedContentInset.top, maxY)), animated: false)
+    textView.setContentOffset(CGPoint(x: 0, y: max(-textView.adjustedContentInset.top, maxY)), animated: animated)
   }
 
   private func updateStats(committed: UInt64) {
@@ -398,6 +569,14 @@ class HybridTextStream: HybridTextStreamSpec {
 /// UITextView holding megabytes of text otherwise stalls the main thread for seconds.
 private final class StreamUITextView: UITextView {
   private static let accessibleTailCharacters = 2000
+
+  var onContentSizeChange: (() -> Void)?
+
+  override var contentSize: CGSize {
+    didSet {
+      if contentSize != oldValue { onContentSizeChange?() }
+    }
+  }
 
   override var isAccessibilityElement: Bool {
     get { true }
@@ -462,6 +641,27 @@ private extension UIColor {
       alpha: CGFloat(rgba & 0xFF) / 255
     )
   }
+}
+
+/// "normal", "bold" or "100"…"900", as in React Native.
+private func parseFontWeight(_ value: String?) -> UIFont.Weight? {
+  switch value {
+  case "100": return .ultraLight
+  case "200": return .thin
+  case "300": return .light
+  case "normal", "400": return .regular
+  case "500": return .medium
+  case "600": return .semibold
+  case "bold", "700": return .bold
+  case "800": return .heavy
+  case "900": return .black
+  default: return nil
+  }
+}
+
+private final class ScrollDelegate: NSObject, UITextViewDelegate {
+  var onScroll: (() -> Void)?
+  func scrollViewDidScroll(_ scrollView: UIScrollView) { onScroll?() }
 }
 
 /// Breaks the CADisplayLink -> target retain cycle.

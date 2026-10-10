@@ -260,7 +260,10 @@ function NativeStream({ url, onFinish }: VariantProps) {
     <StreamText
       source={buffer}
       fontSize={14}
+      lineHeight={21}
       color={TEXT_COLOR}
+      // Same padding as the ScrollView-based variants.
+      contentInset={{ top: 14, left: 12, bottom: 40, right: 12 }}
       recordDisplayLog
       ref={view}
       style={StyleSheet.absoluteFill}

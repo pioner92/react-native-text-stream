@@ -7,6 +7,7 @@ export {
   type StreamTextProps,
   type StreamTextHandle,
   type StreamTextRef,
+  type StreamTextFontWeight,
 } from './StreamText'
 
 /** Benchmark helper: UI-thread frame pacing monitor. */
@@ -15,3 +16,10 @@ export function createFrameMonitor(): FrameMonitor {
 }
 
 export type { FrameMonitor, FrameStats } from './specs/frame-monitor.nitro'
+export type {
+  StreamTextAlign,
+  StreamTextIndicatorStyle,
+  StreamTextInsets,
+  StreamTextState,
+  StreamTextStatus,
+} from './specs/text-stream.nitro'

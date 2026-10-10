@@ -22,9 +22,13 @@
 #include <variant>
 #include <optional>
 #include <string>
+#include "StreamTextAlign.hpp"
+#include "StreamTextInsets.hpp"
+#include "StreamTextIndicatorStyle.hpp"
+#include "StreamTextStatus.hpp"
+#include <functional>
 #include <memory>
 #include "HybridTextStreamSpec.hpp"
-#include <functional>
 
 namespace margelo::nitro::textstream::views {
 
@@ -48,7 +52,20 @@ namespace margelo::nitro::textstream::views {
   public:
     nitro::ReactProp<std::optional<std::variant<std::shared_ptr<ArrayBuffer>, nitro::NullType>>> source;
     nitro::ReactProp<std::optional<double>> fontSize;
+    nitro::ReactProp<std::optional<std::string>> fontFamily;
+    nitro::ReactProp<std::optional<std::string>> fontWeight;
     nitro::ReactProp<std::optional<std::string>> color;
+    nitro::ReactProp<std::optional<double>> lineHeight;
+    nitro::ReactProp<std::optional<double>> letterSpacing;
+    nitro::ReactProp<std::optional<StreamTextAlign>> textAlign;
+    nitro::ReactProp<std::optional<StreamTextInsets>> contentInset;
+    nitro::ReactProp<std::optional<bool>> selectable;
+    nitro::ReactProp<std::optional<std::string>> selectionColor;
+    nitro::ReactProp<std::optional<bool>> showsVerticalScrollIndicator;
+    nitro::ReactProp<std::optional<StreamTextIndicatorStyle>> indicatorStyle;
+    nitro::ReactProp<std::optional<std::function<void(StreamTextStatus /* status */, double /* bytes */)>>> onStatusChange;
+    nitro::ReactProp<std::optional<std::function<void(bool /* atEnd */)>>> onAtEndChange;
+    nitro::ReactProp<std::optional<std::function<void(double /* width */, double /* height */)>>> onContentSizeChange;
     nitro::ReactProp<std::optional<bool>> showStats;
     nitro::ReactProp<std::optional<bool>> recordDisplayLog;
     nitro::ReactProp<std::optional<std::function<void(const std::shared_ptr<HybridTextStreamSpec>& /* ref */)>>> hybridRef;
@@ -57,7 +74,20 @@ namespace margelo::nitro::textstream::views {
     bool hasSameProps(const HybridTextStreamProps& other) const noexcept {
       return source.hasSameValue(other.source) &&
              fontSize.hasSameValue(other.fontSize) &&
+             fontFamily.hasSameValue(other.fontFamily) &&
+             fontWeight.hasSameValue(other.fontWeight) &&
              color.hasSameValue(other.color) &&
+             lineHeight.hasSameValue(other.lineHeight) &&
+             letterSpacing.hasSameValue(other.letterSpacing) &&
+             textAlign.hasSameValue(other.textAlign) &&
+             contentInset.hasSameValue(other.contentInset) &&
+             selectable.hasSameValue(other.selectable) &&
+             selectionColor.hasSameValue(other.selectionColor) &&
+             showsVerticalScrollIndicator.hasSameValue(other.showsVerticalScrollIndicator) &&
+             indicatorStyle.hasSameValue(other.indicatorStyle) &&
+             onStatusChange.hasSameValue(other.onStatusChange) &&
+             onAtEndChange.hasSameValue(other.onAtEndChange) &&
+             onContentSizeChange.hasSameValue(other.onContentSizeChange) &&
              showStats.hasSameValue(other.showStats) &&
              recordDisplayLog.hasSameValue(other.recordDisplayLog) &&
              hybridRef.hasSameValue(other.hybridRef);
@@ -67,7 +97,20 @@ namespace margelo::nitro::textstream::views {
     bool hasAnyProvidedProps() const noexcept {
       return source.isProvided() ||
              fontSize.isProvided() ||
+             fontFamily.isProvided() ||
+             fontWeight.isProvided() ||
              color.isProvided() ||
+             lineHeight.isProvided() ||
+             letterSpacing.isProvided() ||
+             textAlign.isProvided() ||
+             contentInset.isProvided() ||
+             selectable.isProvided() ||
+             selectionColor.isProvided() ||
+             showsVerticalScrollIndicator.isProvided() ||
+             indicatorStyle.isProvided() ||
+             onStatusChange.isProvided() ||
+             onAtEndChange.isProvided() ||
+             onContentSizeChange.isProvided() ||
              showStats.isProvided() ||
              recordDisplayLog.isProvided() ||
              hybridRef.isProvided();

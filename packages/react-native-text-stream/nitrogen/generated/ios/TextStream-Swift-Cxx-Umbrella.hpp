@@ -14,16 +14,32 @@ namespace margelo::nitro::textstream { struct FrameStats; }
 namespace margelo::nitro::textstream { class HybridFrameMonitorSpec; }
 // Forward declaration of `HybridTextStreamSpec` to properly resolve imports.
 namespace margelo::nitro::textstream { class HybridTextStreamSpec; }
+// Forward declaration of `StreamTextAlign` to properly resolve imports.
+namespace margelo::nitro::textstream { enum class StreamTextAlign; }
+// Forward declaration of `StreamTextIndicatorStyle` to properly resolve imports.
+namespace margelo::nitro::textstream { enum class StreamTextIndicatorStyle; }
+// Forward declaration of `StreamTextInsets` to properly resolve imports.
+namespace margelo::nitro::textstream { struct StreamTextInsets; }
+// Forward declaration of `StreamTextState` to properly resolve imports.
+namespace margelo::nitro::textstream { struct StreamTextState; }
+// Forward declaration of `StreamTextStatus` to properly resolve imports.
+namespace margelo::nitro::textstream { enum class StreamTextStatus; }
 
 // Include C++ defined types
 #include "FrameStats.hpp"
 #include "HybridFrameMonitorSpec.hpp"
 #include "HybridTextStreamSpec.hpp"
+#include "StreamTextAlign.hpp"
+#include "StreamTextIndicatorStyle.hpp"
+#include "StreamTextInsets.hpp"
+#include "StreamTextState.hpp"
+#include "StreamTextStatus.hpp"
 #include <NitroModules/ArrayBuffer.hpp>
 #include <NitroModules/Null.hpp>
 #include <NitroModules/Promise.hpp>
 #include <NitroModules/Result.hpp>
 #include <exception>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>

@@ -16,6 +16,16 @@ namespace margelo::nitro::textstream { struct FrameStats; }
 namespace margelo::nitro::textstream { class HybridFrameMonitorSpec; }
 // Forward declaration of `HybridTextStreamSpec` to properly resolve imports.
 namespace margelo::nitro::textstream { class HybridTextStreamSpec; }
+// Forward declaration of `StreamTextAlign` to properly resolve imports.
+namespace margelo::nitro::textstream { enum class StreamTextAlign; }
+// Forward declaration of `StreamTextIndicatorStyle` to properly resolve imports.
+namespace margelo::nitro::textstream { enum class StreamTextIndicatorStyle; }
+// Forward declaration of `StreamTextInsets` to properly resolve imports.
+namespace margelo::nitro::textstream { struct StreamTextInsets; }
+// Forward declaration of `StreamTextState` to properly resolve imports.
+namespace margelo::nitro::textstream { struct StreamTextState; }
+// Forward declaration of `StreamTextStatus` to properly resolve imports.
+namespace margelo::nitro::textstream { enum class StreamTextStatus; }
 
 // Forward declarations of Swift defined types
 // Forward declaration of `HybridFrameMonitorSpec_cxx` to properly resolve imports.
@@ -27,6 +37,11 @@ namespace TextStream { class HybridTextStreamSpec_cxx; }
 #include "FrameStats.hpp"
 #include "HybridFrameMonitorSpec.hpp"
 #include "HybridTextStreamSpec.hpp"
+#include "StreamTextAlign.hpp"
+#include "StreamTextIndicatorStyle.hpp"
+#include "StreamTextInsets.hpp"
+#include "StreamTextState.hpp"
+#include "StreamTextStatus.hpp"
 #include <NitroModules/ArrayBuffer.hpp>
 #include <NitroModules/ArrayBufferHolder.hpp>
 #include <NitroModules/Null.hpp>
@@ -250,6 +265,36 @@ namespace margelo::nitro::textstream::bridge::swift {
     return optional.value();
   }
   
+  // pragma MARK: std::optional<StreamTextAlign>
+  /**
+   * Specialized version of `std::optional<StreamTextAlign>`.
+   */
+  using std__optional_StreamTextAlign_ = std::optional<StreamTextAlign>;
+  inline std::optional<StreamTextAlign> create_std__optional_StreamTextAlign_(const StreamTextAlign& value) noexcept {
+    return std::optional<StreamTextAlign>(value);
+  }
+  inline bool has_value_std__optional_StreamTextAlign_(const std::optional<StreamTextAlign>& optional) noexcept {
+    return optional.has_value();
+  }
+  inline StreamTextAlign get_std__optional_StreamTextAlign_(const std::optional<StreamTextAlign>& optional) noexcept {
+    return optional.value();
+  }
+  
+  // pragma MARK: std::optional<StreamTextInsets>
+  /**
+   * Specialized version of `std::optional<StreamTextInsets>`.
+   */
+  using std__optional_StreamTextInsets_ = std::optional<StreamTextInsets>;
+  inline std::optional<StreamTextInsets> create_std__optional_StreamTextInsets_(const StreamTextInsets& value) noexcept {
+    return std::optional<StreamTextInsets>(value);
+  }
+  inline bool has_value_std__optional_StreamTextInsets_(const std::optional<StreamTextInsets>& optional) noexcept {
+    return optional.has_value();
+  }
+  inline StreamTextInsets get_std__optional_StreamTextInsets_(const std::optional<StreamTextInsets>& optional) noexcept {
+    return optional.value();
+  }
+  
   // pragma MARK: std::optional<bool>
   /**
    * Specialized version of `std::optional<bool>`.
@@ -262,6 +307,132 @@ namespace margelo::nitro::textstream::bridge::swift {
     return optional.has_value();
   }
   inline bool get_std__optional_bool_(const std::optional<bool>& optional) noexcept {
+    return optional.value();
+  }
+  
+  // pragma MARK: std::optional<StreamTextIndicatorStyle>
+  /**
+   * Specialized version of `std::optional<StreamTextIndicatorStyle>`.
+   */
+  using std__optional_StreamTextIndicatorStyle_ = std::optional<StreamTextIndicatorStyle>;
+  inline std::optional<StreamTextIndicatorStyle> create_std__optional_StreamTextIndicatorStyle_(const StreamTextIndicatorStyle& value) noexcept {
+    return std::optional<StreamTextIndicatorStyle>(value);
+  }
+  inline bool has_value_std__optional_StreamTextIndicatorStyle_(const std::optional<StreamTextIndicatorStyle>& optional) noexcept {
+    return optional.has_value();
+  }
+  inline StreamTextIndicatorStyle get_std__optional_StreamTextIndicatorStyle_(const std::optional<StreamTextIndicatorStyle>& optional) noexcept {
+    return optional.value();
+  }
+  
+  // pragma MARK: std::function<void(StreamTextStatus /* status */, double /* bytes */)>
+  /**
+   * Specialized version of `std::function<void(StreamTextStatus, double)>`.
+   */
+  using Func_void_StreamTextStatus_double = std::function<void(StreamTextStatus /* status */, double /* bytes */)>;
+  /**
+   * Wrapper class for a `std::function<void(StreamTextStatus / * status * /, double / * bytes * /)>`, this can be used from Swift.
+   */
+  class Func_void_StreamTextStatus_double_Wrapper final {
+  public:
+    explicit Func_void_StreamTextStatus_double_Wrapper(std::function<void(StreamTextStatus /* status */, double /* bytes */)>&& func): _function(std::make_unique<std::function<void(StreamTextStatus /* status */, double /* bytes */)>>(std::move(func))) {}
+    inline void call(int status, double bytes) const noexcept {
+      _function->operator()(static_cast<StreamTextStatus>(status), bytes);
+    }
+  private:
+    std::unique_ptr<std::function<void(StreamTextStatus /* status */, double /* bytes */)>> _function;
+  } SWIFT_NONCOPYABLE;
+  Func_void_StreamTextStatus_double create_Func_void_StreamTextStatus_double(void* NON_NULL swiftClosureWrapper) noexcept;
+  inline Func_void_StreamTextStatus_double_Wrapper wrap_Func_void_StreamTextStatus_double(Func_void_StreamTextStatus_double value) noexcept {
+    return Func_void_StreamTextStatus_double_Wrapper(std::move(value));
+  }
+  
+  // pragma MARK: std::optional<std::function<void(StreamTextStatus /* status */, double /* bytes */)>>
+  /**
+   * Specialized version of `std::optional<std::function<void(StreamTextStatus / * status * /, double / * bytes * /)>>`.
+   */
+  using std__optional_std__function_void_StreamTextStatus____status_____double____bytes______ = std::optional<std::function<void(StreamTextStatus /* status */, double /* bytes */)>>;
+  inline std::optional<std::function<void(StreamTextStatus /* status */, double /* bytes */)>> create_std__optional_std__function_void_StreamTextStatus____status_____double____bytes______(const std::function<void(StreamTextStatus /* status */, double /* bytes */)>& value) noexcept {
+    return std::optional<std::function<void(StreamTextStatus /* status */, double /* bytes */)>>(value);
+  }
+  inline bool has_value_std__optional_std__function_void_StreamTextStatus____status_____double____bytes______(const std::optional<std::function<void(StreamTextStatus /* status */, double /* bytes */)>>& optional) noexcept {
+    return optional.has_value();
+  }
+  inline std::function<void(StreamTextStatus /* status */, double /* bytes */)> get_std__optional_std__function_void_StreamTextStatus____status_____double____bytes______(const std::optional<std::function<void(StreamTextStatus /* status */, double /* bytes */)>>& optional) noexcept {
+    return optional.value();
+  }
+  
+  // pragma MARK: std::function<void(bool /* atEnd */)>
+  /**
+   * Specialized version of `std::function<void(bool)>`.
+   */
+  using Func_void_bool = std::function<void(bool /* atEnd */)>;
+  /**
+   * Wrapper class for a `std::function<void(bool / * atEnd * /)>`, this can be used from Swift.
+   */
+  class Func_void_bool_Wrapper final {
+  public:
+    explicit Func_void_bool_Wrapper(std::function<void(bool /* atEnd */)>&& func): _function(std::make_unique<std::function<void(bool /* atEnd */)>>(std::move(func))) {}
+    inline void call(bool atEnd) const noexcept {
+      _function->operator()(atEnd);
+    }
+  private:
+    std::unique_ptr<std::function<void(bool /* atEnd */)>> _function;
+  } SWIFT_NONCOPYABLE;
+  Func_void_bool create_Func_void_bool(void* NON_NULL swiftClosureWrapper) noexcept;
+  inline Func_void_bool_Wrapper wrap_Func_void_bool(Func_void_bool value) noexcept {
+    return Func_void_bool_Wrapper(std::move(value));
+  }
+  
+  // pragma MARK: std::optional<std::function<void(bool /* atEnd */)>>
+  /**
+   * Specialized version of `std::optional<std::function<void(bool / * atEnd * /)>>`.
+   */
+  using std__optional_std__function_void_bool____atEnd______ = std::optional<std::function<void(bool /* atEnd */)>>;
+  inline std::optional<std::function<void(bool /* atEnd */)>> create_std__optional_std__function_void_bool____atEnd______(const std::function<void(bool /* atEnd */)>& value) noexcept {
+    return std::optional<std::function<void(bool /* atEnd */)>>(value);
+  }
+  inline bool has_value_std__optional_std__function_void_bool____atEnd______(const std::optional<std::function<void(bool /* atEnd */)>>& optional) noexcept {
+    return optional.has_value();
+  }
+  inline std::function<void(bool /* atEnd */)> get_std__optional_std__function_void_bool____atEnd______(const std::optional<std::function<void(bool /* atEnd */)>>& optional) noexcept {
+    return optional.value();
+  }
+  
+  // pragma MARK: std::function<void(double /* width */, double /* height */)>
+  /**
+   * Specialized version of `std::function<void(double, double)>`.
+   */
+  using Func_void_double_double = std::function<void(double /* width */, double /* height */)>;
+  /**
+   * Wrapper class for a `std::function<void(double / * width * /, double / * height * /)>`, this can be used from Swift.
+   */
+  class Func_void_double_double_Wrapper final {
+  public:
+    explicit Func_void_double_double_Wrapper(std::function<void(double /* width */, double /* height */)>&& func): _function(std::make_unique<std::function<void(double /* width */, double /* height */)>>(std::move(func))) {}
+    inline void call(double width, double height) const noexcept {
+      _function->operator()(width, height);
+    }
+  private:
+    std::unique_ptr<std::function<void(double /* width */, double /* height */)>> _function;
+  } SWIFT_NONCOPYABLE;
+  Func_void_double_double create_Func_void_double_double(void* NON_NULL swiftClosureWrapper) noexcept;
+  inline Func_void_double_double_Wrapper wrap_Func_void_double_double(Func_void_double_double value) noexcept {
+    return Func_void_double_double_Wrapper(std::move(value));
+  }
+  
+  // pragma MARK: std::optional<std::function<void(double /* width */, double /* height */)>>
+  /**
+   * Specialized version of `std::optional<std::function<void(double / * width * /, double / * height * /)>>`.
+   */
+  using std__optional_std__function_void_double____width_____double____height______ = std::optional<std::function<void(double /* width */, double /* height */)>>;
+  inline std::optional<std::function<void(double /* width */, double /* height */)>> create_std__optional_std__function_void_double____width_____double____height______(const std::function<void(double /* width */, double /* height */)>& value) noexcept {
+    return std::optional<std::function<void(double /* width */, double /* height */)>>(value);
+  }
+  inline bool has_value_std__optional_std__function_void_double____width_____double____height______(const std::optional<std::function<void(double /* width */, double /* height */)>>& optional) noexcept {
+    return optional.has_value();
+  }
+  inline std::function<void(double /* width */, double /* height */)> get_std__optional_std__function_void_double____width_____double____height______(const std::optional<std::function<void(double /* width */, double /* height */)>>& optional) noexcept {
     return optional.value();
   }
   
@@ -278,6 +449,40 @@ namespace margelo::nitro::textstream::bridge::swift {
   }
   inline std::shared_ptr<ArrayBuffer> get_std__optional_std__shared_ptr_ArrayBuffer__(const std::optional<std::shared_ptr<ArrayBuffer>>& optional) noexcept {
     return optional.value();
+  }
+  
+  // pragma MARK: std::shared_ptr<Promise<std::string>>
+  /**
+   * Specialized version of `std::shared_ptr<Promise<std::string>>`.
+   */
+  using std__shared_ptr_Promise_std__string__ = std::shared_ptr<Promise<std::string>>;
+  inline std::shared_ptr<Promise<std::string>> create_std__shared_ptr_Promise_std__string__() noexcept {
+    return Promise<std::string>::create();
+  }
+  inline PromiseHolder<std::string> wrap_std__shared_ptr_Promise_std__string__(std::shared_ptr<Promise<std::string>> promise) noexcept {
+    return PromiseHolder<std::string>(std::move(promise));
+  }
+  
+  // pragma MARK: std::function<void(const std::string& /* result */)>
+  /**
+   * Specialized version of `std::function<void(const std::string&)>`.
+   */
+  using Func_void_std__string = std::function<void(const std::string& /* result */)>;
+  /**
+   * Wrapper class for a `std::function<void(const std::string& / * result * /)>`, this can be used from Swift.
+   */
+  class Func_void_std__string_Wrapper final {
+  public:
+    explicit Func_void_std__string_Wrapper(std::function<void(const std::string& /* result */)>&& func): _function(std::make_unique<std::function<void(const std::string& /* result */)>>(std::move(func))) {}
+    inline void call(std::string result) const noexcept {
+      _function->operator()(result);
+    }
+  private:
+    std::unique_ptr<std::function<void(const std::string& /* result */)>> _function;
+  } SWIFT_NONCOPYABLE;
+  Func_void_std__string create_Func_void_std__string(void* NON_NULL swiftClosureWrapper) noexcept;
+  inline Func_void_std__string_Wrapper wrap_Func_void_std__string(Func_void_std__string value) noexcept {
+    return Func_void_std__string_Wrapper(std::move(value));
   }
   
   // pragma MARK: std::vector<double>
@@ -305,6 +510,24 @@ namespace margelo::nitro::textstream::bridge::swift {
   // pragma MARK: std::weak_ptr<HybridTextStreamSpec>
   using std__weak_ptr_HybridTextStreamSpec_ = std::weak_ptr<HybridTextStreamSpec>;
   inline std__weak_ptr_HybridTextStreamSpec_ weakify_std__shared_ptr_HybridTextStreamSpec_(const std::shared_ptr<HybridTextStreamSpec>& strong) noexcept { return strong; }
+  
+  // pragma MARK: Result<StreamTextState>
+  using Result_StreamTextState_ = Result<StreamTextState>;
+  inline Result_StreamTextState_ create_Result_StreamTextState_(const StreamTextState& value) noexcept {
+    return Result<StreamTextState>::withValue(value);
+  }
+  inline Result_StreamTextState_ create_Result_StreamTextState_(const std::exception_ptr& error) noexcept {
+    return Result<StreamTextState>::withError(error);
+  }
+  
+  // pragma MARK: Result<std::shared_ptr<Promise<std::string>>>
+  using Result_std__shared_ptr_Promise_std__string___ = Result<std::shared_ptr<Promise<std::string>>>;
+  inline Result_std__shared_ptr_Promise_std__string___ create_Result_std__shared_ptr_Promise_std__string___(const std::shared_ptr<Promise<std::string>>& value) noexcept {
+    return Result<std::shared_ptr<Promise<std::string>>>::withValue(value);
+  }
+  inline Result_std__shared_ptr_Promise_std__string___ create_Result_std__shared_ptr_Promise_std__string___(const std::exception_ptr& error) noexcept {
+    return Result<std::shared_ptr<Promise<std::string>>>::withError(error);
+  }
   
   // pragma MARK: Result<std::vector<double>>
   using Result_std__vector_double__ = Result<std::vector<double>>;

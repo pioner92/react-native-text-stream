@@ -188,6 +188,54 @@ open class HybridTextStreamSpec_cxx {
     }
   }
   
+  public final var fontFamily: bridge.std__optional_std__string_ {
+    @inline(__always)
+    get {
+      return { () -> bridge.std__optional_std__string_ in
+        if let __unwrappedValue = self.__implementation.fontFamily {
+          return bridge.create_std__optional_std__string_(std.string(__unwrappedValue))
+        } else {
+          return .init()
+        }
+      }()
+    }
+    @inline(__always)
+    set {
+      self.__implementation.fontFamily = { () -> String? in
+        if bridge.has_value_std__optional_std__string_(newValue) {
+          let __unwrapped = bridge.get_std__optional_std__string_(newValue)
+          return String(__unwrapped)
+        } else {
+          return nil
+        }
+      }()
+    }
+  }
+  
+  public final var fontWeight: bridge.std__optional_std__string_ {
+    @inline(__always)
+    get {
+      return { () -> bridge.std__optional_std__string_ in
+        if let __unwrappedValue = self.__implementation.fontWeight {
+          return bridge.create_std__optional_std__string_(std.string(__unwrappedValue))
+        } else {
+          return .init()
+        }
+      }()
+    }
+    @inline(__always)
+    set {
+      self.__implementation.fontWeight = { () -> String? in
+        if bridge.has_value_std__optional_std__string_(newValue) {
+          let __unwrapped = bridge.get_std__optional_std__string_(newValue)
+          return String(__unwrapped)
+        } else {
+          return nil
+        }
+      }()
+    }
+  }
+  
   public final var color: bridge.std__optional_std__string_ {
     @inline(__always)
     get {
@@ -205,6 +253,273 @@ open class HybridTextStreamSpec_cxx {
         if bridge.has_value_std__optional_std__string_(newValue) {
           let __unwrapped = bridge.get_std__optional_std__string_(newValue)
           return String(__unwrapped)
+        } else {
+          return nil
+        }
+      }()
+    }
+  }
+  
+  public final var lineHeight: bridge.std__optional_double_ {
+    @inline(__always)
+    get {
+      return { () -> bridge.std__optional_double_ in
+        if let __unwrappedValue = self.__implementation.lineHeight {
+          return bridge.create_std__optional_double_(__unwrappedValue)
+        } else {
+          return .init()
+        }
+      }()
+    }
+    @inline(__always)
+    set {
+      self.__implementation.lineHeight = { () -> Double? in
+        if bridge.has_value_std__optional_double_(newValue) {
+          let __unwrapped = bridge.get_std__optional_double_(newValue)
+          return __unwrapped
+        } else {
+          return nil
+        }
+      }()
+    }
+  }
+  
+  public final var letterSpacing: bridge.std__optional_double_ {
+    @inline(__always)
+    get {
+      return { () -> bridge.std__optional_double_ in
+        if let __unwrappedValue = self.__implementation.letterSpacing {
+          return bridge.create_std__optional_double_(__unwrappedValue)
+        } else {
+          return .init()
+        }
+      }()
+    }
+    @inline(__always)
+    set {
+      self.__implementation.letterSpacing = { () -> Double? in
+        if bridge.has_value_std__optional_double_(newValue) {
+          let __unwrapped = bridge.get_std__optional_double_(newValue)
+          return __unwrapped
+        } else {
+          return nil
+        }
+      }()
+    }
+  }
+  
+  public final var textAlign: bridge.std__optional_StreamTextAlign_ {
+    @inline(__always)
+    get {
+      return { () -> bridge.std__optional_StreamTextAlign_ in
+        if let __unwrappedValue = self.__implementation.textAlign {
+          return bridge.create_std__optional_StreamTextAlign_(__unwrappedValue)
+        } else {
+          return .init()
+        }
+      }()
+    }
+    @inline(__always)
+    set {
+      self.__implementation.textAlign = newValue.value
+    }
+  }
+  
+  public final var contentInset: bridge.std__optional_StreamTextInsets_ {
+    @inline(__always)
+    get {
+      return { () -> bridge.std__optional_StreamTextInsets_ in
+        if let __unwrappedValue = self.__implementation.contentInset {
+          return bridge.create_std__optional_StreamTextInsets_(__unwrappedValue)
+        } else {
+          return .init()
+        }
+      }()
+    }
+    @inline(__always)
+    set {
+      self.__implementation.contentInset = newValue.value
+    }
+  }
+  
+  public final var selectable: bridge.std__optional_bool_ {
+    @inline(__always)
+    get {
+      return { () -> bridge.std__optional_bool_ in
+        if let __unwrappedValue = self.__implementation.selectable {
+          return bridge.create_std__optional_bool_(__unwrappedValue)
+        } else {
+          return .init()
+        }
+      }()
+    }
+    @inline(__always)
+    set {
+      self.__implementation.selectable = { () -> Bool? in
+        if bridge.has_value_std__optional_bool_(newValue) {
+          let __unwrapped = bridge.get_std__optional_bool_(newValue)
+          return __unwrapped
+        } else {
+          return nil
+        }
+      }()
+    }
+  }
+  
+  public final var selectionColor: bridge.std__optional_std__string_ {
+    @inline(__always)
+    get {
+      return { () -> bridge.std__optional_std__string_ in
+        if let __unwrappedValue = self.__implementation.selectionColor {
+          return bridge.create_std__optional_std__string_(std.string(__unwrappedValue))
+        } else {
+          return .init()
+        }
+      }()
+    }
+    @inline(__always)
+    set {
+      self.__implementation.selectionColor = { () -> String? in
+        if bridge.has_value_std__optional_std__string_(newValue) {
+          let __unwrapped = bridge.get_std__optional_std__string_(newValue)
+          return String(__unwrapped)
+        } else {
+          return nil
+        }
+      }()
+    }
+  }
+  
+  public final var showsVerticalScrollIndicator: bridge.std__optional_bool_ {
+    @inline(__always)
+    get {
+      return { () -> bridge.std__optional_bool_ in
+        if let __unwrappedValue = self.__implementation.showsVerticalScrollIndicator {
+          return bridge.create_std__optional_bool_(__unwrappedValue)
+        } else {
+          return .init()
+        }
+      }()
+    }
+    @inline(__always)
+    set {
+      self.__implementation.showsVerticalScrollIndicator = { () -> Bool? in
+        if bridge.has_value_std__optional_bool_(newValue) {
+          let __unwrapped = bridge.get_std__optional_bool_(newValue)
+          return __unwrapped
+        } else {
+          return nil
+        }
+      }()
+    }
+  }
+  
+  public final var indicatorStyle: bridge.std__optional_StreamTextIndicatorStyle_ {
+    @inline(__always)
+    get {
+      return { () -> bridge.std__optional_StreamTextIndicatorStyle_ in
+        if let __unwrappedValue = self.__implementation.indicatorStyle {
+          return bridge.create_std__optional_StreamTextIndicatorStyle_(__unwrappedValue)
+        } else {
+          return .init()
+        }
+      }()
+    }
+    @inline(__always)
+    set {
+      self.__implementation.indicatorStyle = newValue.value
+    }
+  }
+  
+  public final var onStatusChange: bridge.std__optional_std__function_void_StreamTextStatus____status_____double____bytes______ {
+    @inline(__always)
+    get {
+      return { () -> bridge.std__optional_std__function_void_StreamTextStatus____status_____double____bytes______ in
+        if let __unwrappedValue = self.__implementation.onStatusChange {
+          return bridge.create_std__optional_std__function_void_StreamTextStatus____status_____double____bytes______({ () -> bridge.Func_void_StreamTextStatus_double in
+            let __closureWrapper = Func_void_StreamTextStatus_double(__unwrappedValue)
+            return bridge.create_Func_void_StreamTextStatus_double(__closureWrapper.toUnsafe())
+          }())
+        } else {
+          return .init()
+        }
+      }()
+    }
+    @inline(__always)
+    set {
+      self.__implementation.onStatusChange = { () -> ((_ status: StreamTextStatus, _ bytes: Double) -> Void)? in
+        if bridge.has_value_std__optional_std__function_void_StreamTextStatus____status_____double____bytes______(newValue) {
+          let __unwrapped = bridge.get_std__optional_std__function_void_StreamTextStatus____status_____double____bytes______(newValue)
+          return { () -> (StreamTextStatus, Double) -> Void in
+            let __wrappedFunction = bridge.wrap_Func_void_StreamTextStatus_double(__unwrapped)
+            return { (__status: StreamTextStatus, __bytes: Double) -> Void in
+              __wrappedFunction.call(__status.rawValue, __bytes)
+            }
+          }()
+        } else {
+          return nil
+        }
+      }()
+    }
+  }
+  
+  public final var onAtEndChange: bridge.std__optional_std__function_void_bool____atEnd______ {
+    @inline(__always)
+    get {
+      return { () -> bridge.std__optional_std__function_void_bool____atEnd______ in
+        if let __unwrappedValue = self.__implementation.onAtEndChange {
+          return bridge.create_std__optional_std__function_void_bool____atEnd______({ () -> bridge.Func_void_bool in
+            let __closureWrapper = Func_void_bool(__unwrappedValue)
+            return bridge.create_Func_void_bool(__closureWrapper.toUnsafe())
+          }())
+        } else {
+          return .init()
+        }
+      }()
+    }
+    @inline(__always)
+    set {
+      self.__implementation.onAtEndChange = { () -> ((_ atEnd: Bool) -> Void)? in
+        if bridge.has_value_std__optional_std__function_void_bool____atEnd______(newValue) {
+          let __unwrapped = bridge.get_std__optional_std__function_void_bool____atEnd______(newValue)
+          return { () -> (Bool) -> Void in
+            let __wrappedFunction = bridge.wrap_Func_void_bool(__unwrapped)
+            return { (__atEnd: Bool) -> Void in
+              __wrappedFunction.call(__atEnd)
+            }
+          }()
+        } else {
+          return nil
+        }
+      }()
+    }
+  }
+  
+  public final var onContentSizeChange: bridge.std__optional_std__function_void_double____width_____double____height______ {
+    @inline(__always)
+    get {
+      return { () -> bridge.std__optional_std__function_void_double____width_____double____height______ in
+        if let __unwrappedValue = self.__implementation.onContentSizeChange {
+          return bridge.create_std__optional_std__function_void_double____width_____double____height______({ () -> bridge.Func_void_double_double in
+            let __closureWrapper = Func_void_double_double(__unwrappedValue)
+            return bridge.create_Func_void_double_double(__closureWrapper.toUnsafe())
+          }())
+        } else {
+          return .init()
+        }
+      }()
+    }
+    @inline(__always)
+    set {
+      self.__implementation.onContentSizeChange = { () -> ((_ width: Double, _ height: Double) -> Void)? in
+        if bridge.has_value_std__optional_std__function_void_double____width_____double____height______(newValue) {
+          let __unwrapped = bridge.get_std__optional_std__function_void_double____width_____double____height______(newValue)
+          return { () -> (Double, Double) -> Void in
+            let __wrappedFunction = bridge.wrap_Func_void_double_double(__unwrapped)
+            return { (__width: Double, __height: Double) -> Void in
+              __wrappedFunction.call(__width, __height)
+            }
+          }()
         } else {
           return nil
         }
@@ -276,6 +591,48 @@ open class HybridTextStreamSpec_cxx {
     } catch (let __error) {
       let __exceptionPtr = __error.toCpp()
       return bridge.create_Result_void_(__exceptionPtr)
+    }
+  }
+  
+  @inline(__always)
+  public final func scrollToEnd(animated: Bool) -> bridge.Result_void_ {
+    do {
+      try self.__implementation.scrollToEnd(animated: animated)
+      return bridge.create_Result_void_()
+    } catch (let __error) {
+      let __exceptionPtr = __error.toCpp()
+      return bridge.create_Result_void_(__exceptionPtr)
+    }
+  }
+  
+  @inline(__always)
+  public final func getStatus() -> bridge.Result_StreamTextState_ {
+    do {
+      let __result = try self.__implementation.getStatus()
+      let __resultCpp = __result
+      return bridge.create_Result_StreamTextState_(__resultCpp)
+    } catch (let __error) {
+      let __exceptionPtr = __error.toCpp()
+      return bridge.create_Result_StreamTextState_(__exceptionPtr)
+    }
+  }
+  
+  @inline(__always)
+  public final func getText() -> bridge.Result_std__shared_ptr_Promise_std__string___ {
+    do {
+      let __result = try self.__implementation.getText()
+      let __resultCpp = { () -> bridge.std__shared_ptr_Promise_std__string__ in
+        let __promise = bridge.create_std__shared_ptr_Promise_std__string__()
+        let __promiseHolder = bridge.wrap_std__shared_ptr_Promise_std__string__(__promise)
+        __result
+          .then({ __result in __promiseHolder.resolve(std.string(__result)) })
+          .catch({ __error in __promiseHolder.reject(__error.toCpp()) })
+        return __promise
+      }()
+      return bridge.create_Result_std__shared_ptr_Promise_std__string___(__resultCpp)
+    } catch (let __error) {
+      let __exceptionPtr = __error.toCpp()
+      return bridge.create_Result_std__shared_ptr_Promise_std__string___(__exceptionPtr)
     }
   }
   

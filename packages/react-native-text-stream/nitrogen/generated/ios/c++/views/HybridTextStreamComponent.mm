@@ -110,11 +110,89 @@ using namespace margelo::nitro::textstream::views;
           : !newViewProps.fontSize.hasSameValue(oldViewProps->fontSize)) {
       swiftPart.setFontSize(newViewProps.fontSize.get());
     }
+    // fontFamily: optional
+    if (oldViewProps == nullptr
+          ? newViewProps.fontFamily.isProvided()
+          : !newViewProps.fontFamily.hasSameValue(oldViewProps->fontFamily)) {
+      swiftPart.setFontFamily(newViewProps.fontFamily.get());
+    }
+    // fontWeight: optional
+    if (oldViewProps == nullptr
+          ? newViewProps.fontWeight.isProvided()
+          : !newViewProps.fontWeight.hasSameValue(oldViewProps->fontWeight)) {
+      swiftPart.setFontWeight(newViewProps.fontWeight.get());
+    }
     // color: optional
     if (oldViewProps == nullptr
           ? newViewProps.color.isProvided()
           : !newViewProps.color.hasSameValue(oldViewProps->color)) {
       swiftPart.setColor(newViewProps.color.get());
+    }
+    // lineHeight: optional
+    if (oldViewProps == nullptr
+          ? newViewProps.lineHeight.isProvided()
+          : !newViewProps.lineHeight.hasSameValue(oldViewProps->lineHeight)) {
+      swiftPart.setLineHeight(newViewProps.lineHeight.get());
+    }
+    // letterSpacing: optional
+    if (oldViewProps == nullptr
+          ? newViewProps.letterSpacing.isProvided()
+          : !newViewProps.letterSpacing.hasSameValue(oldViewProps->letterSpacing)) {
+      swiftPart.setLetterSpacing(newViewProps.letterSpacing.get());
+    }
+    // textAlign: optional
+    if (oldViewProps == nullptr
+          ? newViewProps.textAlign.isProvided()
+          : !newViewProps.textAlign.hasSameValue(oldViewProps->textAlign)) {
+      swiftPart.setTextAlign(newViewProps.textAlign.get());
+    }
+    // contentInset: optional
+    if (oldViewProps == nullptr
+          ? newViewProps.contentInset.isProvided()
+          : !newViewProps.contentInset.hasSameValue(oldViewProps->contentInset)) {
+      swiftPart.setContentInset(newViewProps.contentInset.get());
+    }
+    // selectable: optional
+    if (oldViewProps == nullptr
+          ? newViewProps.selectable.isProvided()
+          : !newViewProps.selectable.hasSameValue(oldViewProps->selectable)) {
+      swiftPart.setSelectable(newViewProps.selectable.get());
+    }
+    // selectionColor: optional
+    if (oldViewProps == nullptr
+          ? newViewProps.selectionColor.isProvided()
+          : !newViewProps.selectionColor.hasSameValue(oldViewProps->selectionColor)) {
+      swiftPart.setSelectionColor(newViewProps.selectionColor.get());
+    }
+    // showsVerticalScrollIndicator: optional
+    if (oldViewProps == nullptr
+          ? newViewProps.showsVerticalScrollIndicator.isProvided()
+          : !newViewProps.showsVerticalScrollIndicator.hasSameValue(oldViewProps->showsVerticalScrollIndicator)) {
+      swiftPart.setShowsVerticalScrollIndicator(newViewProps.showsVerticalScrollIndicator.get());
+    }
+    // indicatorStyle: optional
+    if (oldViewProps == nullptr
+          ? newViewProps.indicatorStyle.isProvided()
+          : !newViewProps.indicatorStyle.hasSameValue(oldViewProps->indicatorStyle)) {
+      swiftPart.setIndicatorStyle(newViewProps.indicatorStyle.get());
+    }
+    // onStatusChange: optional
+    if (oldViewProps == nullptr
+          ? newViewProps.onStatusChange.isProvided()
+          : !newViewProps.onStatusChange.hasSameValue(oldViewProps->onStatusChange)) {
+      swiftPart.setOnStatusChange(newViewProps.onStatusChange.get());
+    }
+    // onAtEndChange: optional
+    if (oldViewProps == nullptr
+          ? newViewProps.onAtEndChange.isProvided()
+          : !newViewProps.onAtEndChange.hasSameValue(oldViewProps->onAtEndChange)) {
+      swiftPart.setOnAtEndChange(newViewProps.onAtEndChange.get());
+    }
+    // onContentSizeChange: optional
+    if (oldViewProps == nullptr
+          ? newViewProps.onContentSizeChange.isProvided()
+          : !newViewProps.onContentSizeChange.hasSameValue(oldViewProps->onContentSizeChange)) {
+      swiftPart.setOnContentSizeChange(newViewProps.onContentSizeChange.get());
     }
     // showStats: optional
     if (oldViewProps == nullptr

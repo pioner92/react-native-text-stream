@@ -13,13 +13,29 @@
 #error NitroModules cannot be found! Are you sure you installed NitroModules properly?
 #endif
 
-
+// Forward declaration of `StreamTextAlign` to properly resolve imports.
+namespace margelo::nitro::textstream { enum class StreamTextAlign; }
+// Forward declaration of `StreamTextInsets` to properly resolve imports.
+namespace margelo::nitro::textstream { struct StreamTextInsets; }
+// Forward declaration of `StreamTextIndicatorStyle` to properly resolve imports.
+namespace margelo::nitro::textstream { enum class StreamTextIndicatorStyle; }
+// Forward declaration of `StreamTextStatus` to properly resolve imports.
+namespace margelo::nitro::textstream { enum class StreamTextStatus; }
+// Forward declaration of `StreamTextState` to properly resolve imports.
+namespace margelo::nitro::textstream { struct StreamTextState; }
 
 #include <NitroModules/ArrayBuffer.hpp>
 #include <NitroModules/Null.hpp>
 #include <variant>
 #include <optional>
 #include <string>
+#include "StreamTextAlign.hpp"
+#include "StreamTextInsets.hpp"
+#include "StreamTextIndicatorStyle.hpp"
+#include "StreamTextStatus.hpp"
+#include <functional>
+#include "StreamTextState.hpp"
+#include <NitroModules/Promise.hpp>
 #include <vector>
 
 namespace margelo::nitro::textstream {
@@ -53,8 +69,34 @@ namespace margelo::nitro::textstream {
       virtual void setSource(const std::optional<std::variant<std::shared_ptr<ArrayBuffer>, nitro::NullType>>& source) = 0;
       virtual std::optional<double> getFontSize() = 0;
       virtual void setFontSize(std::optional<double> fontSize) = 0;
+      virtual std::optional<std::string> getFontFamily() = 0;
+      virtual void setFontFamily(const std::optional<std::string>& fontFamily) = 0;
+      virtual std::optional<std::string> getFontWeight() = 0;
+      virtual void setFontWeight(const std::optional<std::string>& fontWeight) = 0;
       virtual std::optional<std::string> getColor() = 0;
       virtual void setColor(const std::optional<std::string>& color) = 0;
+      virtual std::optional<double> getLineHeight() = 0;
+      virtual void setLineHeight(std::optional<double> lineHeight) = 0;
+      virtual std::optional<double> getLetterSpacing() = 0;
+      virtual void setLetterSpacing(std::optional<double> letterSpacing) = 0;
+      virtual std::optional<StreamTextAlign> getTextAlign() = 0;
+      virtual void setTextAlign(std::optional<StreamTextAlign> textAlign) = 0;
+      virtual std::optional<StreamTextInsets> getContentInset() = 0;
+      virtual void setContentInset(const std::optional<StreamTextInsets>& contentInset) = 0;
+      virtual std::optional<bool> getSelectable() = 0;
+      virtual void setSelectable(std::optional<bool> selectable) = 0;
+      virtual std::optional<std::string> getSelectionColor() = 0;
+      virtual void setSelectionColor(const std::optional<std::string>& selectionColor) = 0;
+      virtual std::optional<bool> getShowsVerticalScrollIndicator() = 0;
+      virtual void setShowsVerticalScrollIndicator(std::optional<bool> showsVerticalScrollIndicator) = 0;
+      virtual std::optional<StreamTextIndicatorStyle> getIndicatorStyle() = 0;
+      virtual void setIndicatorStyle(std::optional<StreamTextIndicatorStyle> indicatorStyle) = 0;
+      virtual std::optional<std::function<void(StreamTextStatus /* status */, double /* bytes */)>> getOnStatusChange() = 0;
+      virtual void setOnStatusChange(const std::optional<std::function<void(StreamTextStatus /* status */, double /* bytes */)>>& onStatusChange) = 0;
+      virtual std::optional<std::function<void(bool /* atEnd */)>> getOnAtEndChange() = 0;
+      virtual void setOnAtEndChange(const std::optional<std::function<void(bool /* atEnd */)>>& onAtEndChange) = 0;
+      virtual std::optional<std::function<void(double /* width */, double /* height */)>> getOnContentSizeChange() = 0;
+      virtual void setOnContentSizeChange(const std::optional<std::function<void(double /* width */, double /* height */)>>& onContentSizeChange) = 0;
       virtual std::optional<bool> getShowStats() = 0;
       virtual void setShowStats(std::optional<bool> showStats) = 0;
       virtual std::optional<bool> getRecordDisplayLog() = 0;
@@ -63,6 +105,9 @@ namespace margelo::nitro::textstream {
     public:
       // Methods
       virtual void attachSource(const std::optional<std::shared_ptr<ArrayBuffer>>& source) = 0;
+      virtual void scrollToEnd(bool animated) = 0;
+      virtual StreamTextState getStatus() = 0;
+      virtual std::shared_ptr<Promise<std::string>> getText() = 0;
       virtual std::vector<double> getDisplayLog() = 0;
 
     protected:

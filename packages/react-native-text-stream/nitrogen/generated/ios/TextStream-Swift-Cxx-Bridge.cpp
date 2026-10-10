@@ -55,6 +55,38 @@ namespace margelo::nitro::textstream::bridge::swift {
     return swiftPart.toUnsafe();
   }
   
+  // pragma MARK: std::function<void(StreamTextStatus /* status */, double /* bytes */)>
+  Func_void_StreamTextStatus_double create_Func_void_StreamTextStatus_double(void* NON_NULL swiftClosureWrapper) noexcept {
+    auto swiftClosure = TextStream::Func_void_StreamTextStatus_double::fromUnsafe(swiftClosureWrapper);
+    return [swiftClosure = std::move(swiftClosure)](StreamTextStatus status, double bytes) mutable -> void {
+      swiftClosure.call(static_cast<int>(status), bytes);
+    };
+  }
+  
+  // pragma MARK: std::function<void(bool /* atEnd */)>
+  Func_void_bool create_Func_void_bool(void* NON_NULL swiftClosureWrapper) noexcept {
+    auto swiftClosure = TextStream::Func_void_bool::fromUnsafe(swiftClosureWrapper);
+    return [swiftClosure = std::move(swiftClosure)](bool atEnd) mutable -> void {
+      swiftClosure.call(atEnd);
+    };
+  }
+  
+  // pragma MARK: std::function<void(double /* width */, double /* height */)>
+  Func_void_double_double create_Func_void_double_double(void* NON_NULL swiftClosureWrapper) noexcept {
+    auto swiftClosure = TextStream::Func_void_double_double::fromUnsafe(swiftClosureWrapper);
+    return [swiftClosure = std::move(swiftClosure)](double width, double height) mutable -> void {
+      swiftClosure.call(width, height);
+    };
+  }
+  
+  // pragma MARK: std::function<void(const std::string& /* result */)>
+  Func_void_std__string create_Func_void_std__string(void* NON_NULL swiftClosureWrapper) noexcept {
+    auto swiftClosure = TextStream::Func_void_std__string::fromUnsafe(swiftClosureWrapper);
+    return [swiftClosure = std::move(swiftClosure)](const std::string& result) mutable -> void {
+      swiftClosure.call(result);
+    };
+  }
+  
   // pragma MARK: std::shared_ptr<HybridTextStreamSpec>
   std::shared_ptr<HybridTextStreamSpec> create_std__shared_ptr_HybridTextStreamSpec_(void* NON_NULL swiftUnsafePointer) noexcept {
     TextStream::HybridTextStreamSpec_cxx swiftPart = TextStream::HybridTextStreamSpec_cxx::fromUnsafe(swiftUnsafePointer);

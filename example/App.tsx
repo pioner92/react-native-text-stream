@@ -137,6 +137,9 @@ function Demo({ onOpenBench }: { onOpenBench: () => void }): React.JSX.Element {
           <StreamText
             ref={streamRef}
             fontSize={14}
+            lineHeight={21}
+            contentInset={{ top: 14, left: 12, bottom: 40, right: 12 }}
+            indicatorStyle="white"
             color={C.text}
             showStats
             style={StyleSheet.absoluteFill}

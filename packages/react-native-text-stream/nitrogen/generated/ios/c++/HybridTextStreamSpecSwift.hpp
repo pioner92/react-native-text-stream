@@ -14,6 +14,16 @@ namespace TextStream { class HybridTextStreamSpec_cxx; }
 
 // Forward declaration of `ArrayBufferHolder` to properly resolve imports.
 namespace NitroModules { class ArrayBufferHolder; }
+// Forward declaration of `StreamTextAlign` to properly resolve imports.
+namespace margelo::nitro::textstream { enum class StreamTextAlign; }
+// Forward declaration of `StreamTextInsets` to properly resolve imports.
+namespace margelo::nitro::textstream { struct StreamTextInsets; }
+// Forward declaration of `StreamTextIndicatorStyle` to properly resolve imports.
+namespace margelo::nitro::textstream { enum class StreamTextIndicatorStyle; }
+// Forward declaration of `StreamTextStatus` to properly resolve imports.
+namespace margelo::nitro::textstream { enum class StreamTextStatus; }
+// Forward declaration of `StreamTextState` to properly resolve imports.
+namespace margelo::nitro::textstream { struct StreamTextState; }
 
 #include <NitroModules/ArrayBuffer.hpp>
 #include <NitroModules/Null.hpp>
@@ -21,6 +31,13 @@ namespace NitroModules { class ArrayBufferHolder; }
 #include <optional>
 #include <NitroModules/ArrayBufferHolder.hpp>
 #include <string>
+#include "StreamTextAlign.hpp"
+#include "StreamTextInsets.hpp"
+#include "StreamTextIndicatorStyle.hpp"
+#include "StreamTextStatus.hpp"
+#include <functional>
+#include "StreamTextState.hpp"
+#include <NitroModules/Promise.hpp>
 #include <vector>
 
 #include "TextStream-Swift-Cxx-Umbrella.hpp"
@@ -83,12 +100,103 @@ namespace margelo::nitro::textstream {
     inline void setFontSize(std::optional<double> fontSize) noexcept override {
       _swiftPart.setFontSize(fontSize);
     }
+    inline std::optional<std::string> getFontFamily() noexcept override {
+      auto __result = _swiftPart.getFontFamily();
+      return __result;
+    }
+    inline void setFontFamily(const std::optional<std::string>& fontFamily) noexcept override {
+      _swiftPart.setFontFamily(fontFamily);
+    }
+    inline std::optional<std::string> getFontWeight() noexcept override {
+      auto __result = _swiftPart.getFontWeight();
+      return __result;
+    }
+    inline void setFontWeight(const std::optional<std::string>& fontWeight) noexcept override {
+      _swiftPart.setFontWeight(fontWeight);
+    }
     inline std::optional<std::string> getColor() noexcept override {
       auto __result = _swiftPart.getColor();
       return __result;
     }
     inline void setColor(const std::optional<std::string>& color) noexcept override {
       _swiftPart.setColor(color);
+    }
+    inline std::optional<double> getLineHeight() noexcept override {
+      auto __result = _swiftPart.getLineHeight();
+      return __result;
+    }
+    inline void setLineHeight(std::optional<double> lineHeight) noexcept override {
+      _swiftPart.setLineHeight(lineHeight);
+    }
+    inline std::optional<double> getLetterSpacing() noexcept override {
+      auto __result = _swiftPart.getLetterSpacing();
+      return __result;
+    }
+    inline void setLetterSpacing(std::optional<double> letterSpacing) noexcept override {
+      _swiftPart.setLetterSpacing(letterSpacing);
+    }
+    inline std::optional<StreamTextAlign> getTextAlign() noexcept override {
+      auto __result = _swiftPart.getTextAlign();
+      return __result;
+    }
+    inline void setTextAlign(std::optional<StreamTextAlign> textAlign) noexcept override {
+      _swiftPart.setTextAlign(textAlign);
+    }
+    inline std::optional<StreamTextInsets> getContentInset() noexcept override {
+      auto __result = _swiftPart.getContentInset();
+      return __result;
+    }
+    inline void setContentInset(const std::optional<StreamTextInsets>& contentInset) noexcept override {
+      _swiftPart.setContentInset(contentInset);
+    }
+    inline std::optional<bool> getSelectable() noexcept override {
+      auto __result = _swiftPart.getSelectable();
+      return __result;
+    }
+    inline void setSelectable(std::optional<bool> selectable) noexcept override {
+      _swiftPart.setSelectable(selectable);
+    }
+    inline std::optional<std::string> getSelectionColor() noexcept override {
+      auto __result = _swiftPart.getSelectionColor();
+      return __result;
+    }
+    inline void setSelectionColor(const std::optional<std::string>& selectionColor) noexcept override {
+      _swiftPart.setSelectionColor(selectionColor);
+    }
+    inline std::optional<bool> getShowsVerticalScrollIndicator() noexcept override {
+      auto __result = _swiftPart.getShowsVerticalScrollIndicator();
+      return __result;
+    }
+    inline void setShowsVerticalScrollIndicator(std::optional<bool> showsVerticalScrollIndicator) noexcept override {
+      _swiftPart.setShowsVerticalScrollIndicator(showsVerticalScrollIndicator);
+    }
+    inline std::optional<StreamTextIndicatorStyle> getIndicatorStyle() noexcept override {
+      auto __result = _swiftPart.getIndicatorStyle();
+      return __result;
+    }
+    inline void setIndicatorStyle(std::optional<StreamTextIndicatorStyle> indicatorStyle) noexcept override {
+      _swiftPart.setIndicatorStyle(indicatorStyle);
+    }
+    inline std::optional<std::function<void(StreamTextStatus /* status */, double /* bytes */)>> getOnStatusChange() noexcept override {
+      auto __result = _swiftPart.getOnStatusChange();
+      return __result;
+    }
+    inline void setOnStatusChange(const std::optional<std::function<void(StreamTextStatus /* status */, double /* bytes */)>>& onStatusChange) noexcept override {
+      _swiftPart.setOnStatusChange(onStatusChange);
+    }
+    inline std::optional<std::function<void(bool /* atEnd */)>> getOnAtEndChange() noexcept override {
+      auto __result = _swiftPart.getOnAtEndChange();
+      return __result;
+    }
+    inline void setOnAtEndChange(const std::optional<std::function<void(bool /* atEnd */)>>& onAtEndChange) noexcept override {
+      _swiftPart.setOnAtEndChange(onAtEndChange);
+    }
+    inline std::optional<std::function<void(double /* width */, double /* height */)>> getOnContentSizeChange() noexcept override {
+      auto __result = _swiftPart.getOnContentSizeChange();
+      return __result;
+    }
+    inline void setOnContentSizeChange(const std::optional<std::function<void(double /* width */, double /* height */)>>& onContentSizeChange) noexcept override {
+      _swiftPart.setOnContentSizeChange(onContentSizeChange);
     }
     inline std::optional<bool> getShowStats() noexcept override {
       auto __result = _swiftPart.getShowStats();
@@ -112,6 +220,28 @@ namespace margelo::nitro::textstream {
       if (__result.hasError()) [[unlikely]] {
         std::rethrow_exception(__result.error());
       }
+    }
+    inline void scrollToEnd(bool animated) override {
+      auto __result = _swiftPart.scrollToEnd(std::forward<decltype(animated)>(animated));
+      if (__result.hasError()) [[unlikely]] {
+        std::rethrow_exception(__result.error());
+      }
+    }
+    inline StreamTextState getStatus() override {
+      auto __result = _swiftPart.getStatus();
+      if (__result.hasError()) [[unlikely]] {
+        std::rethrow_exception(__result.error());
+      }
+      auto __value = std::move(__result.value());
+      return __value;
+    }
+    inline std::shared_ptr<Promise<std::string>> getText() override {
+      auto __result = _swiftPart.getText();
+      if (__result.hasError()) [[unlikely]] {
+        std::rethrow_exception(__result.error());
+      }
+      auto __value = std::move(__result.value());
+      return __value;
     }
     inline std::vector<double> getDisplayLog() override {
       auto __result = _swiftPart.getDisplayLog();
