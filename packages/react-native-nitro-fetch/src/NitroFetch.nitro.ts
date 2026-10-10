@@ -1,0 +1,103 @@
+import type { HybridObject } from 'react-native-nitro-modules';
+
+// Minimal request/response types to model WHATWG fetch without streaming.
+export type NitroRequestMethod =
+  | 'GET'
+  | 'HEAD'
+  | 'POST'
+  | 'PUT'
+  | 'PATCH'
+  | 'DELETE'
+  | 'OPTIONS';
+
+export type NitroRequestCredentials = 'include' | 'omit' | 'same-origin';
+
+export type NitroRequestPriority = 'high' | 'low';
+
+export interface NitroHeader {
+  key: string;
+  value: string;
+}
+
+export interface NitroFormDataPart {
+  name: string;
+  value?: string;
+  fileUri?: string;
+  fileName?: string;
+  mimeType?: string;
+}
+
+export interface NitroRequest {
+  url: string;
+  method?: NitroRequestMethod;
+  // Flattened list to keep bridging simple and deterministic
+  headers?: NitroHeader[];
+  // Body as either UTF-8 string or raw bytes.
+  bodyString?: string;
+  bodyBytes?: ArrayBuffer;
+  // Base64 body for the persisted prefetch queue, replayed from JSON before Nitro exists.
+  bodyBytesBase64?: string;
+  // Multipart form data parts (for file uploads)
+  bodyFormData?: NitroFormDataPart[];
+  // Controls
+  timeoutMs?: number;
+  followRedirects?: boolean; // default true
+  credentials?: NitroRequestCredentials; // default 'same-origin'; 'omit' skips cookie jar read/write
+  priority?: NitroRequestPriority;
+  // Max age (ms) a prefetch cache entry is considered fresh at read time.
+  // Default 5000 when omitted. <= 0 disables cache hits.
+  prefetchCacheTtlMs?: number;
+  // Optional ID used for cancellation via cancelRequest()
+  requestId?: string;
+}
+
+export interface NitroResponse {
+  url: string; // final URL after redirects
+  status: number;
+  statusText: string;
+  ok: boolean;
+  redirected: boolean;
+  headers: NitroHeader[];
+  bodyString?: string;
+  bodyBytes?: ArrayBuffer;
+}
+
+export interface NitroFetchClient extends HybridObject<{
+  ios: 'swift';
+  android: 'kotlin';
+}> {
+  // Client-binded request that uses the env configured at creation.
+  request(req: NitroRequest): Promise<NitroResponse>;
+  // Start a prefetch for a given request; expects a header `prefetchKey`.
+  prefetch(req: NitroRequest): Promise<void>;
+
+  // Synchronous version of request for worklets
+  requestSync(req: NitroRequest): NitroResponse;
+
+  // Cancel an in-flight request by its requestId
+  cancelRequest(requestId: string): void;
+}
+
+export interface NitroFetch extends HybridObject<{
+  ios: 'swift';
+  android: 'kotlin';
+}> {
+  // Create a client bound to a given environment (e.g., cache dir).
+  createClient(): NitroFetchClient;
+
+  // Optional future: global abort/teardown
+  // shutdown(): void;
+}
+
+export interface NativeStorage extends HybridObject<{
+  ios: 'swift';
+  android: 'kotlin';
+}> {
+  getString(key: string): string;
+  setString(key: string, value: string): void;
+  removeString(key: string): void;
+  /** AES-GCM at rest in the same prefs/suite as getString; key material in Keystore / Keychain. */
+  getSecureString(key: string): string;
+  setSecureString(key: string, value: string): void;
+  removeSecureString(key: string): void;
+}

@@ -1,0 +1,160 @@
+buildscript {
+  ext.getExtOrDefault = {name ->
+    return rootProject.ext.has(name) ? rootProject.ext.get(name) : project.properties['NitroFetch_' + name]
+  }
+
+  repositories {
+    google()
+    mavenCentral()
+  }
+
+  dependencies {
+    classpath "com.android.tools.build:gradle:8.7.2"
+    // noinspection DifferentKotlinGradleVersion
+    classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:${getExtOrDefault('kotlinVersion')}"
+  }
+}
+
+def reactNativeArchitectures() {
+  def value = rootProject.getProperties().get("reactNativeArchitectures")
+  return value ? value.split(",") : ["armeabi-v7a", "x86", "x86_64", "arm64-v8a"]
+}
+
+apply plugin: "com.android.library"
+
+
+if (project.extensions.findByName('kotlin') == null) {
+  apply plugin: "kotlin-android"
+}
+
+apply from: '../nitrogen/generated/android/nitrofetch+autolinking.gradle'
+
+// Do not apply React Gradle plugin in library to avoid RN codegen duplicating app classes
+
+def getExtOrIntegerDefault(name) {
+  return rootProject.ext.has(name) ? rootProject.ext.get(name) : (project.properties["NitroFetch_" + name]).toInteger()
+}
+
+android {
+  namespace "com.margelo.nitro.nitrofetch"
+
+  ndkVersion getExtOrDefault("ndkVersion")
+  compileSdkVersion getExtOrIntegerDefault("compileSdkVersion")
+
+  defaultConfig {
+    minSdkVersion getExtOrIntegerDefault("minSdkVersion")
+    targetSdkVersion getExtOrIntegerDefault("targetSdkVersion")
+
+    def enableTracing = (getExtOrDefault("enableTracing") ?: "false").toString().toBoolean()
+    buildConfigField "boolean", "NITRO_FETCH_TRACING", enableTracing.toString()
+
+    def disableDevToolsReporting = (getExtOrDefault("disableDevToolsReporting") ?: "false").toString().toBoolean()
+    buildConfigField "boolean", "NITRO_FETCH_DISABLE_DEVTOOLS_REPORTING", disableDevToolsReporting.toString()
+
+    externalNativeBuild {
+      cmake {
+        cppFlags "-frtti -fexceptions -Wall -fstack-protector-all"
+        arguments "-DANDROID_STL=c++_shared", "-DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON"
+        abiFilters (*reactNativeArchitectures())
+      }
+    }
+  }
+
+  externalNativeBuild {
+    cmake {
+      path "CMakeLists.txt"
+    }
+  }
+
+  packagingOptions {
+    excludes = [
+            "**/libc++_shared.so",
+            "**/libfbjni.so",
+            "**/libjsi.so",
+            "**/libfolly_json.so",
+            "**/libfolly_runtime.so",
+            "**/libglog.so",
+            "**/libhermes.so",
+            "**/libhermes-executor-debug.so",
+            "**/libhermes_executor.so",
+            "**/libreactnative.so",
+            "**/libreactnativejni.so",
+            "**/libturbomodulejsijni.so",
+            "**/libreact_nativemodule_core.so",
+            "**/libjscexecutor.so"
+    ]
+  }
+
+  buildFeatures {
+    buildConfig true
+    prefab true
+  }
+
+  buildTypes {
+    release {
+      minifyEnabled false
+    }
+
+    // Reverting due to build failure
+    // // The app's RN-managed `debugOptimized` build type (added by the React Native
+    // // gradle plugin, app-only) falls back to this library's `release` variant, where
+    // // BuildConfig.DEBUG is false — which constant-folds out the native DevTools/CDP
+    // // network reporting in HybridNitroFetchClient.kt. Define a matching debuggable variant
+    // // so debugOptimized links a BuildConfig.DEBUG=true build and requests surface in
+    // // the React Native DevTools Network panel.
+    // debugOptimized {
+    //   initWith debug
+    //   matchingFallbacks += ["release"]
+    // }
+  }
+
+  lintOptions {
+    disable "GradleCompatible"
+  }
+
+  compileOptions {
+    sourceCompatibility JavaVersion.VERSION_1_8
+    targetCompatibility JavaVersion.VERSION_1_8
+  }
+
+  sourceSets {
+    main {
+      java.srcDirs += [
+        "generated/java",
+        "generated/jni"
+      ]
+    }
+  }
+}
+
+repositories {
+  mavenCentral()
+  google()
+}
+
+def kotlin_version = getExtOrDefault("kotlinVersion")
+// ---------- Cronet (Java API only) ----------
+// Pinned to 143.7445.0+: earlier Cronet artifacts shared the `org.chromium.net`
+// namespace across modules (cronet-embedded/common/api/shared/...), which fails
+// the AGP 9 unique-namespace check during manifest merge. Fixed upstream in
+// https://issues.chromium.org/issues/406926302
+def cronetVersion = (getExtOrDefault("cronetVersion") ?: "143.7445.0")
+
+
+dependencies {
+  implementation "com.facebook.react:react-android"
+  implementation "org.jetbrains.kotlin:kotlin-stdlib:$kotlin_version"
+  implementation project(":react-native-nitro-modules")
+  // Provide org.chromium.net Java API for CronetEngine in Kotlin
+  // Cronet
+  api "org.chromium.net:cronet-embedded:${cronetVersion}"
+  implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0"
+
+}
+
+configurations {
+  cronetAar
+}
+
+
+// No automatic fetching of Cronet headers/libs; library uses Cronet Java API only.

@@ -1,0 +1,647 @@
+package com.margelo.nitro.nitrofetch
+
+import android.net.Uri
+import android.os.Trace
+import android.util.Log
+import com.facebook.proguard.annotations.DoNotStrip
+import com.margelo.nitro.NitroModules
+import com.margelo.nitro.core.ArrayBuffer
+import com.margelo.nitro.core.Promise
+import org.chromium.net.CronetEngine
+import org.chromium.net.CronetException
+import org.chromium.net.UrlRequest
+import org.chromium.net.UrlResponseInfo
+import java.io.ByteArrayOutputStream
+import java.io.File
+import java.nio.ByteBuffer
+import java.nio.charset.Charset
+import java.nio.charset.CharsetDecoder
+import java.nio.charset.CodingErrorAction
+import java.util.UUID
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.Executor
+
+fun ByteBuffer.toByteArray(): ByteArray {
+  // duplicate to avoid modifying the original buffer's position
+  val dup = this.duplicate()
+  dup.clear() // sets position=0, limit=capacity
+  val arr = ByteArray(dup.remaining())
+  dup.get(arr)
+  return arr
+}
+
+// Strict UTF-8 decoder reused per-thread. Decoding response bodies is on the hot
+// path for every request; allocating a fresh decoder each time is wasteful, and
+// CharsetDecoder is not thread-safe — a ThreadLocal gives us both. REPORT (rather
+// than the default REPLACE) makes invalid UTF-8 throw, which is how we detect a
+// binary body instead of silently corrupting it with U+FFFD replacement chars.
+private val utf8StrictDecoder = ThreadLocal.withInitial {
+  Charsets.UTF_8.newDecoder()
+    .onMalformedInput(CodingErrorAction.REPORT)
+    .onUnmappableCharacter(CodingErrorAction.REPORT)
+}
+
+private fun strictDecoderFor(charset: Charset): CharsetDecoder =
+  if (charset == Charsets.UTF_8) {
+    utf8StrictDecoder.get()
+  } else {
+    charset.newDecoder()
+      .onMalformedInput(CodingErrorAction.REPORT)
+      .onUnmappableCharacter(CodingErrorAction.REPORT)
+  }
+
+// Wrap raw bytes into a Nitro ArrayBuffer for zero-base64 bridging to JS.
+private fun ByteArray.toArrayBuffer(): ArrayBuffer {
+  val ab = ArrayBuffer.allocate(this.size)
+  ab.getBuffer(false).put(this)
+  return ab
+}
+
+/**
+ * Idle timeout for one Cronet request. It matches URLRequest.timeoutInterval on iOS: the
+ * request fails after [timeoutMs] without a callback from Cronet, and the timer restarts
+ * whenever data arrives. Cronet has no per-request timeout, so this cancels the request
+ * and reports the cancel as a failure.
+ */
+private class IdleTimeoutCallback(
+  private val inner: UrlRequest.Callback,
+  private val timeoutMs: Long
+) : UrlRequest.Callback() {
+  @Volatile private var timedOut = false
+  @Volatile private var task: java.util.concurrent.ScheduledFuture<*>? = null
+
+  fun arm(request: UrlRequest) {
+    task?.cancel(false)
+    task = scheduler.schedule({
+      timedOut = true
+      request.cancel()
+    }, timeoutMs, java.util.concurrent.TimeUnit.MILLISECONDS)
+  }
+
+  override fun onRedirectReceived(request: UrlRequest, info: UrlResponseInfo, newLocationUrl: String) {
+    arm(request)
+    inner.onRedirectReceived(request, info, newLocationUrl)
+  }
+
+  override fun onResponseStarted(request: UrlRequest, info: UrlResponseInfo) {
+    arm(request)
+    inner.onResponseStarted(request, info)
+  }
+
+  override fun onReadCompleted(request: UrlRequest, info: UrlResponseInfo, byteBuffer: ByteBuffer) {
+    arm(request)
+    inner.onReadCompleted(request, info, byteBuffer)
+  }
+
+  override fun onSucceeded(request: UrlRequest, info: UrlResponseInfo) {
+    task?.cancel(false)
+    inner.onSucceeded(request, info)
+  }
+
+  override fun onFailed(request: UrlRequest, info: UrlResponseInfo?, error: CronetException) {
+    task?.cancel(false)
+    inner.onFailed(request, info, error)
+  }
+
+  override fun onCanceled(request: UrlRequest, info: UrlResponseInfo?) {
+    task?.cancel(false)
+    if (timedOut) {
+      inner.onFailed(request, info, RequestTimedOutException())
+    } else {
+      inner.onCanceled(request, info)
+    }
+  }
+
+  private class RequestTimedOutException : CronetException("The request timed out.", null)
+
+  companion object {
+    private val scheduler = java.util.concurrent.ScheduledThreadPoolExecutor(1) { r ->
+      Thread(r, "NitroFetch-timeout").apply { isDaemon = true }
+    }.apply { removeOnCancelPolicy = true }
+  }
+}
+
+@DoNotStrip
+class HybridNitroFetchClient(private val engine: CronetEngine, private val executor: Executor) : HybridNitroFetchClientSpec() {
+  
+  private val activeRequests = ConcurrentHashMap<String, UrlRequest>()
+
+  override fun cancelRequest(requestId: String) {
+    // https://developer.android.com/develop/connectivity/cronet/reference/org/chromium/net/UrlRequest#cancel() 
+    activeRequests.remove(requestId)?.cancel()
+  }
+
+  private fun findPrefetchKey(req: NitroRequest): String? {
+    val h = req.headers ?: return null
+    for (pair in h) {
+      val k = pair.key
+      val v = pair.value
+      if (k.equals("prefetchKey", ignoreCase = true)) return v
+    }
+    return null
+  }
+
+  companion object {
+    @JvmStatic
+    fun fetch(
+      req: NitroRequest,
+      onSuccess: (NitroResponse) -> Unit,
+      onFail: (Throwable) -> Unit
+    ): UrlRequest? {
+      return try {
+        // Local resources (file://, content://, scheme-less paths) aren't HTTP; read off disk -> 200.
+        if (!isHttpURL(req.url)) {
+          onSuccess(makeLocalFileResponse(req))
+          return null
+        }
+        val engine = HybridNitroFetch.getEngine()
+        val executor = HybridNitroFetch.ioExecutor
+        startCronet(engine, executor, req, onSuccess, onFail)
+      } catch (t: Throwable) {
+        onFail(t)
+        null
+      }
+    }
+
+    private fun startCronet(
+      engine: CronetEngine,
+      executor: Executor,
+      req: NitroRequest,
+      onSuccess: (NitroResponse) -> Unit,
+      onFail: (Throwable) -> Unit
+    ): UrlRequest {
+      val url = req.url
+      val shouldFollowRedirects = req.followRedirects ?: true
+      val omitCredentials = req.credentials == NitroRequestCredentials.OMIT
+      val traceLabel = if (BuildConfig.NITRO_FETCH_TRACING) {
+        "NitroFetch ${req.method?.name ?: "GET"} ${Uri.parse(url).path ?: url}"
+      } else ""
+      val traceCookie = if (BuildConfig.NITRO_FETCH_TRACING) url.hashCode() else 0
+      if (BuildConfig.NITRO_FETCH_TRACING) {
+        Trace.beginAsyncSection(traceLabel, traceCookie)
+      }
+      // BuildConfig.DEBUG short-circuits in release: R8 constant-folds the
+      // && so every `if (devToolsEnabled)` block below becomes dead code and
+      // the DevToolsReporter classes drop out of the release APK entirely.
+      // The UUID generation is gated too so SecureRandom isn't touched in release.
+      // Opt out via `NitroFetch_disableDevToolsReporting=true` in gradle.properties
+      //  Avoids double-logging with expo-dev-client
+      val devToolsEnabled = BuildConfig.DEBUG &&
+        !BuildConfig.NITRO_FETCH_DISABLE_DEVTOOLS_REPORTING &&
+        DevToolsReporter.isDebuggingEnabled()
+      val devToolsRequestId = if (devToolsEnabled) (req.requestId ?: UUID.randomUUID().toString()) else ""
+      val callback = object : UrlRequest.Callback() {
+        private val buffer = ByteBuffer.allocateDirect(16 * 1024)
+        private val out = java.io.ByteArrayOutputStream()
+        private var redirectStopped = false
+        /** True if a redirect response applied at least one `Set-Cookie` (in memory, not yet flushed). */
+        private var setCookieAppliedOnRedirect = false
+        private var devToolsBytes = 0
+        private var devToolsTextual = false
+
+        override fun onRedirectReceived(request: UrlRequest, info: UrlResponseInfo, newLocationUrl: String) {
+          if (shouldFollowRedirects) {
+            // Apply Set-Cookie in-memory; flush once in onSucceeded (avoid flush per hop).
+            if (!omitCredentials &&
+              NitroCookieSync.storeSetCookieFromUrlResponseInfo(info.url, info, flush = false)
+            ) {
+              setCookieAppliedOnRedirect = true
+            }
+            request.followRedirect()
+          } else {
+            // Return the redirect response as-is without following
+            redirectStopped = true
+            request.cancel()
+            try {
+              val headersArr = info.allHeadersAsList.map { NitroHeader(it.key, it.value) }.toTypedArray()
+              val status = info.httpStatusCode
+              val res = NitroResponse(
+                url = info.url,
+                status = status.toDouble(),
+                statusText = info.httpStatusText ?: "",
+                ok = false,
+                redirected = false,
+                headers = headersArr,
+                bodyString = "",
+                bodyBytes = null
+              )
+              onSuccess(res)
+            } catch (t: Throwable) {
+              onFail(t)
+            }
+          }
+        }
+
+        override fun onResponseStarted(request: UrlRequest, info: UrlResponseInfo) {
+          if (devToolsEnabled) {
+            val headersMap = LinkedHashMap<String, String>()
+            info.allHeadersAsList.forEach { headersMap[it.key] = it.value }
+            val contentType = headersMap["Content-Type"] ?: headersMap["content-type"]
+            devToolsTextual = DevToolsReporter.isTextualContentType(contentType)
+            DevToolsReporter.reportResponseStart(
+              devToolsRequestId,
+              info.url,
+              info.httpStatusCode,
+              headersMap,
+              -1L
+            )
+          }
+          buffer.clear()
+          request.read(buffer)
+        }
+
+        override fun onReadCompleted(request: UrlRequest, info: UrlResponseInfo, byteBuffer: ByteBuffer) {
+          byteBuffer.flip()
+          val bytes = ByteArray(byteBuffer.remaining())
+          byteBuffer.get(bytes)
+          out.write(bytes)
+          if (devToolsEnabled) {
+            devToolsBytes += bytes.size
+            DevToolsReporter.reportDataReceived(devToolsRequestId, bytes.size)
+            if (devToolsTextual) {
+              DevToolsReporter.storeResponseBodyIncremental(devToolsRequestId, String(bytes, Charsets.UTF_8))
+            }
+          }
+          byteBuffer.clear()
+          request.read(byteBuffer)
+        }
+
+        override fun onSucceeded(request: UrlRequest, info: UrlResponseInfo) {
+          if (BuildConfig.NITRO_FETCH_TRACING) {
+            Trace.endAsyncSection(traceLabel, traceCookie)
+          }
+          if (devToolsEnabled) {
+            DevToolsReporter.reportResponseEnd(devToolsRequestId, devToolsBytes.toLong())
+          }
+          try {
+            val storedOnFinal = !omitCredentials &&
+              NitroCookieSync.storeSetCookieFromUrlResponseInfo(info.url, info, flush = false)
+            if (storedOnFinal || setCookieAppliedOnRedirect) {
+              NitroCookieSync.flushCookieManager()
+            }
+            val headersArr: Array<NitroHeader> =
+              info.allHeadersAsList.map { NitroHeader(it.key, it.value) }.toTypedArray()
+            val status = info.httpStatusCode
+            val bytes = out.toByteArray()
+            val contentType = info.allHeaders["Content-Type"] ?: info.allHeaders["content-type"]
+            val charset = run {
+              val ct = contentType ?: ""
+              val m = Regex("charset=([A-Za-z0-9_\\-:.]+)", RegexOption.IGNORE_CASE).find(ct.toString())
+              try {
+                if (m != null) java.nio.charset.Charset.forName(m.groupValues[1]) else Charsets.UTF_8
+              } catch (_: Throwable) {
+                Charsets.UTF_8
+              }
+            }
+            // Strict-decode the body as text. If it fails the response is binary,
+            // so we bridge the raw bytes as an ArrayBuffer instead — no base64.
+            val bodyStr: String? = try {
+              strictDecoderFor(charset).decode(ByteBuffer.wrap(bytes)).toString()
+            } catch (_: Throwable) { null }
+            val bodyBytesAb: ArrayBuffer? = if (bodyStr == null && bytes.isNotEmpty())
+              bytes.toArrayBuffer()
+            else null
+            val res = NitroResponse(
+              url = info.url,
+              status = status.toDouble(),
+              statusText = info.httpStatusText ?: "",
+              ok = status in 200..299,
+              redirected = info.url != url,
+              headers = headersArr,
+              bodyString = bodyStr,
+              bodyBytes = bodyBytesAb
+            )
+            onSuccess(res)
+          } catch (t: Throwable) {
+            onFail(t)
+          }
+        }
+
+        override fun onFailed(request: UrlRequest, info: UrlResponseInfo?, error: CronetException) {
+          if (BuildConfig.NITRO_FETCH_TRACING) {
+            Trace.endAsyncSection(traceLabel, traceCookie)
+          }
+          if (devToolsEnabled) {
+            DevToolsReporter.reportRequestFailed(devToolsRequestId, false)
+          }
+          onFail(RuntimeException("Cronet failed: ${error.message}", error))
+        }
+
+        override fun onCanceled(request: UrlRequest, info: UrlResponseInfo?) {
+          if (BuildConfig.NITRO_FETCH_TRACING) {
+            Trace.endAsyncSection(traceLabel, traceCookie)
+          }
+          if (devToolsEnabled) {
+            DevToolsReporter.reportRequestFailed(devToolsRequestId, true)
+          }
+          if (!redirectStopped) {
+            onFail(RuntimeException("Cronet canceled"))
+          }
+        }
+      }
+
+      val timeoutCallback = req.timeoutMs?.toLong()?.takeIf { it > 0 }
+        ?.let { IdleTimeoutCallback(callback, it) }
+      val builder = engine.newUrlRequestBuilder(url, timeoutCallback ?: callback, executor)
+      val method = req.method?.name ?: "GET"
+      builder.setHttpMethod(method)
+      req.priority?.let { builder.setPriority(it.cronetPriority) }
+      // prefetchKey is an internal cache key, never sent on the server
+      req.headers?.forEach { (k, v) ->
+        if (k.equals("prefetchKey", ignoreCase = true)) return@forEach
+        builder.addHeader(k, v)
+      }
+
+      if (!omitCredentials) {
+        NitroCookieSync.attachCookieFromManagerIfMissing(
+          url,
+          NitroCookieSync.hasCookieHeaderInNitroRequest(req.headers)
+        ) { key, value -> builder.addHeader(key, value) }
+      }
+
+      val formParts = req.bodyFormData
+      if (formParts != null && formParts.isNotEmpty()) {
+        val (multipartBody, contentType) = buildMultipartBody(formParts)
+        builder.addHeader("Content-Type", contentType)
+        val provider = createUploadProvider(multipartBody)
+        builder.setUploadDataProvider(provider, executor)
+      } else {
+        val body = uploadBytes(req)
+        if (body != null) {
+          val provider = createUploadProvider(body)
+          builder.setUploadDataProvider(provider, executor)
+        }
+      }
+
+      val request = builder.build()
+      if (devToolsEnabled) {
+        val headersMap = DevToolsReporter.headersArrayToMap(req.headers)
+        val body = req.bodyString ?: ""
+        val encoded = body.toByteArray(Charsets.UTF_8).size.toLong()
+        DevToolsReporter.reportRequestStart(
+          devToolsRequestId,
+          url,
+          method,
+          headersMap,
+          body,
+          encoded
+        )
+      }
+      timeoutCallback?.arm(request)
+      request.start()
+      return request
+    }
+
+    // bodyBytesBase64 is the auto-prefetch path: replayed from JSON, never a Nitro ArrayBuffer.
+    private fun uploadBytes(req: NitroRequest): ByteArray? {
+      req.bodyBytes?.let { ab ->
+        val buf = ab.getBuffer(false)
+        return ByteArray(buf.remaining()).also { buf.get(it) }
+      }
+      req.bodyBytesBase64?.takeIf { it.isNotEmpty() }?.let {
+        return runCatching { android.util.Base64.decode(it, android.util.Base64.DEFAULT) }.getOrNull()
+      }
+      return req.bodyString?.takeIf { it.isNotEmpty() }?.toByteArray(Charsets.UTF_8)
+    }
+
+    private fun createUploadProvider(body: ByteArray): org.chromium.net.UploadDataProvider {
+      return object : org.chromium.net.UploadDataProvider() {
+        private var pos = 0
+        override fun getLength(): Long = body.size.toLong()
+        override fun read(uploadDataSink: org.chromium.net.UploadDataSink, byteBuffer: ByteBuffer) {
+          val remaining = body.size - pos
+          val toWrite = minOf(byteBuffer.remaining(), remaining)
+          byteBuffer.put(body, pos, toWrite)
+          pos += toWrite
+          uploadDataSink.onReadSucceeded(false)
+        }
+        override fun rewind(uploadDataSink: org.chromium.net.UploadDataSink) {
+          pos = 0
+          uploadDataSink.onRewindSucceeded()
+        }
+      }
+    }
+
+    private fun buildMultipartBody(parts: Array<NitroFormDataPart>): Pair<ByteArray, String> {
+      val boundary = "NitroFetch-${UUID.randomUUID()}"
+      val out = ByteArrayOutputStream()
+      val crlf = "\r\n".toByteArray()
+
+      for (part in parts) {
+        out.write("--$boundary\r\n".toByteArray())
+
+        val fileUri = part.fileUri
+        if (fileUri != null) {
+          val fileName = part.fileName ?: "file"
+          val mimeType = part.mimeType ?: "application/octet-stream"
+          out.write("Content-Disposition: form-data; name=\"${part.name}\"; filename=\"$fileName\"\r\n".toByteArray())
+          out.write("Content-Type: $mimeType\r\n\r\n".toByteArray())
+
+          val fileData = readFileBytes(fileUri)
+          out.write(fileData)
+        } else {
+          val value = part.value ?: ""
+          out.write("Content-Disposition: form-data; name=\"${part.name}\"\r\n\r\n".toByteArray())
+          out.write(value.toByteArray(Charsets.UTF_8))
+        }
+
+        out.write(crlf)
+      }
+
+      out.write("--$boundary--\r\n".toByteArray())
+      return Pair(out.toByteArray(), "multipart/form-data; boundary=$boundary")
+    }
+
+    private fun readFileBytes(uri: String): ByteArray {
+      if (uri.startsWith("http://") || uri.startsWith("https://")) {
+        val url = java.net.URL(uri)
+        return url.openStream().use { it.readBytes() }
+      }
+      if (uri.startsWith("content://")) {
+        val context = NitroModules.applicationContext
+          ?: throw IllegalStateException("Cannot read content:// URI - no Android Context")
+        val inputStream = context.contentResolver.openInputStream(Uri.parse(uri))
+          ?: throw IllegalArgumentException("Cannot open content URI: $uri")
+        return inputStream.use { it.readBytes() }
+      }
+      return File(localPath(uri)).readBytes()
+    }
+
+    // file:// paths are percent-encoded; bare paths are already literal.
+    private fun localPath(uri: String): String =
+      if (uri.startsWith("file://")) Uri.parse(uri).path ?: uri.removePrefix("file://") else uri
+
+    private fun isHttpURL(url: String): Boolean =
+      url.startsWith("http://") || url.startsWith("https://")
+
+    private fun guessMime(uri: String): String {
+      if (uri.startsWith("content://")) {
+        NitroModules.applicationContext?.contentResolver?.getType(Uri.parse(uri))?.let { return it }
+      }
+      val path = localPath(uri)
+      val ext = path.substringAfterLast('.', "").lowercase()
+      if (ext.isNotEmpty()) {
+        android.webkit.MimeTypeMap.getSingleton().getMimeTypeFromExtension(ext)?.let { return it }
+      }
+      return java.net.URLConnection.guessContentTypeFromName(path) ?: "application/octet-stream"
+    }
+
+    // Read a local file -> synthetic 200, mirroring the HTTP path's strict text/bytes choice.
+    private fun makeLocalFileResponse(req: NitroRequest): NitroResponse {
+      val bytes = readFileBytes(req.url)
+      val mime = guessMime(req.url)
+      val bodyStr: String? = try {
+        strictDecoderFor(Charsets.UTF_8).decode(ByteBuffer.wrap(bytes)).toString()
+      } catch (_: Throwable) { null }
+      val bodyBytesAb: ArrayBuffer? = if (bodyStr == null && bytes.isNotEmpty())
+        bytes.toArrayBuffer()
+      else null
+      return NitroResponse(
+        url = req.url,
+        status = 200.0,
+        statusText = "OK",
+        ok = true,
+        redirected = false,
+        headers = arrayOf(
+          NitroHeader("Content-Type", mime),
+          NitroHeader("Content-Length", bytes.size.toString())
+        ),
+        bodyString = bodyStr,
+        bodyBytes = bodyBytesAb
+      )
+    }
+  }
+
+  // Helper function to add prefetch header to response (reused by both sync/async)
+  private fun withPrefetchedHeader(res: NitroResponse): NitroResponse {
+    val newHeaders = (res.headers?.toMutableList() ?: mutableListOf())
+    newHeaders.add(NitroHeader("nitroPrefetched", "true"))
+    return NitroResponse(
+      url = res.url,
+      status = res.status,
+      statusText = res.statusText,
+      ok = res.ok,
+      redirected = res.redirected,
+      headers = newHeaders.toTypedArray(),
+      bodyString = res.bodyString,
+      bodyBytes = res.bodyBytes
+    )
+  }
+
+  override fun requestSync(req: NitroRequest): NitroResponse {
+    val key = findPrefetchKey(req)
+    if (key != null) {
+      FetchCache.getPending(key)?.let { fut ->
+        return try {
+          withPrefetchedHeader(fut.get()) // blocks until complete
+        } catch (e: Exception) {
+          throw e.cause ?: e
+        }
+      }
+      FetchCache.getResultIfFresh(key, req.prefetchCacheTtlMs?.toLong() ?: 5_000L)?.let { cached ->
+        return withPrefetchedHeader(cached)
+      }
+    }
+    val latch = java.util.concurrent.CountDownLatch(1)
+    var result: NitroResponse? = null
+    var error: Throwable? = null
+    
+    fetch(
+      req,
+      onSuccess = { 
+        result = it
+        latch.countDown()
+      },
+      onFail = { 
+        error = it
+        latch.countDown()
+      }
+    )
+    latch.await()
+    error?.let { throw it }
+    return result!!
+  }
+
+  override fun request(req: NitroRequest): Promise<NitroResponse> {
+    val promise = Promise<NitroResponse>()
+    // Try to serve from prefetch cache/pending first
+    val key = findPrefetchKey(req)
+    if (key != null) {
+      // If a prefetch is currently pending, wait for it
+      FetchCache.getPending(key)?.let { fut ->
+        fut.whenComplete { res, err ->
+          if (err != null) {
+            promise.reject(err)
+          } else if (res != null) {
+            promise.resolve(withPrefetchedHeader(res))
+          } else {
+            promise.reject(IllegalStateException("Prefetch pending returned null result"))
+          }
+        }
+        return promise
+      }
+      // If a fresh prefetched result exists, return it immediately
+      FetchCache.getResultIfFresh(key, req.prefetchCacheTtlMs?.toLong() ?: 5_000L)?.let { cached ->
+        promise.resolve(withPrefetchedHeader(cached))
+        return promise
+      }
+    }
+    val requestId = req.requestId
+    val urlRequest = fetch(
+      req,
+      onSuccess = { res ->
+        if (requestId != null) activeRequests.remove(requestId)
+        promise.resolve(res)
+      },
+      onFail = { err ->
+        if (requestId != null) activeRequests.remove(requestId)
+        promise.reject(err)
+      }
+    )
+    // Store after start() — if cancelRequest races and misses, the JS
+    // catch block checks signal.aborted and throws AbortError anyway.
+    if (requestId != null && urlRequest != null) {
+      activeRequests[requestId] = urlRequest
+    }
+    return promise
+  }
+
+  override fun prefetch(req: NitroRequest): Promise<Unit> {
+    val promise = Promise<Unit>()
+    val key = findPrefetchKey(req)
+    if (key.isNullOrEmpty()) {
+      promise.reject(IllegalArgumentException("prefetch: missing 'prefetchKey' header"))
+      return promise
+    }
+    // If already have a fresh result, resolve immediately (NON-DESTRUCTIVE CHECK)
+    if (FetchCache.hasFreshResult(key, req.prefetchCacheTtlMs?.toLong() ?: 5_000L)) {
+      promise.resolve(Unit)
+      return promise
+    }
+    // Atomic begin: if another prefetch won the race, resolve when it's done
+    val future = java.util.concurrent.CompletableFuture<NitroResponse>()
+    FetchCache.beginPending(key, future)?.let { fut ->
+      fut.whenComplete { _, err -> if (err != null) promise.reject(err) else promise.resolve(Unit) }
+      return promise
+    }
+    fetch(
+      req,
+      onSuccess = { res ->
+        try {
+          FetchCache.complete(key, res)
+          promise.resolve(Unit)
+        } catch (t: Throwable) {
+          FetchCache.completeExceptionally(key, t)
+          promise.reject(t)
+        }
+      },
+      onFail = { err ->
+        FetchCache.completeExceptionally(key, err)
+        promise.reject(err)
+      }
+    )
+    return promise
+  }
+
+
+}
