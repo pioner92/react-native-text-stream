@@ -17,6 +17,7 @@ public protocol HybridFrameMonitorSpec_protocol: HybridObject {
   func stop() throws -> Promise<FrameStats>
   func markPainted() throws -> Promise<Double>
   func waitIdle(frames: Double) throws -> Promise<Double>
+  func streamTextDisplayLog(key: String) throws -> [Double]
 }
 
 public extension HybridFrameMonitorSpec_protocol {

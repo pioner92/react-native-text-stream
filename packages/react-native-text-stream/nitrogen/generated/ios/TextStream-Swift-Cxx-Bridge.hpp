@@ -152,6 +152,20 @@ namespace margelo::nitro::textstream::bridge::swift {
     return Func_void_double_Wrapper(std::move(value));
   }
   
+  // pragma MARK: std::vector<double>
+  /**
+   * Specialized version of `std::vector<double>`.
+   */
+  using std__vector_double_ = std::vector<double>;
+  inline std::vector<double> create_std__vector_double_(size_t size) noexcept {
+    std::vector<double> vector;
+    vector.reserve(size);
+    return vector;
+  }
+  inline double get_std__vector_double_(const std::vector<double>& vector, size_t index) noexcept {
+    return vector[index];
+  }
+  
   // pragma MARK: std::shared_ptr<HybridFrameMonitorSpec>
   /**
    * Specialized version of `std::shared_ptr<HybridFrameMonitorSpec>`.
@@ -189,6 +203,15 @@ namespace margelo::nitro::textstream::bridge::swift {
   }
   inline Result_std__shared_ptr_Promise_double___ create_Result_std__shared_ptr_Promise_double___(const std::exception_ptr& error) noexcept {
     return Result<std::shared_ptr<Promise<double>>>::withError(error);
+  }
+  
+  // pragma MARK: Result<std::vector<double>>
+  using Result_std__vector_double__ = Result<std::vector<double>>;
+  inline Result_std__vector_double__ create_Result_std__vector_double__(const std::vector<double>& value) noexcept {
+    return Result<std::vector<double>>::withValue(value);
+  }
+  inline Result_std__vector_double__ create_Result_std__vector_double__(const std::exception_ptr& error) noexcept {
+    return Result<std::vector<double>>::withError(error);
   }
   
   // pragma MARK: std::variant<std::shared_ptr<ArrayBuffer>, nitro::NullType>
@@ -485,20 +508,6 @@ namespace margelo::nitro::textstream::bridge::swift {
     return Func_void_std__string_Wrapper(std::move(value));
   }
   
-  // pragma MARK: std::vector<double>
-  /**
-   * Specialized version of `std::vector<double>`.
-   */
-  using std__vector_double_ = std::vector<double>;
-  inline std::vector<double> create_std__vector_double_(size_t size) noexcept {
-    std::vector<double> vector;
-    vector.reserve(size);
-    return vector;
-  }
-  inline double get_std__vector_double_(const std::vector<double>& vector, size_t index) noexcept {
-    return vector[index];
-  }
-  
   // pragma MARK: std::shared_ptr<HybridTextStreamSpec>
   /**
    * Specialized version of `std::shared_ptr<HybridTextStreamSpec>`.
@@ -527,15 +536,6 @@ namespace margelo::nitro::textstream::bridge::swift {
   }
   inline Result_std__shared_ptr_Promise_std__string___ create_Result_std__shared_ptr_Promise_std__string___(const std::exception_ptr& error) noexcept {
     return Result<std::shared_ptr<Promise<std::string>>>::withError(error);
-  }
-  
-  // pragma MARK: Result<std::vector<double>>
-  using Result_std__vector_double__ = Result<std::vector<double>>;
-  inline Result_std__vector_double__ create_Result_std__vector_double__(const std::vector<double>& value) noexcept {
-    return Result<std::vector<double>>::withValue(value);
-  }
-  inline Result_std__vector_double__ create_Result_std__vector_double__(const std::exception_ptr& error) noexcept {
-    return Result<std::vector<double>>::withError(error);
   }
 
 } // namespace margelo::nitro::textstream::bridge::swift

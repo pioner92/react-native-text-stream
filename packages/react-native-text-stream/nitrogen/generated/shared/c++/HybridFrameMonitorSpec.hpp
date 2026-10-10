@@ -18,6 +18,8 @@ namespace margelo::nitro::textstream { struct FrameStats; }
 
 #include "FrameStats.hpp"
 #include <NitroModules/Promise.hpp>
+#include <vector>
+#include <string>
 
 namespace margelo::nitro::textstream {
 
@@ -54,6 +56,7 @@ namespace margelo::nitro::textstream {
       virtual std::shared_ptr<Promise<FrameStats>> stop() = 0;
       virtual std::shared_ptr<Promise<double>> markPainted() = 0;
       virtual std::shared_ptr<Promise<double>> waitIdle(double frames) = 0;
+      virtual std::vector<double> streamTextDisplayLog(const std::string& key) = 0;
 
     protected:
       // Hybrid Setup

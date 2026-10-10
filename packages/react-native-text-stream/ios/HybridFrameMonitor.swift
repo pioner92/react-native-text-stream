@@ -65,6 +65,10 @@ class HybridFrameMonitor: HybridFrameMonitorSpec {
     return promise
   }
 
+  func streamTextDisplayLog(key: String) throws -> [Double] {
+    StreamTextDisplayLogs.shared.log(for: key)
+  }
+
   func markPainted() throws -> Promise<Double> {
     let promise = Promise<Double>()
     onNextFrame { promise.resolve(withResult: $0) }

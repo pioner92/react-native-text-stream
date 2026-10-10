@@ -27,4 +27,9 @@ export interface FrameMonitor extends HybridObject<{ ios: 'swift' }> {
    * misses (e.g. layout a view performs a few frames after an update). Needs `start()`.
    */
   waitIdle(frames: number): Promise<number>
+  /**
+   * `[wallClockMs, bytesShown, ...]` recorded by the Fabric StreamTextView whose
+   * `nativeID` is `key`: when its bytes reached the screen.
+   */
+  streamTextDisplayLog(key: string): number[]
 }

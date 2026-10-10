@@ -17,6 +17,8 @@ namespace margelo::nitro::textstream { struct FrameStats; }
 
 #include "FrameStats.hpp"
 #include <NitroModules/Promise.hpp>
+#include <vector>
+#include <string>
 
 #include "TextStream-Swift-Cxx-Umbrella.hpp"
 
@@ -92,6 +94,14 @@ namespace margelo::nitro::textstream {
     }
     inline std::shared_ptr<Promise<double>> waitIdle(double frames) override {
       auto __result = _swiftPart.waitIdle(std::forward<decltype(frames)>(frames));
+      if (__result.hasError()) [[unlikely]] {
+        std::rethrow_exception(__result.error());
+      }
+      auto __value = std::move(__result.value());
+      return __value;
+    }
+    inline std::vector<double> streamTextDisplayLog(const std::string& key) override {
+      auto __result = _swiftPart.streamTextDisplayLog(key);
       if (__result.hasError()) [[unlikely]] {
         std::rethrow_exception(__result.error());
       }
