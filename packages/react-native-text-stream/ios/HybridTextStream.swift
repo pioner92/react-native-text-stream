@@ -64,8 +64,9 @@ class HybridTextStream: HybridTextStreamSpec {
 
   private var textAttributes: [NSAttributedString.Key: Any] = [:]
 
-  var source: ArrayBuffer? {
-    didSet { attach(source) }
+  var source: Variant_ArrayBuffer_NullType? {
+    // null arrives when React removes a previously set prop; treat it like undefined.
+    didSet { attach(source?.asType(ArrayBuffer.self)) }
   }
 
   var fontSize: Double? {

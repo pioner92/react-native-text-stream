@@ -18,6 +18,8 @@
 #include <string>
 
 #include <NitroModules/ArrayBuffer.hpp>
+#include <NitroModules/Null.hpp>
+#include <variant>
 #include <optional>
 #include <string>
 #include <memory>
@@ -44,7 +46,7 @@ namespace margelo::nitro::textstream::views {
                           const react::RawProps& rawProps);
 
   public:
-    nitro::ReactProp<std::optional<std::shared_ptr<ArrayBuffer>>> source;
+    nitro::ReactProp<std::optional<std::variant<std::shared_ptr<ArrayBuffer>, nitro::NullType>>> source;
     nitro::ReactProp<std::optional<double>> fontSize;
     nitro::ReactProp<std::optional<std::string>> color;
     nitro::ReactProp<std::optional<bool>> showStats;

@@ -10,7 +10,7 @@ import NitroModules
 /// See ``HybridTextStreamSpec``
 public protocol HybridTextStreamSpec_protocol: HybridObject, HybridView {
   // Properties
-  var source: ArrayBuffer? { get set }
+  var source: Variant_ArrayBuffer_NullType? { get set }
   var fontSize: Double? { get set }
   var color: String? { get set }
   var showStats: Bool? { get set }

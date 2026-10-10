@@ -20,7 +20,7 @@ namespace margelo::nitro::textstream::views {
                                                const HybridTextStreamProps& sourceProps,
                                                const react::RawProps& rawProps):
     react::ViewProps(context, sourceProps, rawProps, filterObjectKeys),
-    source(nitro::ReactProp<std::optional<std::shared_ptr<ArrayBuffer>>>::fromRawValue("TextStream", "source", rawProps, sourceProps.source)),
+    source(nitro::ReactProp<std::optional<std::variant<std::shared_ptr<ArrayBuffer>, nitro::NullType>>>::fromRawValue("TextStream", "source", rawProps, sourceProps.source)),
     fontSize(nitro::ReactProp<std::optional<double>>::fromRawValue("TextStream", "fontSize", rawProps, sourceProps.fontSize)),
     color(nitro::ReactProp<std::optional<std::string>>::fromRawValue("TextStream", "color", rawProps, sourceProps.color)),
     showStats(nitro::ReactProp<std::optional<bool>>::fromRawValue("TextStream", "showStats", rawProps, sourceProps.showStats)),

@@ -20,12 +20,14 @@ namespace margelo::nitro::textstream { class HybridTextStreamSpec; }
 #include "HybridFrameMonitorSpec.hpp"
 #include "HybridTextStreamSpec.hpp"
 #include <NitroModules/ArrayBuffer.hpp>
+#include <NitroModules/Null.hpp>
 #include <NitroModules/Promise.hpp>
 #include <NitroModules/Result.hpp>
 #include <exception>
 #include <memory>
 #include <optional>
 #include <string>
+#include <variant>
 #include <vector>
 
 // C++ helpers for Swift

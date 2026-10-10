@@ -9,7 +9,8 @@ export interface TextStreamProps extends HybridViewProps {
    * A TSB1 buffer (e.g. `response.nativeBuffer` from nitro-fetch). The view
    * reads new bytes from it once per frame on the main thread, without JS.
    */
-  source?: ArrayBuffer
+  // `null` too: Fabric sends null when a previously set prop is removed.
+  source?: ArrayBuffer | null
   fontSize?: number
   /** Text color as "#RRGGBB" or "#RRGGBBAA". Defaults to the system label color. */
   color?: string

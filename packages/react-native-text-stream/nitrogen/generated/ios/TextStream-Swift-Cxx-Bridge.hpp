@@ -29,6 +29,7 @@ namespace TextStream { class HybridTextStreamSpec_cxx; }
 #include "HybridTextStreamSpec.hpp"
 #include <NitroModules/ArrayBuffer.hpp>
 #include <NitroModules/ArrayBufferHolder.hpp>
+#include <NitroModules/Null.hpp>
 #include <NitroModules/Promise.hpp>
 #include <NitroModules/PromiseHolder.hpp>
 #include <NitroModules/Result.hpp>
@@ -37,6 +38,7 @@ namespace TextStream { class HybridTextStreamSpec_cxx; }
 #include <memory>
 #include <optional>
 #include <string>
+#include <variant>
 #include <vector>
 
 /**
@@ -174,18 +176,47 @@ namespace margelo::nitro::textstream::bridge::swift {
     return Result<std::shared_ptr<Promise<double>>>::withError(error);
   }
   
-  // pragma MARK: std::optional<std::shared_ptr<ArrayBuffer>>
+  // pragma MARK: std::variant<std::shared_ptr<ArrayBuffer>, nitro::NullType>
   /**
-   * Specialized version of `std::optional<std::shared_ptr<ArrayBuffer>>`.
+   * Wrapper struct for `std::variant<std::shared_ptr<ArrayBuffer>, nitro::NullType>`.
+   * std::variant cannot be used in Swift because of a Swift bug.
+   * Not even specializing it works. So we create a wrapper struct.
    */
-  using std__optional_std__shared_ptr_ArrayBuffer__ = std::optional<std::shared_ptr<ArrayBuffer>>;
-  inline std::optional<std::shared_ptr<ArrayBuffer>> create_std__optional_std__shared_ptr_ArrayBuffer__(const std::shared_ptr<ArrayBuffer>& value) noexcept {
-    return std::optional<std::shared_ptr<ArrayBuffer>>(value);
+  struct std__variant_std__shared_ptr_ArrayBuffer___nitro__NullType_ final {
+    std::variant<std::shared_ptr<ArrayBuffer>, nitro::NullType> variant;
+    std__variant_std__shared_ptr_ArrayBuffer___nitro__NullType_(std::variant<std::shared_ptr<ArrayBuffer>, nitro::NullType> variant): variant(variant) { }
+    operator std::variant<std::shared_ptr<ArrayBuffer>, nitro::NullType>() const noexcept {
+      return variant;
+    }
+    inline size_t index() const noexcept {
+      return variant.index();
+    }
+    inline std::shared_ptr<ArrayBuffer> get_0() const noexcept {
+      return std::get<0>(variant);
+    }
+    inline nitro::NullType get_1() const noexcept {
+      return std::get<1>(variant);
+    }
+  };
+  inline std__variant_std__shared_ptr_ArrayBuffer___nitro__NullType_ create_std__variant_std__shared_ptr_ArrayBuffer___nitro__NullType_(const std::shared_ptr<ArrayBuffer>& value) noexcept {
+    return std__variant_std__shared_ptr_ArrayBuffer___nitro__NullType_(value);
   }
-  inline bool has_value_std__optional_std__shared_ptr_ArrayBuffer__(const std::optional<std::shared_ptr<ArrayBuffer>>& optional) noexcept {
+  inline std__variant_std__shared_ptr_ArrayBuffer___nitro__NullType_ create_std__variant_std__shared_ptr_ArrayBuffer___nitro__NullType_(nitro::NullType value) noexcept {
+    return std__variant_std__shared_ptr_ArrayBuffer___nitro__NullType_(value);
+  }
+  
+  // pragma MARK: std::optional<std::variant<std::shared_ptr<ArrayBuffer>, nitro::NullType>>
+  /**
+   * Specialized version of `std::optional<std::variant<std::shared_ptr<ArrayBuffer>, nitro::NullType>>`.
+   */
+  using std__optional_std__variant_std__shared_ptr_ArrayBuffer___nitro__NullType__ = std::optional<std::variant<std::shared_ptr<ArrayBuffer>, nitro::NullType>>;
+  inline std::optional<std::variant<std::shared_ptr<ArrayBuffer>, nitro::NullType>> create_std__optional_std__variant_std__shared_ptr_ArrayBuffer___nitro__NullType__(const std::variant<std::shared_ptr<ArrayBuffer>, nitro::NullType>& value) noexcept {
+    return std::optional<std::variant<std::shared_ptr<ArrayBuffer>, nitro::NullType>>(value);
+  }
+  inline bool has_value_std__optional_std__variant_std__shared_ptr_ArrayBuffer___nitro__NullType__(const std::optional<std::variant<std::shared_ptr<ArrayBuffer>, nitro::NullType>>& optional) noexcept {
     return optional.has_value();
   }
-  inline std::shared_ptr<ArrayBuffer> get_std__optional_std__shared_ptr_ArrayBuffer__(const std::optional<std::shared_ptr<ArrayBuffer>>& optional) noexcept {
+  inline std::variant<std::shared_ptr<ArrayBuffer>, nitro::NullType> get_std__optional_std__variant_std__shared_ptr_ArrayBuffer___nitro__NullType__(const std::optional<std::variant<std::shared_ptr<ArrayBuffer>, nitro::NullType>>& optional) noexcept {
     return optional.value();
   }
   

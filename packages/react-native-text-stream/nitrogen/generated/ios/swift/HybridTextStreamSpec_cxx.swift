@@ -121,12 +121,19 @@ open class HybridTextStreamSpec_cxx {
   }
 
   // Properties
-  public final var source: bridge.std__optional_std__shared_ptr_ArrayBuffer__ {
+  public final var source: bridge.std__optional_std__variant_std__shared_ptr_ArrayBuffer___nitro__NullType__ {
     @inline(__always)
     get {
-      return { () -> bridge.std__optional_std__shared_ptr_ArrayBuffer__ in
+      return { () -> bridge.std__optional_std__variant_std__shared_ptr_ArrayBuffer___nitro__NullType__ in
         if let __unwrappedValue = self.__implementation.source {
-          return bridge.create_std__optional_std__shared_ptr_ArrayBuffer__(__unwrappedValue.getArrayBuffer())
+          return bridge.create_std__optional_std__variant_std__shared_ptr_ArrayBuffer___nitro__NullType__({ () -> bridge.std__variant_std__shared_ptr_ArrayBuffer___nitro__NullType_ in
+            switch __unwrappedValue {
+              case .first(let __value):
+                return bridge.create_std__variant_std__shared_ptr_ArrayBuffer___nitro__NullType_(__value.getArrayBuffer())
+              case .second(let __value):
+                return bridge.create_std__variant_std__shared_ptr_ArrayBuffer___nitro__NullType_(margelo.nitro.NullType.null)
+            }
+          }().variant)
         } else {
           return .init()
         }
@@ -134,10 +141,22 @@ open class HybridTextStreamSpec_cxx {
     }
     @inline(__always)
     set {
-      self.__implementation.source = { () -> ArrayBuffer? in
-        if bridge.has_value_std__optional_std__shared_ptr_ArrayBuffer__(newValue) {
-          let __unwrapped = bridge.get_std__optional_std__shared_ptr_ArrayBuffer__(newValue)
-          return ArrayBuffer(__unwrapped)
+      self.__implementation.source = { () -> Variant_ArrayBuffer_NullType? in
+        if bridge.has_value_std__optional_std__variant_std__shared_ptr_ArrayBuffer___nitro__NullType__(newValue) {
+          let __unwrapped = bridge.get_std__optional_std__variant_std__shared_ptr_ArrayBuffer___nitro__NullType__(newValue)
+          return { () -> Variant_ArrayBuffer_NullType in
+            let __variant = bridge.std__variant_std__shared_ptr_ArrayBuffer___nitro__NullType_(__unwrapped)
+            switch __variant.index() {
+              case 0:
+                let __actual = __variant.get_0()
+                return .first(ArrayBuffer(__actual))
+              case 1:
+                let __actual = __variant.get_1()
+                return .second(NullType.null)
+              default:
+                fatalError("Variant can never have index \(__variant.index())!")
+            }
+          }()
         } else {
           return nil
         }

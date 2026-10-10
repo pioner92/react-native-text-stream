@@ -16,6 +16,8 @@ namespace TextStream { class HybridTextStreamSpec_cxx; }
 namespace NitroModules { class ArrayBufferHolder; }
 
 #include <NitroModules/ArrayBuffer.hpp>
+#include <NitroModules/Null.hpp>
+#include <variant>
 #include <optional>
 #include <NitroModules/ArrayBufferHolder.hpp>
 #include <string>
@@ -67,11 +69,11 @@ namespace margelo::nitro::textstream {
 
   public:
     // Properties
-    inline std::optional<std::shared_ptr<ArrayBuffer>> getSource() noexcept override {
+    inline std::optional<std::variant<std::shared_ptr<ArrayBuffer>, nitro::NullType>> getSource() noexcept override {
       auto __result = _swiftPart.getSource();
       return __result;
     }
-    inline void setSource(const std::optional<std::shared_ptr<ArrayBuffer>>& source) noexcept override {
+    inline void setSource(const std::optional<std::variant<std::shared_ptr<ArrayBuffer>, nitro::NullType>>& source) noexcept override {
       _swiftPart.setSource(source);
     }
     inline std::optional<double> getFontSize() noexcept override {

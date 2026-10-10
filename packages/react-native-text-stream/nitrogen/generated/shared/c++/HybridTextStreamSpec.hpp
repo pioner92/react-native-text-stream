@@ -16,6 +16,8 @@
 
 
 #include <NitroModules/ArrayBuffer.hpp>
+#include <NitroModules/Null.hpp>
+#include <variant>
 #include <optional>
 #include <string>
 #include <vector>
@@ -47,8 +49,8 @@ namespace margelo::nitro::textstream {
 
     public:
       // Properties
-      virtual std::optional<std::shared_ptr<ArrayBuffer>> getSource() = 0;
-      virtual void setSource(const std::optional<std::shared_ptr<ArrayBuffer>>& source) = 0;
+      virtual std::optional<std::variant<std::shared_ptr<ArrayBuffer>, nitro::NullType>> getSource() = 0;
+      virtual void setSource(const std::optional<std::variant<std::shared_ptr<ArrayBuffer>, nitro::NullType>>& source) = 0;
       virtual std::optional<double> getFontSize() = 0;
       virtual void setFontSize(std::optional<double> fontSize) = 0;
       virtual std::optional<std::string> getColor() = 0;
