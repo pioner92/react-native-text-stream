@@ -20,7 +20,11 @@ Pod::Spec.new do |s|
     "ios/**/*.{m,mm}",
     # Implementation (C++ objects)
     "cpp/**/*.{hpp,cpp}",
+    # TSB1 buffer format, read from Swift
+    "ios/TextStreamBuffer.h",
   ]
+
+  s.public_header_files = ["ios/TextStreamBuffer.h"]
 
   load 'nitrogen/generated/ios/TextStream+autolinking.rb'
   add_nitrogen_files(s)

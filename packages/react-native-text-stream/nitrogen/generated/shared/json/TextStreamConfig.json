@@ -1,0 +1,13 @@
+{
+  "uiViewClassName": "TextStream",
+  "supportsRawText": false,
+  "bubblingEventTypes": {},
+  "directEventTypes": {},
+  "validAttributes": {
+    "source": true,
+    "fontSize": true,
+    "color": true,
+    "showStats": true,
+    "hybridRef": true
+  }
+}

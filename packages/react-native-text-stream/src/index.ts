@@ -5,10 +5,10 @@ import type {
   TextStreamMethods,
 } from './specs/text-stream.nitro'
 
-
-export const TextStream = getHostComponent<TextStreamProps, TextStreamMethods>(
+export const StreamText = getHostComponent<TextStreamProps, TextStreamMethods>(
   'TextStream',
   () => TextStreamConfig
 )
 
-export type TextStreamRef = HybridRef<TextStreamProps, TextStreamMethods>
+export type StreamTextProps = TextStreamProps
+export type StreamTextRef = HybridRef<TextStreamProps, TextStreamMethods>
