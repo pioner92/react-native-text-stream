@@ -6,7 +6,8 @@
     "strict": true,
     "baseUrl": ".",
     "paths": {
-      "react-native-text-stream": ["../packages/react-native-text-stream/src"]
+      "react-native-text-stream": ["../packages/react-native-text-stream/src"],
+      "react-native-text-stream/testing": ["../packages/react-native-text-stream/src/testing"]
     }
   }
 }
