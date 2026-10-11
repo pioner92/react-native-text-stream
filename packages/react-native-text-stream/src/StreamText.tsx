@@ -1,4 +1,4 @@
-import React, { forwardRef, useCallback, useEffect, useImperativeHandle, useRef } from 'react'
+import React, { forwardRef, useCallback, useImperativeHandle, useLayoutEffect, useRef } from 'react'
 import {
   codegenNativeCommands,
   processColor,
@@ -126,8 +126,9 @@ export const StreamText = forwardRef<StreamTextHandle, StreamTextProps>(function
   const pending = useRef<{ buffer: ArrayBuffer | null } | null>(null)
 
   // Only a real change of the prop resets: a buffer attached before mount must survive the first run.
+  // A layout effect, so a parent's layout effect after the same commit already reads the new source.
   const previousSource = useRef(source)
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (previousSource.current === source) return
     previousSource.current = source
     current.current = source ?? null

@@ -116,6 +116,21 @@ describe('StreamText', () => {
       expect(ref.current!.getStatus().status).toBe('streaming')
     })
 
+    it("a parent's layout effect already reads the new source prop", async () => {
+      const seen: string[] = []
+      function Parent({ text }: { text: string }) {
+        const ref = React.useRef<StreamTextHandle>(null)
+        const source = React.useMemo(() => tsbBuffer(text, { status: TSB_STATUS.done }), [text])
+        React.useLayoutEffect(() => {
+          ref.current!.getText().then((t) => seen.push(`${t}:${ref.current!.getStatus().bytes}`))
+        }, [source])
+        return <StreamText ref={ref} testID="stream" source={source} />
+      }
+      const { rerender } = await render(<Parent text="first" />)
+      await rerender(<Parent text="second!" />)
+      expect(seen).toEqual(['first:5', 'second!:7'])
+    })
+
     it('getText() reads the source prop when nothing was attached', async () => {
       const { ref } = await renderStream({ source: tsbBuffer('prop text') })
       await expect(ref.current!.getText()).resolves.toBe('prop text')
