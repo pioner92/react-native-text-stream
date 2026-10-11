@@ -43,9 +43,11 @@ thread is frozen for 5 s, and the native card keeps streaming while the JS card 
 
 ## Highlights
 
+- 💬 **Sizes itself to its text, like `<Text>`.** Drop it into a chat bubble, a list cell or a
+  `ScrollView`; it grows natively as the text arrives.
 - ⚡️ **Zero JS per chunk.** No bridge traffic, no `setState`, no re-renders while text streams in.
-- 🧊 **Unaffected by a busy JS thread.** Text keeps flowing during heavy renders, navigation or a frozen JS
-  thread.
+- 🧊 **Unaffected by a busy JS thread.** Text keeps flowing, and the bubble keeps growing, during heavy
+  renders, navigation or a frozen JS thread.
 - 📈 **O(new bytes) per frame.** Each frame decodes only the new UTF-8 slice. A 1 MB answer streams as
   smoothly as a 1 KB one.
 - 🎯 **Smooth under bursts.** An adaptive per-frame budget spreads a burst over frames instead of dropping
@@ -62,8 +64,9 @@ thread is frozen for 5 s, and the native card keeps streaming while the JS card 
 > This is an **experimental prototype**: iOS only, not yet published to npm. The `nativeBuffer` option
 > comes from a patched `react-native-nitro-fetch` vendored in this repo. See the [roadmap](#roadmap).
 
-**Requirements:** React Native **0.86+** with the New Architecture, `react-native-nitro-modules` 0.37,
-iOS 15.1+ (TextKit 2 on iOS 16+).
+**Requirements:** React Native **0.86+** with the New Architecture, iOS 15.1+, and
+`react-native-nitro-modules` (used by the patched nitro-fetch and by the package's benchmark
+`FrameMonitor`). `StreamText` itself is a plain Fabric component and doesn't go through Nitro.
 
 Clone the repo and use the workspace packages:
 
@@ -77,7 +80,7 @@ npm install                  # also applies the patches in patches/
 
 ```tsx
 import { useState } from 'react';
-import { Button } from 'react-native';
+import { Button, ScrollView } from 'react-native';
 import { fetch } from 'react-native-nitro-fetch';
 import { StreamText } from 'react-native-text-stream';
 
@@ -91,10 +94,10 @@ export function Chat() {
   };
 
   return (
-    <>
+    <ScrollView>
       <Button title="Ask" onPress={ask} />
-      <StreamText source={buffer} fontSize={16} style={{ flex: 1 }} />
-    </>
+      <StreamText source={buffer} fontSize={16} lineHeight={22} style={{ padding: 12, borderRadius: 16, backgroundColor: '#eee' }} />
+    </ScrollView>
   );
 }
 ```
@@ -113,7 +116,7 @@ export function Chat() {
     streamRef.attach(res.nativeBuffer); // no setState, no re-render
   };
 
-  return <StreamText ref={streamRef} style={{ flex: 1 }} />;
+  return <StreamText ref={streamRef} fontSize={16} style={{ padding: 12 }} />;
 }
 ```
 
@@ -123,14 +126,23 @@ Both styles work together. Whichever was set last, the `source` prop or `attach(
 
 ### `<StreamText />`
 
+`StreamText` lays out like `<Text>`: it takes the width it is given and grows to the height of its text.
+`padding`, `margin`, `backgroundColor`, `borderRadius` and the rest of the view style work as usual.
+
 | Prop | Type | Default | Description |
 |---|---|---|---|
 | `source` | `ArrayBuffer \| null` | — | A TSB1 buffer, e.g. `res.nativeBuffer`. `null`/`undefined` detaches and clears the view. |
 | `fontSize` | `number` | `15` | Font size in points. |
-| `color` | `string` | system label color | Text color, `#RRGGBB` or `#RRGGBBAA`. |
-| `showStats` | `boolean` | `false` | Shows a native `status · bytes` pill, updated without JS. |
+| `fontFamily` | `string` | system font | A family or PostScript name, e.g. `"Menlo"`. |
+| `fontWeight` | `'normal' \| 'bold' \| '100'…'900'` | `'normal'` | |
+| `color` | `ColorValue` | system label color | Any React Native color. |
+| `lineHeight` | `number` | the font's own | Line height in points. |
+| `letterSpacing` | `number` | `0` | |
+| `textAlign` | `'auto' \| 'left' \| 'right' \| 'center' \| 'justify'` | `'auto'` | |
+| `selectable` | `boolean` | `true` | |
+| `selectionColor` | `ColorValue` | tint color | |
+| `onStatusChange` | `(status, bytes) => void` | — | `'streaming'` when a stream starts; `'done'`, `'error'`, `'cancelled'` or `'truncated'` once all of its text is on screen. A buffer that is already finished when attached (e.g. a message remounted by a list) reports only its final status. |
 | `ref` | `StreamTextRef` | — | From [`useStreamTextRef()`](#usestreamtextref), or any `useRef<StreamTextHandle>(null)`. |
-| `style` | `ViewStyle` | — | Any view style. |
 
 ### `useStreamTextRef()`
 
@@ -140,11 +152,14 @@ Returns a ref for `<StreamText ref={streamRef} />` that you can call directly. I
 |---|---|
 | `attach(buffer)` | Starts rendering `buffer` without a React render. Called before the view mounts, it applies on mount. |
 | `clear()` | Detaches and clears the view. |
+| `getStatus()` | `{ status, bytes }`, read synchronously from the buffer's header and the last status event. |
+| `getText()` | The text received so far, decoded from the buffer. |
 
 A plain `useRef<StreamTextHandle>(null)` works too; call `ref.current?.attach(buffer)`.
 
-The view starts reading as soon as a source is attached. It follows the tail while you're scrolled to the
-bottom and stops following when you scroll up. Selection works.
+For a fixed-height panel that follows the newest text (a log, a "thinking" box), wrap `StreamText` in an
+inverted `ScrollView` (`transform: [{ scaleY: -1 }]` on the scroll view and on its child): offset 0 is then
+the bottom, so the panel stays pinned to the tail without JS. The demo's native card does this.
 
 ### `fetch(url, { stream: true, nativeBuffer })`, from the patched nitro-fetch
 
@@ -159,27 +174,36 @@ the view shows the final state.
 
 ```mermaid
 flowchart LR
-    P["Producer<br/><sub>URLSession delegate queue</sub>"] -- "memcpy + store-release" --> B[("TSB1 buffer<br/><sub>Nitro-owned ArrayBuffer</sub>")]
-    B -- "load-acquire, once per frame" --> R["StreamText<br/><sub>main thread · UITextView</sub>"]
+    P["Producer<br/><sub>URLSession delegate queue</sub>"] -- "memcpy + store-release" --> B[("TSB1 buffer<br/><sub>native-owned ArrayBuffer</sub>")]
+    B -- "load-acquire, once per frame" --> R["StreamText<br/><sub>main thread · TextKit 1</sub>"]
+    R -- "new height, per line" --> S["Fabric shadow node<br/><sub>layout, no JS</sub>"]
     J["JavaScript"] -. "hands the buffer over once" .-> R
 ```
 
 1. **Producer.** nitro-fetch appends every received chunk to the buffer on URLSession's queue and publishes
    it with a release store of `committed`. When the request finishes it sets `status`.
-2. **Handoff.** JavaScript gets `res.nativeBuffer`, a Nitro-owned `ArrayBuffer`, and passes it to the view.
-   That is its only job.
+2. **Handoff.** JavaScript passes `res.nativeBuffer` to the view once: as the `source` prop, read straight
+   from the JS value by the component's props parser, or through `ref.attach()`. Fabric view commands
+   can't carry an `ArrayBuffer`, so `attach()` first puts it in a small C++ TurboModule
+   (`StreamTextBuffers`) and sends the view the buffer's id.
 3. **Renderer.** A `CADisplayLink` on the main thread reads `status`, then `committed`, with acquire loads.
-   If there are new bytes, it decodes only that slice. A UTF-8 sequence split across chunks is carried over
-   to the next frame, and the text is appended to a TextKit 2 `UITextView`.
+   If there are new bytes, it decodes only that slice (a UTF-8 sequence split across chunks is carried
+   over) and appends it to a TextKit 1 text view.
+4. **Layout.** When the text gains a line, the view reports its new height through the Fabric shadow node's
+   state. The update is applied on the main thread, so the bubble grows and the list re-lays out while the
+   JS thread is busy.
 
 **Frame loop details:**
 
 - **Adaptive budget.** At most `bytesPerTick` per frame, re-estimated from the measured append and layout
   cost so the work stays around 6 ms per frame.
+- **Incremental layout.** Contiguous TextKit 1 layout: appending lays out only the new tail, and the height
+  comes from the used rect. The text view keeps a fixed, very tall frame and is clipped to the component,
+  because a text view whose frame grows re-lays out all of its text.
 - **Idle.** After 250 ms without data the display link pauses. A timer then checks the header every 33 ms
   and backs off to 100 ms after 2 s, while a model is "thinking". The display link is capped at 60 Hz.
-- **Accessibility.** Only the last 2000 characters are exposed. An accessibility snapshot of a 1 MB stream
-  takes ~0.3 s instead of ~10 s.
+- **Accessibility.** Only the last 2000 characters are exposed, in the component's visible frame, so an
+  accessibility snapshot of a long stream stays cheap.
 
 ### The TSB1 buffer
 
@@ -221,8 +245,9 @@ may only be touched on the JS thread.
 
 ## Benchmarks
 
-Five ways to render the same stream (plain text, 14 pt, same box). Release build, iPhone 17 Pro Max
-**simulator**, medians of 3 runs:
+Five ways to stream the same answer into the **last bubble of a chat list**: the bubble grows with the
+text, the list scrolls. Plain text, 14 / 21 pt. Release build, iPhone 17 Pro Max **simulator**, medians of
+2 runs:
 
 | | Variant | How text reaches the screen |
 |---|---|---|
@@ -234,28 +259,27 @@ Five ways to render the same stream (plain text, 14 pt, same box). Release build
 
 | Scenario | A1 | A2 | B1 | B2 | **C** |
 |---|---|---|---|---|---|
-| **S1** LLM pace, 5 KB @ 0.8 KB/s · latency p50 / p95 | 13 / 47 ms | 29 / 61 ms | 29 / 36 ms² | 43 / 50 ms | **26 / 33 ms** |
-| S1 · hitches · worst UI frame | 67 · 56 ms | 65 · 70 ms | 0 · 17 ms | 0 · 17 ms | **0 · 17 ms** |
-| **S2** long answer, 100 KB @ 20 KB/s · latency p50 / p95 | 187 / 702 ms | 180 / 691 ms | 30 / 38 ms² | 126 / 255 ms | **26 / 33 ms** |
-| S2 · hitches · worst UI frame | 24 · 861 ms | 23 · 886 ms | 0 · 17 ms | 65 · 171 ms | **0 · 17 ms** |
-| **S3** 1 MB burst · shown · UI smooth again | blank¹ | blank¹ | 79 · 112 ms³ | 38 · 3219 ms | **100 · 132 ms** |
-| S3 · worst UI frame | — | — | 46 ms | 1695 ms | **34 ms** |
-| **S4** S2 + 40 ms JS task every 100 ms · latency p50 / p95 | 182 / 722 ms | 183 / 722 ms | 49 / 81 ms² | 143 / 320 ms | **26 / 34 ms** |
-| S4 · hitches · worst UI frame | 23 · 889 ms | 23 · 911 ms | 38 · 44 ms | 63 · 180 ms | **0 · 17 ms** |
-| **S5** 64 B every 400 ms · latency p50 / p95 | 19 / 49 ms | 34 / 63 ms | 29 / 35 ms² | 45 / 50 ms | 36 / 44 ms⁴ |
-| S5 · hitches · worst UI frame | 14 · 42 ms | 18 · 40 ms | 0 · 17 ms | 0 · 17 ms | **0 · 17 ms** |
+| **S1** LLM pace, 5 KB @ 0.8 KB/s · latency p50 / p95 | 14 / 46 ms | 29 / 62 ms | 34 / 71 ms¹ | 43 / 50 ms | **26 / 34 ms** |
+| S1 · hitches · worst UI frame | 71 · 56 ms | 69 · 70 ms | 56 · 51 ms | 0 · 17 ms | **0 · 17 ms** |
+| **S2** long answer, 100 KB @ 20 KB/s · latency p50 / p95 | 176 / 701 ms | 210 / 834 ms | 524 / 1023 ms¹ | 139 / 308 ms | **26 / 33 ms** |
+| S2 · hitches · worst UI frame | 24 · 868 ms | 23 · 923 ms | 31 · 550 ms | 62 · 190 ms | **0 · 17 ms** |
+| **S4** S2 + 40 ms JS task every 100 ms · latency p50 / p95 | 171 / 662 ms | 197 / 790 ms | 531 / 1101 ms¹ | 164 / 342 ms | **26 / 33 ms** |
+| S4 · hitches · worst UI frame | 23 · 932 ms | 22 · 909 ms | 29 · 591 ms | 62 · 176 ms | **0 · 17 ms** |
+| **S5** 64 B every 400 ms · latency p50 / p95 | 13 / 38 ms | 30 / 55 ms | 32 / 49 ms¹ | 44 / 50 ms | 35 / 47 ms² |
+| S5 · hitches · worst UI frame | 14 · 38 ms | 15 · 41 ms | 16 · 55 ms | 0 · 17 ms | **0 · 17 ms** |
+| **S3** 1 MB burst · worst UI frame | 263 ms | 17 ms³ | 4966 ms | 1896 ms | 461 ms |
 
 **Takeaways**
 
-- At LLM pace (S1) every variant keeps up on latency, but the variants that re-render `<Text>` jank (60+
-  hitches).
-- As the text grows (S2), `setState` paths reach 0.7 s p95 and ~900 ms frames. Reanimated and StreamText
-  stay smooth and within a frame of each other.
-- With a busy JS thread (S4), StreamText is unaffected (p95 34 ms, no hitches). Every JS-driven path
-  degrades, Reanimated included.
-- A 1 MB burst (S3) is spread over frames: the worst frame is 34 ms, and all of it is shown in 100 ms.
-- B2 also parses Markdown, which the others don't. It is the richest renderer, not a like-for-like
-  plain-text one.
+- **StreamText is the only variant with no hitches and the same latency in every paced scenario**: 26 /
+  33 ms whether the answer is 5 KB or 100 KB, and whether the JS thread is idle or busy (S4).
+- Every `setState` path janks as soon as the bubble grows (50–70 hitches at LLM pace) and reaches 0.7–0.8 s
+  p95 with ~900 ms frames on a long answer.
+- Reanimated doesn't help here: the bubble has to re-measure a growing `TextInput`, so it lands at ~1 s p95.
+- B2 is the best of the JS-driven paths (it measures off the main thread) but still drops 60+ frames on a
+  long answer. It also parses Markdown, which the others don't.
+- **Known limit:** a 1 MB burst into one bubble (S3). StreamText shows all of it in 2.3 s, but TextKit lays
+  out the whole megabyte, with one 461 ms frame. Paced streams, even long ones, don't hit this.
 
 <details>
 <summary><b>Methodology and footnotes</b></summary>
@@ -266,18 +290,18 @@ Five ways to render the same stream (plain text, 14 pt, same box). Release build
   (10 on-time frames).
 - **Worst UI frame** is the longest UI frame in the run.
 
-¹ In this setup, RN `<Text>` holding 1 MB inside a `ScrollView` rendered nothing on screen, so A1/A2 S3
-times measure nothing.
-² B1 applies text in a Reanimated frame callback, so "shown" is taken one frame later than the update's
-first frame. Measured one frame earlier (a lower bound), B1 is 13 / 21 ms in S2 and 19 / 51 ms in S4
-(`bench-results/bench-2026-10-10T21-01-00-064Z.json`). B1 and C are within a frame of each other on latency.
-³ B1 doesn't scroll to follow the tail; C does.
-⁴ Every chunk arrives after StreamText has gone idle, so it pays the idle poll (≤ 33 ms) on top.
+¹ B1 applies text in a Reanimated frame callback, so "shown" is taken one frame later than the update's
+first frame.
+² Every chunk arrives after StreamText has gone idle, so it pays the idle poll (≤ 33 ms) on top.
+³ S3 latency is left out: for the JS variants "shown" marks the React commit, not text on screen, and a
+1 MB `<Text>` isn't actually drawn by then. StreamText's own log shows the last byte on screen 2.3 s after
+the first.
 
 **Caveats:** simulator timing (frame pacing, no thermal limits). B2's own async work may land after its
 mark, so its latency is a lower bound. Device numbers are pending.
 
-Raw results: [`bench-results/bench-2026-10-10T21-36-51-079Z.json`](bench-results/bench-2026-10-10T21-36-51-079Z.json).
+Raw results: [`bench-results/bench-bubble-2026-10-11T00-00-54-966Z.json`](bench-results/bench-bubble-2026-10-11T00-00-54-966Z.json).
+Earlier `bench-results/bench-*.json` files measured the previous, self-scrolling StreamText in a fixed box.
 
 </details>
 
@@ -299,6 +323,10 @@ The demo screen streams the same response into two cards at once:
 
 **Freeze JS · 5s** busy-waits the JS thread. The JS card and the JS-thread pulse stop, while the native
 card and the UI-thread pulse keep going.
+
+**Chat ›** streams an answer into the last bubble of a chat list: the bubble is a `StreamText` with padding
+and a background, handed its buffer through the ref. Press **Freeze 5s** while it streams: the bubble keeps
+growing and pushes the list down, while the JS tick counter stops.
 
 **Benchmarks ›** opens the benchmark screen. Build **Release** (`-configuration Release`, no Metro needed),
 start the stream server and tap **Run all**. Results land in `bench-results/`. `FOCUS` in
@@ -329,7 +357,7 @@ start the stream server and tap **Run all**. Results land in `bench-results/`. `
 
 | Path | What's inside |
 |---|---|
-| [`packages/react-native-text-stream`](packages/react-native-text-stream) | `StreamText` Nitro view, the TSB1 header, and `FrameMonitor` for benchmarks |
+| [`packages/react-native-text-stream`](packages/react-native-text-stream) | `StreamText`: a hand-written Fabric component (C++ shadow node and props in `cpp/`, iOS view and renderer in `ios/fabric/`), the `StreamTextBuffers` TurboModule, the TSB1 header, and a Nitro `FrameMonitor` for benchmarks |
 | [`packages/react-native-nitro-fetch`](packages/react-native-nitro-fetch) | nitro-fetch 1.8.0 (`aad957e`) plus the `nativeBuffer` patch, also kept as [`patches/react-native-nitro-fetch+native-buffer.patch`](patches/react-native-nitro-fetch+native-buffer.patch) |
 | [`patches/`](patches) | applied on `postinstall`: upstream nitro-fetch's nitrogen fix and the Metro patch for worklets Bundle Mode |
 | [`example/`](example) | demo and benchmark app |
@@ -341,7 +369,7 @@ start the stream server and tap **Run all**. Results land in `bench-results/`. `
 - [ ] Upstream the `nativeBuffer` option to react-native-nitro-fetch
 - [ ] Publish to npm
 - [ ] Benchmarks on physical devices
-- [ ] Styling: line height, font family, text alignment
+- [ ] Shrink-to-fit width for short messages (today the view fills the width it is given)
 - [ ] Markdown rendering on the native side
 
 ## Contributing
