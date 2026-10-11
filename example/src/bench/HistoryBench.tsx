@@ -191,17 +191,19 @@ export function HistoryBench({ onBack }: { onBack: () => void }) {
         extra: 0,
       });
       const t0 = Date.now();
-      if (needsDone) await waitDone(COUNT);
+      const complete = needsDone ? await waitDone(COUNT) : true;
       const doneMs = Date.now() - t0 + paintMs;
       await waitIdle();
-      return { paintMs, doneMs };
+      return { paintMs, doneMs, complete };
     });
     await sleep(1_000);
     const memAfter = mem();
     out.bulk = {
       count: COUNT,
+      // A timed-out run has no "all shown" time, only the timeout.
+      complete: bulk.value.complete,
       paintMs: bulk.value.paintMs,
-      allShownMs: needsDone ? bulk.value.doneMs : bulk.value.paintMs,
+      allShownMs: !bulk.value.complete ? null : needsDone ? bulk.value.doneMs : bulk.value.paintMs,
       ...ui(bulk.ui),
       ...totals(true),
       memBeforeMb: memBefore,
@@ -213,19 +215,20 @@ export function HistoryBench({ onBack }: { onBack: () => void }) {
       counts.current = { streaming: 0, done: 0 };
       await commit({ kind: 'mount', bubble, base, extra: 0 });
       // The history must be fully shown, or its events would be taken for the added bubble's.
-      if (needsDone) await waitDone(base);
+      const historyShown = needsDone ? await waitDone(base) : true;
       await settle();
       totals(true);
       const paints: number[] = [];
       const dones: number[] = [];
+      let timedOut = 0;
       const run = await measure(async () => {
         for (let i = 1; i <= ADDS; i++) {
           counts.current = { streaming: 0, done: 0 };
           const t0 = Date.now();
           paints.push(await commit({ kind: 'mount', bubble, base, extra: i }));
           if (needsDone) {
-            await waitDone(1);
-            dones.push(Date.now() - t0);
+            if (await waitDone(1)) dones.push(Date.now() - t0);
+            else timedOut++;
           }
           await frame();
           await frame();
@@ -235,6 +238,9 @@ export function HistoryBench({ onBack }: { onBack: () => void }) {
       });
       out[base ? 'addAfterHistory' : 'addToEmptyChat'] = {
         history: base,
+        // Medians below leave out the adds that timed out.
+        complete: historyShown && timedOut === 0,
+        timedOut,
         paintMsP50: median(paints),
         paintMsMax: Math.max(...paints),
         shownMsP50: needsDone ? median(dones) : median(paints),

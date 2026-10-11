@@ -130,7 +130,7 @@ export function BenchScreen({
       scenario: s.id,
       variant,
       rep,
-      completed: lat.completionMs != null,
+      completed: lat.complete,
       error: result?.error ?? (result ? undefined : `timeout ${RUN_TIMEOUT_MS / 1000}s`),
       totalBytes: log.total,
       jsChunks: result?.jsChunks ?? 0,
@@ -251,18 +251,20 @@ function ResultsTable({ results }: { results: RunMetrics[] }) {
               ))}
             </View>
             {rows.map(({ v, runs }) => {
-              const dnf = runs.filter((r) => !r.completed).length;
+              // Medians over finished runs only: a run cut short has no tail to measure.
+              const done = runs.filter((r) => r.completed);
+              const dnf = runs.length - done.length;
               return (
                 <View key={v.id} style={styles.row}>
                   <Text style={[styles.cell, styles.nameCell]}>{v.id}</Text>
                   <Text style={styles.cell}>
-                    {dnf ? `DNF ${dnf}` : fmt(median(runs.map((r) => r.completionMs)))}
+                    {dnf ? `DNF ${dnf}` : fmt(median(done.map((r) => r.completionMs)))}
                   </Text>
-                  <Text style={styles.cell}>{fmt(median(runs.map((r) => r.uiIdleMs)))}</Text>
-                  <Text style={styles.cell}>{fmt(median(runs.map((r) => r.latP50Ms)))}</Text>
-                  <Text style={styles.cell}>{fmt(median(runs.map((r) => r.latP95Ms)))}</Text>
-                  <Text style={styles.cell}>{fmt(median(runs.map((r) => r.uiHitches)), '')}</Text>
-                  <Text style={styles.cell}>{fmt(median(runs.map((r) => r.jsMaxGapMs)))}</Text>
+                  <Text style={styles.cell}>{fmt(median(done.map((r) => r.uiIdleMs)))}</Text>
+                  <Text style={styles.cell}>{fmt(median(done.map((r) => r.latP50Ms)))}</Text>
+                  <Text style={styles.cell}>{fmt(median(done.map((r) => r.latP95Ms)))}</Text>
+                  <Text style={styles.cell}>{fmt(median(done.map((r) => r.uiHitches)), '')}</Text>
+                  <Text style={styles.cell}>{fmt(median(done.map((r) => r.jsMaxGapMs)))}</Text>
                 </View>
               );
             })}

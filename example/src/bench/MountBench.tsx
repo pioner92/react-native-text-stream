@@ -156,9 +156,11 @@ export function MountBench({ onBack }: { onBack: () => void }) {
             const paintMs = (await paintedAt) - wallStart;
             // StreamText with a source is shown once it reports its final status.
             let shownMs = paintMs;
+            let complete = true;
             if (isStream(variant)) {
               const until = Date.now() + 10_000;
               while (done.current < count && Date.now() < until) await sleep(5);
+              complete = done.current >= count;
               shownMs = Math.max(paintMs, Date.now() - wallStart);
             }
             await Promise.race([m.waitIdle(10), sleep(15_000)]);
@@ -177,6 +179,8 @@ export function MountBench({ onBack }: { onBack: () => void }) {
               variant,
               bytes,
               count,
+              // Not every text reported its final status within 10 s: shownMs is the timeout.
+              complete,
               jsCommitMs: Math.round(jsCommitMs * 10) / 10,
               paintMs: Math.round(paintMs),
               shownMs: Math.round(shownMs),
@@ -342,9 +346,15 @@ function summarize(runs: Record<string, any>[]) {
   for (const [bytes, count] of CELLS) {
     lines.push(`${count} × ${bytes} B   paint / shown / maxFrame / mem`);
     for (const v of VARIANTS) {
-      const rs = runs.filter((r) => r.variant === v && r.bytes === bytes && r.count === count);
+      const all = runs.filter((r) => r.variant === v && r.bytes === bytes && r.count === count);
+      // Medians over finished runs only.
+      const rs = all.filter((r) => r.complete !== false);
+      const dnf = all.length - rs.length;
       const f = (k: string) => Math.round(median(rs.map((r) => r[k])) ?? NaN);
-      lines.push(`  ${v.padEnd(12)} ${f('paintMs')} / ${f('shownMs')} / ${f('maxFrameMs')} ms / ${median(rs.map((r) => r.memDeltaMb))} MB`);
+      lines.push(
+        `  ${v.padEnd(12)} ${f('paintMs')} / ${f('shownMs')} / ${f('maxFrameMs')} ms / ${median(rs.map((r) => r.memDeltaMb))} MB` +
+          (dnf ? `  (DNF ${dnf})` : ''),
+      );
     }
   }
   return lines.join('\n');
