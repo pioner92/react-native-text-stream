@@ -3,13 +3,23 @@
 // GET  /?fmt=raw|sse|ndjson&tps=<chunks/s, 0 = burst>&chunk=<bytes (raw) or chars>
 //        &repeat=<paragraphs> | &bytes=<approximate body size>&id=<run id>&para=<paragraph bytes>
 // GET  /log?id=<run id>          -> { total, events: [[sentAtMs, cumulativeBytes], ...] }
-// POST /results?name=<file>      -> writes the JSON body to bench-results/<file>.json
+// POST /results?name=<file>      -> writes the JSON body to bench-results/<file>.json (never overwrites)
+//
+// Listens on loopback only, which the iOS simulator shares with the host. For a device on the LAN:
+// HOST=0.0.0.0 node server/stream-server.mjs
 import fs from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
 
 const PORT = Number(process.env.PORT) || 9877;
+const HOSTS = process.env.HOST ? [process.env.HOST] : ['127.0.0.1', '::1'];
 const RESULTS_DIR = path.join(path.dirname(new URL(import.meta.url).pathname), '..', 'bench-results');
+
+const MiB = 1024 * 1024;
+const MAX_TEXT_BYTES = 64 * MiB;
+const MAX_RESULTS_BYTES = 16 * MiB;
+// Send logs kept for /log, oldest dropped first.
+const MAX_SEND_LOGS = 100;
 
 // An LLM-style answer; the emoji are multi-byte, so raw chunks split them mid-character.
 const PARAGRAPHS = [
@@ -20,14 +30,30 @@ const PARAGRAPHS = [
   'Each frame costs O(delta), not O(n). A 100 KB answer streams as smoothly as a 1 KB one 📈',
 ];
 
-function buildText(q) {
-  const targetBytes = Number(q.get('bytes') ?? 0);
+class HttpError extends Error {
+  constructor(status, message) {
+    super(message);
+    this.status = status;
+  }
+}
+
+/** A finite number in [min, max], or `fallback` when the parameter is absent. */
+function param(q, name, fallback, min, max) {
+  const raw = q.get(name);
+  if (raw === null || raw === '') return fallback;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n < min || n > max) {
+    throw new HttpError(400, `${name} must be a number from ${min} to ${max}`);
+  }
+  return n;
+}
+
+function buildText({ targetBytes, repeat, paraBytes }) {
   const out = [];
   let size = 0;
   // para=<bytes>: merge sentences into paragraphs of about this size (0 = one per sentence).
-  const paraBytes = Number(q.get('para') ?? 0);
   let inPara = 0;
-  for (let i = 0; targetBytes ? size < targetBytes : i < Number(q.get('repeat') ?? 20); i++) {
+  for (let i = 0; targetBytes ? size < targetBytes : i < repeat; i++) {
     const sentence = PARAGRAPHS[i % PARAGRAPHS.length];
     inPara += Buffer.byteLength(sentence);
     const breakHere = !paraBytes || inPara >= paraBytes;
@@ -42,17 +68,28 @@ function buildText(q) {
 // Send logs per run id, the reference clock for latency (sim and host share Date.now()).
 const sendLogs = new Map();
 
+function keepSendLog(id, log) {
+  sendLogs.delete(id);
+  sendLogs.set(id, log);
+  while (sendLogs.size > MAX_SEND_LOGS) sendLogs.delete(sendLogs.keys().next().value);
+}
+
 function stream(req, res, q) {
-  const tps = Number(q.get('tps') ?? 50);
-  const size = Number(q.get('chunk') ?? 16);
   const fmt = q.get('fmt') ?? 'raw';
+  if (!['raw', 'sse', 'ndjson'].includes(fmt)) throw new HttpError(400, 'fmt must be raw, sse or ndjson');
+  const tps = param(q, 'tps', 50, 0, 1000);
+  const size = param(q, 'chunk', 16, 1, MiB);
+  const text = buildText({
+    targetBytes: param(q, 'bytes', 0, 0, MAX_TEXT_BYTES),
+    repeat: param(q, 'repeat', 20, 0, 100_000),
+    paraBytes: param(q, 'para', 0, 0, MAX_TEXT_BYTES),
+  });
   const id = q.get('id');
-  const text = buildText(q);
   const bytes = Buffer.from(text, 'utf8');
   const chars = Array.from(text);
 
   const log = { total: fmt === 'raw' ? bytes.length : null, events: [] };
-  if (id) sendLogs.set(id, log);
+  if (id) keepSendLog(id, log);
 
   res.writeHead(200, {
     'Content-Type': fmt === 'sse' ? 'text/event-stream' : 'text/plain; charset=utf-8',
@@ -66,7 +103,7 @@ function stream(req, res, q) {
   let closed = false;
   req.on('close', () => (closed = true));
 
-  // Writes the next chunk; returns false once everything is sent.
+  // Writes the next chunk; returns false once everything is sent, 'drain' when the socket is full.
   const writeNext = () => {
     if (fmt === 'raw') {
       if (i >= bytes.length) return false;
@@ -102,45 +139,90 @@ function stream(req, res, q) {
     return pump();
   }
 
-  const timer = setInterval(() => {
-    if (closed || writeNext() === false) {
-      clearInterval(timer);
-      if (!closed) finish();
+  // Paced: one chunk per tick; a full socket pauses the ticks until it drains.
+  let timer;
+  const stop = () => clearInterval(timer);
+  const tick = () => {
+    if (closed) return stop();
+    const r = writeNext();
+    if (r === false) {
+      stop();
+      finish();
+    } else if (r === 'drain') {
+      stop();
+      res.once('drain', start);
     }
-  }, 1000 / tps);
-  req.on('close', () => clearInterval(timer));
+  };
+  const start = () => {
+    if (!closed) timer = setInterval(tick, 1000 / tps);
+  };
+  req.on('close', stop);
+  start();
 }
 
-function readBody(req) {
+function readBody(req, limit) {
   return new Promise((resolve, reject) => {
     const parts = [];
-    req.on('data', (c) => parts.push(c));
+    let size = 0;
+    req.on('data', (c) => {
+      size += c.length;
+      if (size > limit) {
+        req.removeAllListeners('data');
+        req.resume(); // discard the rest
+        reject(new HttpError(413, `body over ${limit} bytes`));
+        return;
+      }
+      parts.push(c);
+    });
     req.on('end', () => resolve(Buffer.concat(parts).toString('utf8')));
     req.on('error', reject);
   });
 }
 
-http
-  .createServer(async (req, res) => {
-    const url = new URL(req.url, 'http://x');
-    const q = url.searchParams;
+async function saveResults(req, res, q) {
+  const name = (q.get('name') || `bench-${Date.now()}`).replace(/[^\w.-]/g, '_').slice(0, 200);
+  const body = await readBody(req, MAX_RESULTS_BYTES);
+  try {
+    JSON.parse(body);
+  } catch {
+    throw new HttpError(400, 'body is not JSON');
+  }
+  fs.mkdirSync(RESULTS_DIR, { recursive: true });
+  const file = path.join(RESULTS_DIR, `${name}.json`);
+  try {
+    fs.writeFileSync(file, body, { flag: 'wx' });
+  } catch (e) {
+    if (e.code === 'EEXIST') throw new HttpError(409, `${name}.json already exists`);
+    throw e;
+  }
+  console.log(`results -> ${file}`);
+  res.writeHead(200, { 'Content-Type': 'application/json' });
+  res.end(JSON.stringify({ file }));
+}
 
-    if (url.pathname === '/log') {
-      const log = sendLogs.get(q.get('id')) ?? { total: null, events: [] };
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      return res.end(JSON.stringify(log));
-    }
+async function handle(req, res) {
+  const url = new URL(req.url, 'http://x');
+  const q = url.searchParams;
+  if (url.pathname === '/log') {
+    const log = sendLogs.get(q.get('id')) ?? { total: null, events: [] };
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    return res.end(JSON.stringify(log));
+  }
+  if (url.pathname === '/results' && req.method === 'POST') return saveResults(req, res, q);
+  return stream(req, res, q);
+}
 
-    if (url.pathname === '/results' && req.method === 'POST') {
-      const name = (q.get('name') ?? `bench-${Date.now()}`).replace(/[^\w.-]/g, '_');
-      fs.mkdirSync(RESULTS_DIR, { recursive: true });
-      const file = path.join(RESULTS_DIR, `${name}.json`);
-      fs.writeFileSync(file, await readBody(req));
-      console.log(`results -> ${file}`);
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      return res.end(JSON.stringify({ file }));
-    }
-
-    return stream(req, res, q);
-  })
-  .listen(PORT, '0.0.0.0', () => console.log(`stream server on http://0.0.0.0:${PORT}`));
+for (const host of HOSTS) {
+  http
+    .createServer((req, res) => {
+      handle(req, res).catch((e) => {
+        const status = e instanceof HttpError ? e.status : 500;
+        if (status === 500) console.error(e);
+        if (res.headersSent) return res.destroy();
+        res.writeHead(status, { 'Content-Type': 'text/plain; charset=utf-8' });
+        res.end(e.message);
+      });
+    })
+    .on('error', (e) => console.error(`stream server on ${host}: ${e.message}`))
+    .listen(PORT, host, () => console.log(`stream server on http://${host.includes(':') ? `[${host}]` : host}:${PORT}`));
+}
