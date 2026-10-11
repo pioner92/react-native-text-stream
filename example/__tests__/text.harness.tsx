@@ -2,7 +2,7 @@ import React from 'react';
 import { Text } from 'react-native';
 import { describe, expect, it, render, waitFor } from 'react-native-harness';
 import { StreamText } from 'react-native-text-stream';
-import { bufferText } from 'react-native-text-stream/testing';
+import { bufferText } from 'text-stream-testing';
 import {
   buffer,
   Column,

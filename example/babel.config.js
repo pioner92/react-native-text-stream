@@ -11,8 +11,8 @@ module.exports = api => {
         {
           extensions: ['.js', '.ts', '.json', '.jsx', '.tsx'],
           alias: {
-            // Tests only: the native test producer and snapshot helpers.
-            [`^${pak.name}/testing$`]: path.join(__dirname, '../packages/react-native-text-stream/src/testing'),
+            // Benchmark and test helpers of this app (FrameMonitor, StreamTextTesting).
+            '^text-stream-testing$': path.join(__dirname, 'modules/text-stream-testing/src'),
             [pak.name]: path.join(__dirname, '../packages/react-native-text-stream', pak.source),
           },
         },

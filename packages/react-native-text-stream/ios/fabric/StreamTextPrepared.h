@@ -4,7 +4,7 @@
 
 #import <UIKit/UIKit.h>
 
-#import "TextStream-Swift-Cxx-Umbrella.hpp"
+#import "StreamTextSwift.h"
 #include "../../cpp/StreamTextViewShadowNode.hpp"
 
 NS_ASSUME_NONNULL_BEGIN

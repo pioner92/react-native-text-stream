@@ -1,7 +1,8 @@
 import React from 'react';
 import { ScrollView, Text, View } from 'react-native';
 import { afterEach, beforeEach, describe, expect, it, render, waitFor } from 'react-native-harness';
-import { createFrameMonitor, StreamText } from 'react-native-text-stream';
+import { StreamText } from 'react-native-text-stream';
+import { createFrameMonitor } from 'text-stream-testing';
 import {
   arrayBuffer,
   buffer,

@@ -1,6 +1,6 @@
 import React, { useCallback, useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { createFrameMonitor, type FrameMonitor } from 'react-native-text-stream';
+import { createFrameMonitor, type FrameMonitor } from 'text-stream-testing';
 import {
   COOLDOWN_MS,
   FOCUS,

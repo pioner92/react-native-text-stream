@@ -117,7 +117,7 @@ public final class StreamTextPreparedLayout: NSObject {
 
   /// Tests: how far CoreText's lines are from TextKit's for `text` (line ranges, baselines, glyph
   /// x positions, heights). `coreText` is 0 when CoreText doesn't take this text.
-  static func compareEngines(text: String, style: StreamTextStyle, width: CGFloat) -> [String: Double] {
+  @_spi(Testing) public static func compareEngines(text: String, style: StreamTextStyle, width: CGFloat) -> [String: Double] {
     let attributes = style.attributes()
     let attributed = NSAttributedString(string: text, attributes: attributes)
     guard let textKit = TextKitLines(text: attributed, width: width)?.geometry() else { return ["textKit": 0] }

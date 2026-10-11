@@ -1,0 +1,11 @@
+{
+  "name": "text-stream-testing",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Benchmark and test helpers for react-native-text-stream in the example app (iOS): FrameMonitor and StreamTextTesting.",
+  "main": "src/index.ts",
+  "react-native": "src/index.ts",
+  "scripts": {
+    "nitrogen": "nitrogen"
+  }
+}

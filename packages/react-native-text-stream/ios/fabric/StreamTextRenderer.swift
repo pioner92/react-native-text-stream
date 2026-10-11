@@ -69,12 +69,12 @@ public final class StreamTextRenderer: UIView {
   /// Benchmarks and tests: renderers that have a displayLogKey, by key. Main thread.
   private static let debugViews = NSMapTable<NSString, StreamTextRenderer>.strongToWeakObjects()
 
-  static func debugView(_ key: String) -> StreamTextRenderer? {
+  @_spi(Testing) public static func debugView(_ key: String) -> StreamTextRenderer? {
     debugViews.object(forKey: key as NSString)
   }
 
   /// What the view shows, for tests. Main thread.
-  func debugState() -> (text: String, height: CGFloat, status: String, hasTextView: Bool, fontSize: CGFloat,
+  @_spi(Testing) public func debugState() -> (text: String, height: CGFloat, status: String, hasTextView: Bool, fontSize: CGFloat,
                         color: String, selectable: Bool, accessibilityValue: String) {
     let storage = textView?.textStorage
       ?? canvas.map { NSTextStorage(attributedString: NSAttributedString(string: $0.layout.text.string, attributes: textAttributes)) }
@@ -200,7 +200,7 @@ public final class StreamTextRenderer: UIView {
   }
 
   /// Tests: selects the word at `point` as the selection gestures would, copies and returns it.
-  func debugSelectWord(at point: CGPoint) -> String {
+  @_spi(Testing) public func debugSelectWord(at point: CGPoint) -> String {
     let input: UITextInput & UIResponder
     if let canvas { input = canvas } else if let textView { input = textView } else { return "" }
     guard let position = input.closestPosition(to: point),
@@ -213,7 +213,7 @@ public final class StreamTextRenderer: UIView {
   }
 
   /// Tests: "canvas", "textView" or "" (nothing shown yet), and the canvas's engine.
-  var debugMode: (mode: String, engine: String, tiles: Int) {
+  @_spi(Testing) public var debugMode: (mode: String, engine: String, tiles: Int) {
     if let canvas { return ("canvas", canvas.layout.isCoreText ? "coreText" : "textKit", canvas.tileCount) }
     return (textView != nil ? "textView" : "", "", 0)
   }
@@ -238,7 +238,7 @@ public final class StreamTextRenderer: UIView {
   ) { _ in textViewPool.removeAll() }
 
   /// Benchmarks: a cold start for the next mounts. Main thread.
-  static func drainTextViewPool() {
+  @_spi(Testing) public static func drainTextViewPool() {
     textViewPool.removeAll()
   }
 

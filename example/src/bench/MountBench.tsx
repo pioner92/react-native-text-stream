@@ -3,8 +3,8 @@ import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-
 import { fetch } from 'react-native-nitro-fetch';
 import { TextDecoder } from 'react-native-nitro-text-decoder';
 import { StreamdownText } from 'react-native-streamdown';
-import { createFrameMonitor, StreamText, type StreamTextStatus } from 'react-native-text-stream';
-import { createStreamTextTesting } from 'react-native-text-stream/testing';
+import { StreamText, type StreamTextStatus } from 'react-native-text-stream';
+import { createFrameMonitor, createStreamTextTesting } from 'text-stream-testing';
 import { SERVER, TAG } from './config';
 import { median } from './stats';
 

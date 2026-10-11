@@ -2157,7 +2157,6 @@ PODS:
     - Yoga
   - TextStream (0.1.0):
     - hermes-engine
-    - NitroModules
     - RCTRequired
     - RCTTypeSafety
     - React-callinvoker
@@ -2178,6 +2177,30 @@ PODS:
     - ReactCommon/turbomodule/bridging
     - ReactCommon/turbomodule/core
     - ReactNativeDependencies
+    - Yoga
+  - TextStreamTesting (0.0.0):
+    - hermes-engine
+    - NitroModules
+    - RCTRequired
+    - RCTTypeSafety
+    - React-Core
+    - React-Core-prebuilt
+    - React-debug
+    - React-Fabric
+    - React-featureflags
+    - React-graphics
+    - React-ImageManager
+    - React-jsi
+    - React-NativeModulesApple
+    - React-RCTFabric
+    - React-renderercss
+    - React-rendererdebug
+    - React-utils
+    - ReactCodegen
+    - ReactCommon/turbomodule/bridging
+    - ReactCommon/turbomodule/core
+    - ReactNativeDependencies
+    - TextStream
     - Yoga
   - Yoga (0.0.0)
 
@@ -2265,6 +2288,7 @@ DEPENDENCIES:
   - RNReanimated (from `../../node_modules/react-native-reanimated`)
   - RNWorklets (from `../../node_modules/react-native-worklets`)
   - TextStream (from `../../packages/react-native-text-stream`)
+  - TextStreamTesting (from `../modules/text-stream-testing`)
   - Yoga (from `../../node_modules/react-native/ReactCommon/yoga`)
 
 EXTERNAL SOURCES:
@@ -2433,6 +2457,8 @@ EXTERNAL SOURCES:
     :path: "../../node_modules/react-native-worklets"
   TextStream:
     :path: "../../packages/react-native-text-stream"
+  TextStreamTesting:
+    :path: "../modules/text-stream-testing"
   Yoga:
     :path: "../../node_modules/react-native/ReactCommon/yoga"
 
@@ -2518,7 +2544,8 @@ SPEC CHECKSUMS:
   ReactNativeEnrichedMarkdown: 9e769dee2bb275448a9016efe1911ff4a1a76f03
   RNReanimated: 583231f6738b35560d928c70a72d3a84f78a5ec5
   RNWorklets: fbeec47182b92efd08e57e3432483bede3f78e5a
-  TextStream: 27b022b5d76168f3b66002ef870f7bc60237520d
+  TextStream: b4a7bc21f87248e646b27b88b02c5d20707fb795
+  TextStreamTesting: a6e06362b0eb7000be57cf1bd974e8f481363a96
   Yoga: fe50ab299e578f397fef753cf309c6703a4db29b
 
 PODFILE CHECKSUM: 791206de0c52e01d800a363d8e77abe309111e08

@@ -2,7 +2,7 @@ import React from 'react';
 import { afterEach, describe, expect, it, render, waitFor } from 'react-native-harness';
 import { fetch as nitroFetch } from 'react-native-nitro-fetch';
 import { StreamText, useStreamTextRef, type StreamTextRef, type StreamTextStatus } from 'react-native-text-stream';
-import { bufferText, committedBytes, headerStatus } from 'react-native-text-stream/testing';
+import { bufferText, committedBytes, headerStatus } from 'text-stream-testing';
 import { arrayBuffer, buffer, Column, layouts, newKey, snapshot, TEXT_STYLE, testing, TSB, utf8, waitForSnapshot } from './helpers';
 
 // Seams, live: each test crosses a boundary between two layers that were written separately and

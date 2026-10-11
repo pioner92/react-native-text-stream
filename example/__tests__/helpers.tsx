@@ -1,7 +1,7 @@
 import React from 'react';
 import { View } from 'react-native';
 import { expect, waitFor } from 'react-native-harness';
-import { createStreamTextTesting, type StreamTextSnapshot } from 'react-native-text-stream/testing';
+import { createStreamTextTesting, type StreamTextSnapshot } from 'text-stream-testing';
 
 export const testing = createStreamTextTesting();
 

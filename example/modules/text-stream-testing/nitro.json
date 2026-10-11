@@ -1,0 +1,32 @@
+{
+  "$schema": "https://nitro.margelo.com/nitro.schema.json",
+  "cxxNamespace": [
+    "textstreamtesting"
+  ],
+  "ios": {
+    "iosModuleName": "TextStreamTesting"
+  },
+  "android": {
+    "androidNamespace": [
+      "textstreamtesting"
+    ],
+    "androidCxxLibName": "TextStreamTesting"
+  },
+  "autolinking": {
+    "FrameMonitor": {
+      "ios": {
+        "language": "swift",
+        "implementationClassName": "HybridFrameMonitor"
+      }
+    },
+    "StreamTextTesting": {
+      "ios": {
+        "language": "swift",
+        "implementationClassName": "HybridStreamTextTesting"
+      }
+    }
+  },
+  "ignorePaths": [
+    "**/node_modules"
+  ]
+}

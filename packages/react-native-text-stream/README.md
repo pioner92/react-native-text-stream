@@ -1,6 +1,6 @@
 # react-native-text-stream
 
-react-native-text-stream is a react native package built with Nitro
+A native React Native text view that renders a streamed response as it arrives, without JS per chunk.
 
 [![Version](https://img.shields.io/npm/v/react-native-text-stream.svg)](https://www.npmjs.com/package/react-native-text-stream)
 [![Downloads](https://img.shields.io/npm/dm/react-native-text-stream.svg)](https://www.npmjs.com/package/react-native-text-stream)
@@ -8,16 +8,13 @@ react-native-text-stream is a react native package built with Nitro
 
 ## Requirements
 
-- React Native v0.76.0 or higher
-- Node 18.0.0 or higher
-
-> [!IMPORTANT]  
-> To Support `Nitro Views` you need to install React Native version v0.78.0 or higher.
+- React Native 0.86 or higher, with the New Architecture
+- iOS 15.1 or higher
 
 ## Installation
 
 ```bash
-npm install react-native-text-stream react-native-nitro-modules
+npm install react-native-text-stream
 ```
 
 ## Credits

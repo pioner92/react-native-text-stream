@@ -7,9 +7,7 @@
 #import <React/RCTViewComponentView.h>
 #import <UIKit/UIKit.h>
 
-// The pod also hosts Nitro objects; their umbrella header imports TextStream-Swift.h after the C++
-// types it needs.
-#import "TextStream-Swift-Cxx-Umbrella.hpp"
+#import "StreamTextSwift.h"
 #import "StreamTextPrepared.h"
 #include "../../cpp/StreamTextBuffers.hpp"
 #include "../../cpp/StreamTextViewShadowNode.hpp"

@@ -9,12 +9,8 @@ import {
 } from 'react-native';
 import { fetch } from 'react-native-nitro-fetch';
 import { TextDecoder } from 'react-native-nitro-text-decoder';
-import {
-  createFrameMonitor,
-  StreamText,
-  type FrameStats,
-  type StreamTextStatus,
-} from 'react-native-text-stream';
+import { StreamText, type StreamTextStatus } from 'react-native-text-stream';
+import { createFrameMonitor, type FrameStats } from 'text-stream-testing';
 import { SERVER, TAG } from './config';
 import { median } from './stats';
 

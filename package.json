@@ -3,7 +3,7 @@
   "private": true,
   "scripts": {
     "build": "npm --prefix packages/react-native-text-stream run build",
-    "codegen": "npm --prefix packages/react-native-text-stream run codegen",
+    "codegen": "npm --prefix example/modules/text-stream-testing run nitrogen",
     "release": "npm --prefix packages/react-native-text-stream run release",
     "postinstall": "sh scripts/apply-patches.sh",
     "test": "npm --prefix packages/react-native-text-stream test",

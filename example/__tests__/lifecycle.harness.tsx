@@ -1,6 +1,7 @@
 import React from 'react';
 import { afterEach, describe, expect, it, render } from 'react-native-harness';
-import { createFrameMonitor, StreamText } from 'react-native-text-stream';
+import { StreamText } from 'react-native-text-stream';
+import { createFrameMonitor } from 'text-stream-testing';
 import { arrayBuffer, buffer, busyWait, Column, newKey, sleep, snapshot, TEXT_STYLE, testing, TSB, utf8, waitForSnapshot, waitForText } from './helpers';
 
 const monitor = createFrameMonitor();

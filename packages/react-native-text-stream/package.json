@@ -1,7 +1,7 @@
 {
   "name": "react-native-text-stream",
   "version": "0.1.0",
-  "description": "react-native-text-stream is a react native package built with Nitro",
+  "description": "A native React Native text view that renders a streamed response as it arrives, without JS per chunk",
   "main": "./lib/commonjs/index.js",
   "module": "./lib/module/index.js",
   "types": "./lib/typescript/src/index.d.ts",
@@ -12,8 +12,6 @@
     "clean": "git clean -dfX",
     "release": "semantic-release",
     "build": "npm run typecheck && bob build",
-    "codegen": "nitrogen --logLevel=\"debug\" && npm run build",
-    "postcodegen": "npm --prefix ../example run pod",
     "test": "jest"
   },
   "keywords": [
@@ -24,9 +22,7 @@
     "src",
     "react-native.config.js",
     "lib",
-    "nitrogen",
     "cpp",
-    "nitro.json",
     "android/build.gradle",
     "android/fix-prefab.gradle",
     "android/gradle.properties",
@@ -62,19 +58,16 @@
     "babel-jest": "30.5.2",
     "conventional-changelog-conventionalcommits": "^10.2.1",
     "jest": "30.5.2",
-    "nitrogen": "0.37.1",
     "react": "19.2.3",
     "react-native": "0.86.0",
     "react-native-builder-bob": "^0.40.18",
-    "react-native-nitro-modules": "0.37.1",
     "semantic-release": "^25.0.7",
     "test-renderer": "1.3.0",
     "typescript": "^6.0.3"
   },
   "peerDependencies": {
     "react": "*",
-    "react-native": "*",
-    "react-native-nitro-modules": "*"
+    "react-native": "*"
   },
   "eslintConfig": {
     "root": true,

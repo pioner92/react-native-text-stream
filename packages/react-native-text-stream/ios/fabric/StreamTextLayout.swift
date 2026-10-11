@@ -1,13 +1,13 @@
 import UIKit
 
 /// Layout constants.
-enum StreamTextLayout {
+@_spi(Testing) public enum StreamTextLayout {
   /// The text view's frame never follows the text line by line: a text view whose frame grows
   /// re-lays out all of its text. It starts this tall (about 4 MB of 14 pt text in a chat bubble)
   /// and doubles when the text gets close, which re-lays out everything once (~0.4 s per MB).
   /// UIKit only draws the visible part; 4M pt stays below the 2^24 px where Core Animation's
   /// float geometry starts losing precision.
-  static let textViewHeight: CGFloat = 4_000_000
+  @_spi(Testing) public static let textViewHeight: CGFloat = 4_000_000
   /// A finished buffer up to this size is shown in a single frame when attached.
   static let instantFillBytes: UInt64 = 64 * 1024
 }
@@ -24,7 +24,7 @@ public final class StreamTextStyle: NSObject {
   @objc public var letterSpacing: CGFloat = 0
   @objc public var textAlign: String?
 
-  func attributes() -> [NSAttributedString.Key: Any] {
+  @_spi(Testing) public func attributes() -> [NSAttributedString.Key: Any] {
     let font = makeFont()
     let paragraph = NSMutableParagraphStyle()
     switch textAlign {

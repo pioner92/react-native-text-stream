@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'react-native-harness';
-import type { StreamTextTestStyle } from 'react-native-text-stream/testing';
+import type { StreamTextTestStyle } from 'text-stream-testing';
 import { PARAGRAPHS, testing } from './helpers';
 
 // The CoreText engine must make exactly TextKit's lines (the text view's engine): a canvas swapped
