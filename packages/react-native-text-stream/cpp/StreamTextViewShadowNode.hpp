@@ -70,7 +70,8 @@ class StreamTextViewProps final : public ViewProps {
         textAlign(convertRawProp(context, rawProps, "textAlign", sourceProps.textAlign, {})),
         selectable(convertRawProp(context, rawProps, "selectable", sourceProps.selectable, true)),
         selectionColor(convertRawProp(context, rawProps, "selectionColor", sourceProps.selectionColor, SharedColor{})),
-        recordDisplayLog(convertRawProp(context, rawProps, "recordDisplayLog", sourceProps.recordDisplayLog, false)) {
+        recordDisplayLog(convertRawProp(context, rawProps, "recordDisplayLog", sourceProps.recordDisplayLog, false)),
+        sourceGeneration(convertRawProp(context, rawProps, "sourceGeneration", sourceProps.sourceGeneration, 0)) {
     // Always look the key up: the parser only forwards keys that the constructor asks for.
     if (const RawValue *rawSource = rawProps.at("source", nullptr, nullptr)) {
       if (auto parsed = streamTextSourceFromRawValue(*rawSource)) {
@@ -94,17 +95,20 @@ class StreamTextViewProps final : public ViewProps {
   bool selectable{true};
   SharedColor selectionColor{};
   bool recordDisplayLog{false};
+  /** Set by the JS wrapper with each new `source`; status events carry it back. */
+  int sourceGeneration{0};
 };
 
 class StreamTextViewEventEmitter final : public ViewEventEmitter {
  public:
   using ViewEventEmitter::ViewEventEmitter;
 
-  void onStatusChange(std::string status, double bytes) const {
-    dispatchEvent("statusChange", [status = std::move(status), bytes](jsi::Runtime &runtime) {
+  void onStatusChange(std::string status, double bytes, int generation) const {
+    dispatchEvent("statusChange", [status = std::move(status), bytes, generation](jsi::Runtime &runtime) {
       auto payload = jsi::Object(runtime);
       payload.setProperty(runtime, "status", jsi::String::createFromUtf8(runtime, status));
       payload.setProperty(runtime, "bytes", bytes);
+      payload.setProperty(runtime, "generation", generation);
       return payload;
     });
   }

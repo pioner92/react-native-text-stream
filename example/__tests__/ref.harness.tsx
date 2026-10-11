@@ -97,4 +97,21 @@ describe('StreamText: ref', () => {
     await new Promise((r) => setTimeout(r, 200));
     expect((await snapshot(key)).text).toBe('buffer 19');
   });
+
+  it('status events about a buffer replaced in the same tick never reach onStatusChange', async () => {
+    let ref!: StreamTextRef;
+    const events: [string, number][] = [];
+    const key = newKey();
+    await render(<Screen refOut={(r) => (ref = r)} nativeID={key} onStatusChange={(s: string, b: number) => events.push([s, b])} />);
+    // The view reports "done" for the first buffer as it attaches it, after JS already moved on.
+    ref.attach(buffer('first', TSB.done));
+    const second = buffer();
+    ref.attach(second);
+    write(second, 'second!');
+    testing.setStatus(second, TSB.done);
+    await waitForText(key, 'second!');
+    await waitFor(() => expect(events.at(-1)).toEqual(['done', 7]));
+    expect(events).not.toContainEqual(['done', 5]);
+    expect(ref.getStatus()).toEqual({ status: 'done', bytes: 7 });
+  });
 });

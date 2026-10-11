@@ -15,7 +15,18 @@ beforeEach(() => {
 })
 
 const host = () => screen.getByTestId('stream')
-const statusEvent = (status: string, bytes: number) => ({ nativeEvent: { status, bytes } })
+/** The generation the view reports for what it shows: the last command's, else the source prop's. */
+function shownGeneration(): number {
+  const sent: [number, number][] = [
+    ...mockCommands.attach.mock.calls.map((c: unknown[], i: number) => [mockCommands.attach.mock.invocationCallOrder[i], c[2]]),
+    ...mockCommands.clear.mock.calls.map((c: unknown[], i: number) => [mockCommands.clear.mock.invocationCallOrder[i], c[1]]),
+  ]
+  sent.sort((a, b) => a[0] - b[0])
+  return sent.length ? sent[sent.length - 1]![1] : host().props.sourceGeneration
+}
+const statusEvent = (status: string, bytes: number, generation = shownGeneration()) => ({
+  nativeEvent: { status, bytes, generation },
+})
 
 /** Renders StreamText with a ref; `useStreamTextRef` when asked, else a plain ref object. */
 async function renderStream(props: Partial<React.ComponentProps<typeof StreamText>> = {}) {
@@ -114,6 +125,39 @@ describe('StreamText', () => {
       await rerender(<StreamText ref={ref} testID="stream" source={tsbBuffer('second')} />)
       await expect(ref.current!.getText()).resolves.toBe('second')
       expect(ref.current!.getStatus().status).toBe('streaming')
+    })
+
+    it('drops a late status event about a buffer attached before', async () => {
+      const onStatusChange = jest.fn()
+      const { ref } = await renderStream({ onStatusChange })
+      ref.current!.attach(tsbBuffer('first', { status: TSB_STATUS.done }))
+      const first = shownGeneration()
+      ref.current!.attach(tsbBuffer('second!'))
+      await fireEvent(host(), 'statusChange', statusEvent('done', 5, first))
+      expect(onStatusChange).not.toHaveBeenCalled()
+      expect(ref.current!.getStatus()).toEqual({ status: 'streaming', bytes: 7 })
+      await fireEvent(host(), 'statusChange', statusEvent('done', 7))
+      expect(onStatusChange).toHaveBeenCalledWith('done', 7)
+      expect(ref.current!.getStatus()).toEqual({ status: 'done', bytes: 7 })
+    })
+
+    it('drops a late status event about the previous source prop', async () => {
+      const onStatusChange = jest.fn()
+      const { ref, rerender } = await renderStream({ source: tsbBuffer('first'), onStatusChange })
+      const first = host().props.sourceGeneration
+      await rerender(<StreamText ref={ref} testID="stream" source={tsbBuffer('second!')} onStatusChange={onStatusChange} />)
+      expect(host().props.sourceGeneration).not.toBe(first)
+      await fireEvent(host(), 'statusChange', statusEvent('done', 5, first))
+      expect(onStatusChange).not.toHaveBeenCalled()
+      expect(ref.current!.getStatus().status).toBe('streaming')
+    })
+
+    it('keeps the generation while the source prop stays the same', async () => {
+      const source = tsbBuffer('same')
+      const { ref, rerender } = await renderStream({ source })
+      const generation = host().props.sourceGeneration
+      await rerender(<StreamText ref={ref} testID="stream" source={source} color="blue" />)
+      expect(host().props.sourceGeneration).toBe(generation)
     })
 
     it("a parent's layout effect already reads the new source prop", async () => {

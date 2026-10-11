@@ -1,4 +1,4 @@
-import React, { forwardRef, useCallback, useImperativeHandle, useLayoutEffect, useRef } from 'react'
+import React, { forwardRef, useCallback, useImperativeHandle, useLayoutEffect, useMemo, useRef } from 'react'
 import {
   codegenNativeCommands,
   processColor,
@@ -17,10 +17,12 @@ import type {
 } from './types'
 import { bufferText, committedBytes, TSB_HEADER_SIZE } from './buffer'
 
-type StatusEvent = NativeSyntheticEvent<{ status: StreamTextStatus; bytes: number }>
+// `generation`: which source the event is about (see `sourceGeneration`).
+type StatusEvent = NativeSyntheticEvent<{ status: StreamTextStatus; bytes: number; generation: number }>
 
 type NativeProps = ViewProps & {
   source?: ArrayBuffer | null
+  sourceGeneration?: number
   fontSize?: number
   fontFamily?: string
   fontWeight?: string
@@ -40,6 +42,7 @@ const NativeStreamText = NativeComponentRegistry.get<NativeProps>('StreamTextVie
   validAttributes: {
     // Two ArrayBuffers deep-compare as equal (no enumerable keys): compare by identity.
     source: { diff: (a: unknown, b: unknown) => a !== b },
+    sourceGeneration: true,
     fontSize: true,
     fontFamily: true,
     fontWeight: true,
@@ -65,9 +68,12 @@ interface StreamTextBuffers extends TurboModule {
 const Buffers = TurboModuleRegistry.get<StreamTextBuffers>('StreamTextBuffers')
 
 const Commands = codegenNativeCommands<{
-  attach(view: never, bufferId: number): void
-  clear(view: never): void
+  attach(view: never, bufferId: number, generation: number): void
+  clear(view: never, generation: number): void
 }>({ supportedCommands: ['attach', 'clear'] })
+
+// Every source gets a new generation; status events about an older one are dropped.
+let nextGeneration = 1
 
 export interface StreamTextProps extends ViewProps {
   /**
@@ -123,7 +129,10 @@ export const StreamText = forwardRef<StreamTextHandle, StreamTextProps>(function
   const current = useRef<ArrayBuffer | null>(source ?? null)
   const lastStatus = useRef<StreamTextStatus | null>(null)
   // A buffer attached before the native view mounted.
-  const pending = useRef<{ buffer: ArrayBuffer | null } | null>(null)
+  const pending = useRef<{ buffer: ArrayBuffer | null; generation: number } | null>(null)
+  const sourceGeneration = useMemo(() => nextGeneration++, [source])
+  // The generation of `current`: status events about any other source are late, and dropped.
+  const generation = useRef(sourceGeneration)
 
   // Only a real change of the prop resets: a buffer attached before mount must survive the first run.
   // A layout effect, so a parent's layout effect after the same commit already reads the new source.
@@ -132,26 +141,27 @@ export const StreamText = forwardRef<StreamTextHandle, StreamTextProps>(function
     if (previousSource.current === source) return
     previousSource.current = source
     current.current = source ?? null
+    generation.current = sourceGeneration
     lastStatus.current = null
-  }, [source])
+  }, [source, sourceGeneration])
 
-  const send = useCallback((instance: HostInstance, buffer: ArrayBuffer | null) => {
-    if (!buffer) return Commands.clear(instance as never)
+  const send = useCallback((instance: HostInstance, buffer: ArrayBuffer | null, gen: number) => {
+    if (!buffer) return Commands.clear(instance as never, gen)
     const bufferId = Buffers?.put(buffer) ?? 0
     if (bufferId === 0) {
       // The view can't read it: show nothing rather than keep the previous buffer.
       console.warn('StreamText: attach() needs a natively-backed ArrayBuffer, e.g. res.nativeBuffer')
       current.current = null
-      return Commands.clear(instance as never)
+      return Commands.clear(instance as never, gen)
     }
-    Commands.attach(instance as never, bufferId)
+    Commands.attach(instance as never, bufferId, gen)
   }, [])
 
   const setNative = useCallback(
     (instance: HostInstance | null) => {
       native.current = instance
       if (instance && pending.current) {
-        send(instance, pending.current.buffer)
+        send(instance, pending.current.buffer, pending.current.generation)
         pending.current = null
       }
     },
@@ -160,6 +170,7 @@ export const StreamText = forwardRef<StreamTextHandle, StreamTextProps>(function
 
   const handleStatus = useCallback(
     (event: StatusEvent) => {
+      if (event.nativeEvent.generation !== generation.current) return
       lastStatus.current = event.nativeEvent.status
       onStatusChange?.(event.nativeEvent.status, event.nativeEvent.bytes)
     },
@@ -170,10 +181,12 @@ export const StreamText = forwardRef<StreamTextHandle, StreamTextProps>(function
     ref,
     () => {
       const attach = (buffer: ArrayBuffer | undefined) => {
+        const gen = nextGeneration++
         current.current = buffer ?? null
+        generation.current = gen
         lastStatus.current = null
-        if (native.current) send(native.current, buffer ?? null)
-        else pending.current = { buffer: buffer ?? null }
+        if (native.current) send(native.current, buffer ?? null, gen)
+        else pending.current = { buffer: buffer ?? null, generation: gen }
       }
       return {
         attach,
@@ -194,6 +207,7 @@ export const StreamText = forwardRef<StreamTextHandle, StreamTextProps>(function
       {...props}
       ref={setNative as never}
       source={source}
+      sourceGeneration={sourceGeneration}
       // Always subscribed: getStatus() needs the final status even without an onStatusChange prop.
       onStatusChange={handleStatus}
     />

@@ -47,6 +47,10 @@ static NSString *_Nullable StreamTextNSString(const std::string &value) {
   // A status reported before the event emitter arrived (props are mounted first).
   NSString *_pendingStatus;
   double _pendingBytes;
+  int _pendingGeneration;
+  // The JS wrapper's generation of the attached source, sent back with each status event.
+  int _generation;
+  int _propGeneration;
   // A new `source` prop, attached in finalizeUpdates: once the layout metrics of the same
   // transaction are applied, so a mounted view lays its text out once, at its real width.
   std::shared_ptr<jsi::MutableBuffer> _propSource;
@@ -117,6 +121,7 @@ static NSString *_Nullable StreamTextNSString(const std::string &value) {
   // replaced the buffer since, and an unrelated prop change must not undo it.
   if (next.source != previous.source) {
     _propSource = next.source;
+    _propGeneration = next.sourceGeneration;
     _hasPropSource = YES;
   }
   [super updateProps:props oldProps:oldProps];
@@ -129,7 +134,9 @@ static NSString *_Nullable StreamTextNSString(const std::string &value) {
   StreamTextPreparedLayout *prepared = _state ? StreamTextPreparedLayoutOf(_state->getData().prepared, props.source) : nil;
   if (_hasPropSource) {
     _hasPropSource = NO;
-    STREAMTEXT_PHASE(@"attach", [self attachSource:std::exchange(_propSource, nullptr) prepared:prepared]);
+    STREAMTEXT_PHASE(@"attach", [self attachSource:std::exchange(_propSource, nullptr)
+                                          prepared:prepared
+                                        generation:_propGeneration]);
   } else {
     // Same text, maybe a new width or style.
     [_renderer updatePrepared:prepared];
@@ -154,8 +161,11 @@ static NSString *_Nullable StreamTextNSString(const std::string &value) {
 }
 
 // `prepared`: the shadow node's layout of a finished `source` prop; an `attach` command has none.
-- (void)attachSource:(std::shared_ptr<jsi::MutableBuffer>)source prepared:(StreamTextPreparedLayout *)prepared {
+- (void)attachSource:(std::shared_ptr<jsi::MutableBuffer>)source
+            prepared:(StreamTextPreparedLayout *)prepared
+          generation:(int)generation {
   _attachedData = source ? source->data() : nullptr;
+  _generation = generation;
   // The old buffer is released only after the renderer moved off it; the new one may already be
   // released inside attach, when it is finished and shown in one go.
   auto previous = std::exchange(_source, source);
@@ -168,9 +178,12 @@ static NSString *_Nullable StreamTextNSString(const std::string &value) {
 - (void)handleCommand:(const NSString *)commandName args:(const NSArray *)args {
   if ([commandName isEqualToString:@"attach"]) {
     int bufferId = [args.firstObject intValue];
-    [self attachSource:bufferId > 0 ? StreamTextBufferRegistry::shared().take(bufferId) : nullptr prepared:nil];
+    int generation = args.count > 1 ? [args[1] intValue] : 0;
+    [self attachSource:bufferId > 0 ? StreamTextBufferRegistry::shared().take(bufferId) : nullptr
+              prepared:nil
+            generation:generation];
   } else if ([commandName isEqualToString:@"clear"]) {
-    [self attachSource:nullptr prepared:nil];
+    [self attachSource:nullptr prepared:nil generation:args.count > 0 ? [args.firstObject intValue] : 0];
   } else {
     [super handleCommand:commandName args:args];
   }
@@ -209,7 +222,10 @@ static NSString *_Nullable StreamTextNSString(const std::string &value) {
   if (_pendingStatus) {
     NSString *status = _pendingStatus;
     _pendingStatus = nil;
-    [self rendererDidChangeStatus:status bytes:_pendingBytes];
+    const auto emitter = std::static_pointer_cast<const StreamTextViewEventEmitter>(_eventEmitter);
+    if (emitter) {
+      emitter->onStatusChange(RCTStringFromNSString(status), _pendingBytes, _pendingGeneration);
+    }
   }
 }
 
@@ -221,9 +237,11 @@ static NSString *_Nullable StreamTextNSString(const std::string &value) {
   if (!emitter) {
     _pendingStatus = status;
     _pendingBytes = bytes;
+    _pendingGeneration = _generation;
     return;
   }
-  emitter->onStatusChange(RCTStringFromNSString(status), bytes);
+  // The renderer reports only about what it shows: the source attached last.
+  emitter->onStatusChange(RCTStringFromNSString(status), bytes, _generation);
 }
 
 @end

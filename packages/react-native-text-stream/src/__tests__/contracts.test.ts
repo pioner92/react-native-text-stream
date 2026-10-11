@@ -62,7 +62,7 @@ describe('C++ event ↔ JS handler', () => {
   })
 
   it('carries the payload keys the JS handler reads', () => {
-    expect(all(shadowNode, /setProperty\(runtime, "(\w+)"/g).sort()).toEqual(['bytes', 'status'])
+    expect(all(shadowNode, /setProperty\(runtime, "(\w+)"/g).sort()).toEqual(['bytes', 'generation', 'status'])
   })
 
   it('every status the native view reports is a StreamTextStatus', () => {
@@ -87,6 +87,12 @@ describe('JS commands ↔ native component view', () => {
   it('attach takes the numeric id the TurboModule returns', () => {
     expect(componentView).toMatch(/int bufferId = \[args\.firstObject intValue\]/)
     expect(componentView).toContain('StreamTextBufferRegistry::shared().take(bufferId)')
+  })
+
+  it('reads the generation where JS sends it: after the id for attach, alone for clear', () => {
+    expect(componentView).toMatch(/int generation = args\.count > 1 \? \[args\[1\] intValue\] : 0;/)
+    expect(componentView).toMatch(/generation:args\.count > 0 \? \[args\.firstObject intValue\] : 0\]/)
+    expect(componentView).toContain('_propGeneration = next.sourceGeneration;')
   })
 })
 
