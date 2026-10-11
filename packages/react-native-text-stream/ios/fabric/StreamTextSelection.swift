@@ -19,15 +19,18 @@ final class StreamTextRange: UITextRange {
 
 private final class StreamTextSelectionRect: UITextSelectionRect {
   private let frame: CGRect
+  private let rightToLeft: Bool
   private let isStart: Bool
   private let isEnd: Bool
-  init(_ frame: CGRect, start: Bool, end: Bool) {
+  init(_ frame: CGRect, rightToLeft: Bool, start: Bool, end: Bool) {
     self.frame = frame
+    self.rightToLeft = rightToLeft
     isStart = start
     isEnd = end
   }
   override var rect: CGRect { frame }
-  override var writingDirection: NSWritingDirection { .leftToRight }
+  // The selection UI puts a run's start handle on its right when the run is right to left.
+  override var writingDirection: NSWritingDirection { rightToLeft ? .rightToLeft : .leftToRight }
   override var containsStart: Bool { isStart }
   override var containsEnd: Bool { isEnd }
   override var isVertical: Bool { false }
@@ -81,7 +84,10 @@ extension StreamTextCanvas: UITextInput {
   // MARK: UITextInput (read only)
 
   var selectedTextRange: UITextRange? {
-    get { StreamTextRange(selection) }
+    // Read-only text has no caret: an empty selection reported as one at index 0 made a long press
+    // near it (the first word, or right-to-left text, where index 0 is on the right) drag that caret
+    // instead of selecting the word.
+    get { selection.length > 0 ? StreamTextRange(selection) : nil }
     set { selection = (newValue as? StreamTextRange)?.range ?? NSRange(location: 0, length: 0) }
   }
 
@@ -111,10 +117,16 @@ extension StreamTextCanvas: UITextInput {
     return target < 0 || target > layout.length ? nil : StreamTextPosition(target)
   }
 
+  /// Left and right are on screen: in a right-to-left paragraph, left is forward in the text.
+  private func forward(_ direction: UITextLayoutDirection, at index: Int) -> Bool {
+    let right = direction == .right || direction == .down
+    return layout.isRightToLeft(at: clamp(index)) ? !right : right
+  }
+
   func position(from position: UITextPosition, in direction: UITextLayoutDirection, offset: Int) -> UITextPosition? {
     switch direction {
-    case .left: return self.position(from: position, offset: -offset)
-    case .right: return self.position(from: position, offset: offset)
+    case .left, .right:
+      return self.position(from: position, offset: forward(direction, at: index(position)) ? offset : -offset)
     case .up, .down:
       let caret = caretRect(for: position)
       let dy = CGFloat(direction == .up ? -offset : offset) * caret.height
@@ -132,24 +144,27 @@ extension StreamTextCanvas: UITextInput {
   func offset(from: UITextPosition, to toPosition: UITextPosition) -> Int { index(toPosition) - index(from) }
 
   func position(within range: UITextRange, farthestIn direction: UITextLayoutDirection) -> UITextPosition? {
-    direction == .left || direction == .up ? range.start : range.end
+    if direction == .up { return range.start }
+    if direction == .down { return range.end }
+    return forward(direction, at: index(range.start)) ? range.end : range.start
   }
 
   func characterRange(byExtending position: UITextPosition, in direction: UITextLayoutDirection) -> UITextRange? {
     let at = index(position)
-    let to = direction == .left || direction == .up ? clamp(at - 1) : clamp(at + 1)
+    let forwards = direction == .up ? false : direction == .down ? true : forward(direction, at: at)
+    let to = forwards ? clamp(at + 1) : clamp(at - 1)
     return StreamTextRange(NSRange(location: min(at, to), length: abs(to - at)))
   }
 
   func baseWritingDirection(for position: UITextPosition, in direction: UITextStorageDirection) -> NSWritingDirection {
-    .leftToRight
+    layout.isRightToLeft(at: clamp(index(position))) ? .rightToLeft : .leftToRight
   }
 
   func setBaseWritingDirection(_ writingDirection: NSWritingDirection, for range: UITextRange) {}
 
   func firstRect(for range: UITextRange) -> CGRect {
     guard let range = range as? StreamTextRange else { return .null }
-    return layout.selectionRects(for: range.range).first ?? caretRect(for: range.start)
+    return layout.selectionRects(for: range.range).first?.rect ?? caretRect(for: range.start)
   }
 
   func caretRect(for position: UITextPosition) -> CGRect { layout.caretRect(at: clamp(index(position))) }
@@ -157,8 +172,16 @@ extension StreamTextCanvas: UITextInput {
   func selectionRects(for range: UITextRange) -> [UITextSelectionRect] {
     guard let range = range as? StreamTextRange else { return [] }
     let rects = layout.selectionRects(for: range.range)
-    return rects.enumerated().map { offset, rect in
-      StreamTextSelectionRect(rect, start: offset == 0, end: offset == rects.count - 1)
+    // The ends sit where the carets are: with bidi runs that need not be the first and the last rect.
+    let start = caretRect(for: range.start)
+    let end = caretRect(for: range.end)
+    func holds(_ rect: CGRect, _ caret: CGRect) -> Bool {
+      abs(rect.midY - caret.midY) < rect.height / 2 && caret.minX >= rect.minX - 1 && caret.minX <= rect.maxX + 1
+    }
+    let first = rects.firstIndex { holds($0.rect, start) } ?? 0
+    let last = rects.lastIndex { holds($0.rect, end) } ?? rects.count - 1
+    return rects.enumerated().map { offset, run in
+      StreamTextSelectionRect(run.rect, rightToLeft: run.rightToLeft, start: offset == first, end: offset == last)
     }
   }
 

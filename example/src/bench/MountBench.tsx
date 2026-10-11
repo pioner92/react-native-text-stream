@@ -75,15 +75,17 @@ const MIXED =
   'Стриминг ответа модели 🚀 идёт прямо в нативный буфер, без JS. 数据流直接写入缓冲区。 Mixed English text, ' +
   'числа 12345 и emoji 👩‍💻🎉, 日本語のテキストも少し。\n';
 
-function mixedText(bytes: number) {
+const RTL = 'שלום עולם, זה טקסט בעברית שנכתב מימין לשמאל, עם מילה Hello באמצע. مرحبا بالعالم، هذا نص عربي.\n';
+
+function mixedText(bytes: number, unit = MIXED) {
   let text = '';
-  while (new TextEncoder().encode(text).length < bytes) text += MIXED;
+  while (new TextEncoder().encode(text).length < bytes) text += unit;
   return text;
 }
 
 /** A finished buffer of mixed text. */
-function mixedSample(bytes: number): Sample {
-  const text = mixedText(bytes);
+function mixedSample(bytes: number, unit = MIXED): Sample {
+  const text = mixedText(bytes, unit);
   const data = new TextEncoder().encode(text);
   const buffer = testing.createBuffer(data.byteLength);
   testing.append(buffer, data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength) as ArrayBuffer);
@@ -213,9 +215,11 @@ export function MountBench({ onBack }: { onBack: () => void }) {
   const peekStep = useRef(0);
   const peek = useCallback(async () => {
     if (running.current) return;
-    const steps: [MountVariant, number, number][] = [
+    const steps: [MountVariant, number, number, string?][] = [
       ['stream', -5_000, 1],
       ['stream', -50_000, 1], // long enough to fling through
+      ['stream', -2_000, 1, RTL], // right-to-left: a TextKit canvas
+      ['streamLegacy', -2_000, 1, RTL], // the same in a text view
       ['streamTextKit', -5_000, 1],
       ['streamLegacy', -5_000, 1],
       ['stream', 50_000, 1],
@@ -230,9 +234,9 @@ export function MountBench({ onBack }: { onBack: () => void }) {
       setStatus('Peek: off');
       return;
     }
-    const [variant, bytes, count] = steps[step];
+    const [variant, bytes, count, text] = steps[step];
     setMounted(null);
-    const samples = await loadSamples(bytes, count);
+    const samples = text ? [mixedSample(-bytes, text)] : await loadSamples(bytes, count);
     selectVariant(variant);
     setMounted({ key: `peek-${step}`, variant, samples, count });
     setStatus(`Peek: ${variant} · ${count} × ${bytes} B`);

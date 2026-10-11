@@ -180,6 +180,14 @@ namespace margelo::nitro::textstreamtesting {
       auto __value = std::move(__result.value());
       return __value;
     }
+    inline std::shared_ptr<Promise<std::string>> selectionGeometry(const std::string& key, double location, double length) override {
+      auto __result = _swiftPart.selectionGeometry(key, std::forward<decltype(location)>(location), std::forward<decltype(length)>(length));
+      if (__result.hasError()) [[unlikely]] {
+        std::rethrow_exception(__result.error());
+      }
+      auto __value = std::move(__result.value());
+      return __value;
+    }
     inline std::shared_ptr<Promise<StreamTextSnapshot>> snapshot(const std::string& key) override {
       auto __result = _swiftPart.snapshot(key);
       if (__result.hasError()) [[unlikely]] {

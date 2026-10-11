@@ -212,6 +212,38 @@ public final class StreamTextRenderer: UIView {
     return input.text(in: word) ?? ""
   }
 
+  /// Tests: the selection geometry UIKit's selection UI reads for a range (rects with their direction
+  /// and ends, the carets at both ends), from the canvas or the text view, as JSON.
+  @_spi(Testing) public func debugSelectionGeometry(location: Int, length: Int) -> String {
+    let input: UITextInput
+    if let canvas { input = canvas } else if let textView { input = textView } else { return "{}" }
+    guard let start = input.position(from: input.beginningOfDocument, offset: location),
+          let end = input.position(from: start, offset: length),
+          let range = input.textRange(from: start, to: end) else { return "{}" }
+    func caret(_ position: UITextPosition) -> [String: CGFloat] {
+      let rect = input.caretRect(for: position)
+      return ["x": rect.minX, "y": rect.minY, "h": rect.height]
+    }
+    func back(_ position: UITextPosition) -> Int {
+      let rect = input.caretRect(for: position)
+      guard let found = input.closestPosition(to: CGPoint(x: rect.minX, y: rect.midY)) else { return -1 }
+      return input.offset(from: input.beginningOfDocument, to: found)
+    }
+    let rects = input.selectionRects(for: range).filter { !$0.rect.isEmpty }.map { rect -> [String: Any] in
+      ["x": rect.rect.minX, "y": rect.rect.minY, "w": rect.rect.width, "h": rect.rect.height,
+       "rtl": rect.writingDirection == .rightToLeft, "start": rect.containsStart, "end": rect.containsEnd]
+    }
+    let geometry: [String: Any] = [
+      "rects": rects, "startCaret": caret(start), "endCaret": caret(end),
+      "rtl": input.baseWritingDirection(for: start, in: .forward) == .rightToLeft,
+      // The selection UI places a caret, then asks for the position at it: it must come back.
+      "startBack": back(start), "endBack": back(end),
+      "selected": input.selectedTextRange.map { input.offset(from: $0.start, to: $0.end) } ?? -1,
+    ]
+    guard let data = try? JSONSerialization.data(withJSONObject: geometry) else { return "{}" }
+    return String(decoding: data, as: UTF8.self)
+  }
+
   /// Tests: "canvas", "textView" or "" (nothing shown yet), and the canvas's engine.
   @_spi(Testing) public var debugMode: (mode: String, engine: String, tiles: Int) {
     if let canvas { return ("canvas", canvas.layout.isCoreText ? "coreText" : "textKit", canvas.tileCount) }

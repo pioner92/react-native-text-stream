@@ -345,6 +345,64 @@ describe('StreamText: prepared layouts', () => {
     expect((await snapshot(key)).mode).toBe('canvas');
   });
 
+  it('selects right-to-left text on the canvas the way the text view does', async () => {
+    // Hebrew over a few lines, a Latin word inside it, an Arabic paragraph: TextKit canvas, bidi runs.
+    const hebrew = 'שלום עולם, זה טקסט בעברית שנכתב מימין לשמאל וממשיך לשורה הבאה. ';
+    const text = hebrew.repeat(2) + 'Hello ' + hebrew + '\n' + 'مرحبا بالعالم، هذا نص عربي.';
+    const geometry = async (key: string, location: number, length: number) => {
+      const g = JSON.parse(await testing.selectionGeometry(key, location, length));
+      const round = (v: number) => Math.round(v);
+      // A caret's position maps back to its index (the selection UI does that on a long press).
+      expect([g.startBack, g.endBack]).toEqual([location, location + length]);
+      return {
+        rtl: g.rtl,
+        startCaret: round(g.startCaret.x),
+        endCaret: round(g.endCaret.x),
+        rects: g.rects
+          .map((r: { x: number; y: number; w: number; rtl: boolean; start: boolean; end: boolean }) => ({
+            x: round(r.x), y: round(r.y), w: round(r.w), rtl: r.rtl, start: r.start, end: r.end,
+          }))
+          .sort((a: { y: number; x: number }, b: { y: number; x: number }) => a.y - b.y || a.x - b.x),
+      };
+    };
+    const ranges: [number, number][] = [
+      [0, 4], // the first word
+      [5, 30], // across a line break
+      [hebrew.length * 2, 5], // the Latin word
+      [text.indexOf('مرحبا'), 5], // the Arabic paragraph
+    ];
+    const canvas = await mountFinished(text);
+    expect(canvas.s.mode).toBe('canvas');
+    expect(canvas.s.engine).toBe('textKit');
+    // Nothing selected is no selection, not a caret at 0: a long press near one (the first word, or
+    // right-to-left text, where 0 is on the right) dragged that caret instead of selecting the word.
+    expect(JSON.parse(await testing.selectionGeometry(canvas.key, 0, 0)).selected).toBe(-1);
+    const onCanvas = [];
+    for (const [location, length] of ranges) onCanvas.push(await geometry(canvas.key, location, length));
+    canvas.view.unmount();
+
+    testing.setPreparedLayout(false);
+    const textView = await mountFinished(text);
+    expect(textView.s.mode).toBe('textView');
+    // The carets and the rects are where the text view puts them. (It leaves the rects' direction
+    // and ends unset, so those are checked below.)
+    const shape = (g: Awaited<ReturnType<typeof geometry>>) => ({
+      carets: [g.startCaret, g.endCaret],
+      rects: g.rects.map((r: { x: number; w: number }) => [r.x, r.w]),
+    });
+    for (const [i, [location, length]] of ranges.entries()) {
+      const reference = shape(await geometry(textView.key, location, length));
+      const mine = shape(onCanvas[i]!);
+      expect({ range: [location, length], rects: mine.rects }).toEqual({ range: [location, length], rects: reference.rects });
+      for (const [j, x] of mine.carets.entries()) expect(Math.abs(x - reference.carets[j]!)).toBeLessThanOrEqual(1);
+    }
+    // A Hebrew word: one right-to-left run holding both ends, in a right-to-left paragraph.
+    expect(onCanvas[0]).toMatchObject({ rtl: true, rects: [{ rtl: true, start: true, end: true }] });
+    // A Latin word inside it: a left-to-right run, still in a right-to-left paragraph.
+    expect(onCanvas[2]).toMatchObject({ rtl: true, rects: [{ rtl: false, start: true, end: true }] });
+    expect(onCanvas[3]).toMatchObject({ rtl: true, rects: [{ rtl: true }] });
+  });
+
   it('bubbles mounted below the screen draw once scrolled to, and let go of tiles far away', async () => {
     const keys = Array.from({ length: 20 }, newKey);
     const texts = keys.map((_, i) => `bubble ${i} ` + 'some words in a chat message. '.repeat(12));

@@ -83,6 +83,11 @@ export interface StreamTextTesting extends HybridObject<{ ios: 'swift' }> {
    * system's selection uses, and returns the selected text (copied too). The view must stay as is.
    */
   selectWordAt(key: string, x: number, y: number): Promise<string>
+  /**
+   * The selection geometry the system's selection UI reads for `length` characters from `location`:
+   * JSON `{ rects: [{ x, y, w, h, rtl, start, end }], startCaret, endCaret: { x, y, h }, rtl }`.
+   */
+  selectionGeometry(key: string, location: number, length: number): Promise<string>
   /** The view whose `nativeID` is `key` and that has `recordDisplayLog`; rejects if there is none. */
   snapshot(key: string): Promise<StreamTextSnapshot>
 }

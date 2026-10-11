@@ -97,13 +97,20 @@ public final class StreamTextPreparedLayout: NSObject {
     }
   }
 
-  /// One rect per line the range covers.
-  func selectionRects(for range: NSRange) -> [CGRect] {
+  /// One rect per run of one direction on each line the range covers, and whether the run is right to left.
+  func selectionRects(for range: NSRange) -> [(rect: CGRect, rightToLeft: Bool)] {
     guard range.length > 0 else { return [] }
     switch engine {
     case .textKit(let lines): return lines.selectionRects(for: range)
-    case .coreText(let lines): return lines.selectionRects(for: range)
+    // CoreText only takes left-to-right text (right-to-left goes to TextKit).
+    case .coreText(let lines): return lines.selectionRects(for: range).map { ($0, false) }
     }
+  }
+
+  /// Whether the paragraph around `index` runs right to left.
+  func isRightToLeft(at index: Int) -> Bool {
+    if case .textKit(let lines) = engine { return lines.isRightToLeft(at: index, length: length) }
+    return false
   }
 
   /// Draws the part of the text inside `rect` into the current UIKit context, in `color` where the
@@ -194,9 +201,30 @@ private final class TextKitLines {
 
   func characterIndex(at point: CGPoint) -> Int {
     lock.withLock {
+      let length = storage.length
+      let extra = layoutManager.extraLineFragmentRect
+      if length == 0 || (!extra.isEmpty && point.y >= extra.minY) { return length }
+      // The nearest of the line's insertion points, the ones carets are drawn at: a caret's own
+      // position maps back to its index in right-to-left runs too (the selection UI relies on it).
+      let glyph = layoutManager.glyphIndex(for: point, in: container)
+      let line = layoutManager.lineFragmentRect(forGlyphAt: glyph, effectiveRange: nil)
+      let character = layoutManager.characterIndexForGlyph(at: glyph)
+      let count = layoutManager.getLineFragmentInsertionPoints(
+        forCharacterAt: character, alternatePositions: false, inDisplayOrder: false, positions: nil, characterIndexes: nil)
+      if count > 0 {
+        var positions = [CGFloat](repeating: 0, count: count)
+        var indexes = [Int](repeating: 0, count: count)
+        _ = layoutManager.getLineFragmentInsertionPoints(
+          forCharacterAt: character, alternatePositions: false, inDisplayOrder: false, positions: &positions,
+          characterIndexes: &indexes)
+        let x = point.x - line.minX
+        if let nearest = positions.indices.min(by: { abs(positions[$0] - x) < abs(positions[$1] - x) }) {
+          return min(indexes[nearest], length)
+        }
+      }
       var fraction: CGFloat = 0
       let index = layoutManager.characterIndex(for: point, in: container, fractionOfDistanceBetweenInsertionPoints: &fraction)
-      return fraction > 0.5 ? min(index + 1, storage.length) : index
+      return fraction > 0.5 ? min(index + 1, length) : index
     }
   }
 
@@ -209,19 +237,61 @@ private final class TextKitLines {
       let character = min(index, max(length - 1, 0))
       let glyph = layoutManager.glyphIndexForCharacter(at: character)
       let line = layoutManager.lineFragmentRect(forGlyphAt: glyph, effectiveRange: nil)
+      // TextKit's own insertion points: in right-to-left runs the caret before a character is on its right.
+      if let x = insertionX(of: index, onLineOf: character) {
+        return CGRect(x: line.minX + x, y: line.minY, width: 2, height: line.height)
+      }
       let box = layoutManager.boundingRect(forGlyphRange: NSRange(location: glyph, length: 1), in: container)
       return CGRect(x: index >= length ? box.maxX : box.minX, y: line.minY, width: 2, height: line.height)
     }
   }
 
-  func selectionRects(for range: NSRange) -> [CGRect] {
+  /// Under `lock`.
+  private func insertionX(of index: Int, onLineOf character: Int) -> CGFloat? {
+    let count = layoutManager.getLineFragmentInsertionPoints(
+      forCharacterAt: character, alternatePositions: false, inDisplayOrder: false, positions: nil, characterIndexes: nil)
+    guard count > 0 else { return nil }
+    var positions = [CGFloat](repeating: 0, count: count)
+    var indexes = [Int](repeating: 0, count: count)
+    _ = layoutManager.getLineFragmentInsertionPoints(
+      forCharacterAt: character, alternatePositions: false, inDisplayOrder: false, positions: &positions,
+      characterIndexes: &indexes)
+    return indexes.firstIndex(of: index).map { positions[$0] }
+  }
+
+  /// One rect per run of one direction on each line, and whether the run is right to left.
+  func selectionRects(for range: NSRange) -> [(rect: CGRect, rightToLeft: Bool)] {
     lock.withLock {
       let glyphs = layoutManager.glyphRange(forCharacterRange: range, actualCharacterRange: nil)
       var rects: [CGRect] = []
       layoutManager.enumerateEnclosingRects(
         forGlyphRange: glyphs, withinSelectedGlyphRange: glyphs, in: container) { rect, _ in rects.append(rect) }
-      return rects
+      return rects.map { rect in
+        let glyph = layoutManager.glyphIndex(for: CGPoint(x: rect.midX, y: rect.midY), in: container)
+        return (rect, bidiLevel(of: glyph) & 1 == 1)
+      }
     }
+  }
+
+  /// Whether the paragraph around `index` runs right to left: the lowest bidi level on its line is odd.
+  func isRightToLeft(at index: Int, length: Int) -> Bool {
+    guard length > 0 else { return false }
+    return lock.withLock {
+      var lineGlyphs = NSRange()
+      _ = layoutManager.lineFragmentRect(
+        forGlyphAt: layoutManager.glyphIndexForCharacter(at: min(index, length - 1)), effectiveRange: &lineGlyphs)
+      var levels = [UInt8](repeating: 0, count: lineGlyphs.length)
+      _ = layoutManager.getGlyphs(in: lineGlyphs, glyphs: nil, properties: nil, characterIndexes: nil, bidiLevels: &levels)
+      return (levels.min() ?? 0) & 1 == 1
+    }
+  }
+
+  /// Under `lock`.
+  private func bidiLevel(of glyph: Int) -> UInt8 {
+    var level: UInt8 = 0
+    _ = layoutManager.getGlyphs(in: NSRange(location: glyph, length: 1), glyphs: nil, properties: nil,
+                                characterIndexes: nil, bidiLevels: &level)
+    return level
   }
 
   func geometry() -> LineGeometry {

@@ -28,6 +28,7 @@ public protocol HybridStreamTextTestingSpec_protocol: HybridObject {
   func compareEngines(text: String, style: StreamTextTestStyle, width: Double) throws -> Dictionary<String, Double>
   func measureMount(text: String, width: Double) throws -> Promise<Dictionary<String, Double>>
   func selectWordAt(key: String, x: Double, y: Double) throws -> Promise<String>
+  func selectionGeometry(key: String, location: Double, length: Double) throws -> Promise<String>
   func snapshot(key: String) throws -> Promise<StreamTextSnapshot>
 }
 

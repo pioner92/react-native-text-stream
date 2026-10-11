@@ -134,6 +134,18 @@ class HybridStreamTextTesting: HybridStreamTextTestingSpec {
     return promise
   }
 
+  func selectionGeometry(key: String, location: Double, length: Double) throws -> Promise<String> {
+    let promise = Promise<String>()
+    DispatchQueue.main.async {
+      guard let renderer = StreamTextRenderer.debugView(key) else {
+        promise.reject(withError: RuntimeError.error(withMessage: "No StreamTextView with nativeID \(key) and recordDisplayLog"))
+        return
+      }
+      promise.resolve(withResult: renderer.debugSelectionGeometry(location: Int(location), length: Int(length)))
+    }
+    return promise
+  }
+
   func snapshot(key: String) throws -> Promise<StreamTextSnapshot> {
     let promise = Promise<StreamTextSnapshot>()
     DispatchQueue.main.async {

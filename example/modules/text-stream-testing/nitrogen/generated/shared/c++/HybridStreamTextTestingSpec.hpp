@@ -71,6 +71,7 @@ namespace margelo::nitro::textstreamtesting {
       virtual std::unordered_map<std::string, double> compareEngines(const std::string& text, const StreamTextTestStyle& style, double width) = 0;
       virtual std::shared_ptr<Promise<std::unordered_map<std::string, double>>> measureMount(const std::string& text, double width) = 0;
       virtual std::shared_ptr<Promise<std::string>> selectWordAt(const std::string& key, double x, double y) = 0;
+      virtual std::shared_ptr<Promise<std::string>> selectionGeometry(const std::string& key, double location, double length) = 0;
       virtual std::shared_ptr<Promise<StreamTextSnapshot>> snapshot(const std::string& key) = 0;
 
     protected:

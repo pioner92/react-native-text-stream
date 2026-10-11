@@ -29,6 +29,7 @@ namespace margelo::nitro::textstreamtesting {
       prototype.registerHybridMethod("compareEngines", &HybridStreamTextTestingSpec::compareEngines);
       prototype.registerHybridMethod("measureMount", &HybridStreamTextTestingSpec::measureMount);
       prototype.registerHybridMethod("selectWordAt", &HybridStreamTextTestingSpec::selectWordAt);
+      prototype.registerHybridMethod("selectionGeometry", &HybridStreamTextTestingSpec::selectionGeometry);
       prototype.registerHybridMethod("snapshot", &HybridStreamTextTestingSpec::snapshot);
     });
   }
