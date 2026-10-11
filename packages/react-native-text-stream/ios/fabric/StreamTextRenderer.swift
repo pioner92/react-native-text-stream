@@ -32,9 +32,9 @@ public final class StreamTextRenderer: UIView {
   // Reader state, main thread only.
   private var base: UnsafeMutableRawPointer?
   private var capacity: UInt64 = 0
-  /// Bytes consumed from the buffer: shown, or held in `utf8Tail`.
+  /// Bytes consumed from the buffer: shown, or the last `heldUTF8` of them, an unfinished sequence.
   private var offset: UInt64 = 0
-  private var utf8Tail: [UInt8] = []
+  private var heldUTF8 = 0
   private var finished = false
   /// The attached buffer was finished and small: show it in one go rather than frame by frame.
   private var instantFill = false
@@ -281,7 +281,7 @@ public final class StreamTextRenderer: UIView {
     base = nil
     capacity = 0
     offset = 0
-    utf8Tail.removeAll()
+    heldUTF8 = 0
     finished = false
     unloggedShown = nil
     if let displayLogKey {
@@ -514,10 +514,11 @@ public final class StreamTextRenderer: UIView {
     if displayLogKey != nil && offset > consumedBefore { unloggedShown = offset }
 
     if status != UInt32(TSB_STATUS_OPEN) && offset >= committed {
-      if !utf8Tail.isEmpty {
+      if heldUTF8 > 0 {
         // A truncated sequence at the very end: show it as U+FFFD rather than dropping it.
-        appendString(String(decoding: utf8Tail, as: UTF8.self))
-        utf8Tail.removeAll()
+        let held = base.advanced(by: Int(TSB_HEADER_SIZE) + Int(offset) - heldUTF8).assumingMemoryBound(to: UInt8.self)
+        appendString(String(decoding: UnsafeBufferPointer(start: held, count: heldUTF8), as: UTF8.self))
+        heldUTF8 = 0
       }
       if !fillAll { reportHeight() }
       finished = true
@@ -543,30 +544,17 @@ public final class StreamTextRenderer: UIView {
     }
   }
 
-  /// Decodes `count` bytes from the buffer and appends them, carrying a split sequence over.
+  /// Decodes `count` bytes from the buffer and appends them. An unfinished sequence at the end is
+  /// held and decoded again with the bytes that follow, so chunk boundaries never change the text.
   private func appendUTF8(_ start: UnsafePointer<UInt8>, _ count: Int) {
-    var p = start
-    var remaining = count
-    if !utf8Tail.isEmpty {
-      let needed = rendererUTF8SequenceLength(utf8Tail[0])
-      let take = min(needed - utf8Tail.count, remaining)
-      utf8Tail.append(contentsOf: UnsafeBufferPointer(start: p, count: take))
-      p += take
-      remaining -= take
-      guard utf8Tail.count >= needed else { return }
-      appendString(String(decoding: utf8Tail, as: UTF8.self))
-      utf8Tail.removeAll()
-    }
-    guard remaining > 0 else { return }
-    let complete = rendererUTF8CompletePrefixLength(p, remaining)
+    // The held bytes are the ones just before `start` in the buffer.
+    let held = heldUTF8
+    let p = start - held
+    let n = held + count
+    let complete = rendererUTF8CompletePrefixLength(p, n)
+    heldUTF8 = n - complete
     if complete > 0 {
-      // One copy into an NSString; invalid input falls back to U+FFFD replacement.
-      let text = NSString(bytes: p, length: complete, encoding: String.Encoding.utf8.rawValue) as String?
-        ?? String(decoding: UnsafeBufferPointer(start: p, count: complete), as: UTF8.self)
-      appendString(text)
-    }
-    if complete < remaining {
-      utf8Tail.append(contentsOf: UnsafeBufferPointer(start: p + complete, count: remaining - complete))
+      appendString(streamTextDecodeUTF8(p, complete, atStreamStart: offset == UInt64(held)))
     }
   }
 
@@ -631,6 +619,23 @@ private final class StreamTextView: UITextView {
     get { nil }
     set {}
   }
+}
+
+/// UTF-8 to String, with U+FFFD for invalid bytes. Only a BOM opening the stream is dropped, as
+/// TextDecoder does: NSString would drop one at the start of every chunk.
+func streamTextDecodeUTF8(_ bytes: UnsafePointer<UInt8>, _ count: Int, atStreamStart: Bool) -> String {
+  var p = bytes
+  var n = count
+  var prefix = ""
+  while n >= 3 && p[0] == 0xEF && p[1] == 0xBB && p[2] == 0xBF {
+    if !(atStreamStart && p == bytes) { prefix += "\u{FEFF}" }
+    p += 3
+    n -= 3
+  }
+  // One copy into an NSString; invalid input falls back to U+FFFD replacement.
+  let text = NSString(bytes: p, length: n, encoding: String.Encoding.utf8.rawValue) as String?
+    ?? String(decoding: UnsafeBufferPointer(start: p, count: n), as: UTF8.self)
+  return prefix.isEmpty ? text : prefix + text
 }
 
 /// Total length of the UTF-8 sequence that starts with `lead` (1 for invalid leads).

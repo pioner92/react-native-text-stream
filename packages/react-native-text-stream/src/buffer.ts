@@ -41,7 +41,8 @@ export function decodeUtf8(bytes: Uint8Array): string {
 
 /**
  * The WHATWG UTF-8 decoder (what TextDecoder does), for runtimes without TextDecoder: each
- * maximal invalid subsequence becomes one U+FFFD, as the native view shows it.
+ * maximal invalid subsequence becomes one U+FFFD, and a leading BOM is dropped, as the native view
+ * shows it.
  */
 export function decodeUtf8Fallback(bytes: Uint8Array): string {
   const units: number[] = []
@@ -55,7 +56,8 @@ export function decodeUtf8Fallback(bytes: Uint8Array): string {
   let seen = 0
   let lower = 0x80
   let upper = 0xbf
-  for (let i = 0; i < bytes.length; i++) {
+  const bom = bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf
+  for (let i = bom ? 3 : 0; i < bytes.length; i++) {
     const byte = bytes[i]!
     if (needed === 0) {
       if (byte <= 0x7f) {

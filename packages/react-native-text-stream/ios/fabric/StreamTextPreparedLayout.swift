@@ -53,8 +53,7 @@ public final class StreamTextPreparedLayout: NSObject {
   @objc public init?(utf8: UnsafePointer<UInt8>, count: Int, bytes: UInt64, style: StreamTextStyle, width: CGFloat,
                      textKit: Bool) {
     let started = CACurrentMediaTime()
-    let string = NSString(bytes: utf8, length: count, encoding: String.Encoding.utf8.rawValue) as String?
-      ?? String(decoding: UnsafeBufferPointer(start: utf8, count: count), as: UTF8.self)
+    let string = streamTextDecodeUTF8(utf8, count, atStreamStart: true)
     let attributes = style.attributes()
     text = NSAttributedString(string: string, attributes: attributes)
     self.width = width
