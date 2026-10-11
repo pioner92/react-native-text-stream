@@ -101,7 +101,7 @@ describe('StreamText: prepared layouts', () => {
 
     const attached = newKey();
     let ref: { attach(b: ArrayBuffer): void } | null = null;
-    await render(<StreamText ref={(r) => (ref = r)} nativeID={attached} recordDisplayLog {...TEXT_STYLE} />);
+    await render(<StreamText ref={(r) => { ref = r; }} nativeID={attached} recordDisplayLog {...TEXT_STYLE} />);
     ref!.attach(buffer('attached', TSB.done));
     expect((await waitForText(attached, 'attached')).mode).toBe('textView');
 
@@ -125,10 +125,6 @@ describe('StreamText: prepared layouts', () => {
 
     await rerender(element({ fontSize: 17, width: 300 }));
     const bigger = await waitForSnapshot(key, (s) => expect(s.fontSize).toBe(17));
-    if (bigger.height <= first.height) {
-      await sleep(500);
-      throw new Error(`after restyle: ${JSON.stringify({ ...(await snapshot(key)), text: '', accessibilityValue: '' })} first ${first.height}\n${testing.preparedCacheDump()}`);
-    }
     expect(bigger.mode).toBe('canvas');
     expect(bigger.height).toBeGreaterThan(first.height);
 
@@ -143,6 +139,33 @@ describe('StreamText: prepared layouts', () => {
     expect(red.mode).toBe('canvas');
     expect(red.height).toBe(narrower.height);
     expect(prepares(monitor.streamTextPhases(true))).toBe(0);
+  });
+
+  it('a new width without a new layout falls back to the text view, text and height intact', async () => {
+    const key = newKey();
+    const source = buffer(PARAGRAPHS, TSB.done);
+    const element = (width: number) => (
+      <Column width={width}>
+        <StreamText source={source} nativeID={key} recordDisplayLog {...TEXT_STYLE} />
+      </Column>
+    );
+    const { rerender, unmount } = await render(element(300));
+    const wide = await waitForSnapshot(key, (s) => expect(s.mode).toBe('canvas'));
+
+    testing.setPreparedLayout(false); // the shadow node prepares nothing for the new width
+    await rerender(element(220));
+    const narrow = await waitForSnapshot(key, (s) => expect(s.mode).toBe('textView'));
+    expect(narrow.text).toBe(PARAGRAPHS);
+    expect(narrow.height).toBeGreaterThan(wide.height);
+    unmount();
+
+    const legacy = newKey();
+    await render(
+      <Column width={220}>
+        <StreamText source={buffer(PARAGRAPHS, TSB.done)} nativeID={legacy} recordDisplayLog {...TEXT_STYLE} />
+      </Column>,
+    );
+    expect((await waitForText(legacy, PARAGRAPHS)).height).toBe(narrow.height);
   });
 
   it('lays each text out once, even past the cache size (a long chat)', async () => {
@@ -206,8 +229,7 @@ describe('StreamText: prepared layouts', () => {
       </Column>,
     );
     expect((await waitForText(again, PARAGRAPHS)).mode).toBe('canvas');
-    const phases = monitor.streamTextPhases(true);
-    if (prepares(phases) !== 0) throw new Error(`remount phases ${JSON.stringify(phases)} cache ${testing.preparedCacheCount()}\n${testing.preparedCacheDump()}`);
+    expect(prepares(monitor.streamTextPhases(true))).toBe(0);
   });
 
   it('a memory warning empties the cache', async () => {
@@ -222,7 +244,7 @@ describe('StreamText: prepared layouts', () => {
     let scroll: ScrollView | null = null;
     await render(
       <View style={{ height: 400 }}>
-        <ScrollView ref={(r) => (scroll = r)}>
+        <ScrollView ref={(r) => { scroll = r; }}>
           <Column>
             <StreamText source={buffer(LONG, TSB.done)} nativeID={key} recordDisplayLog {...TEXT_STYLE} />
           </Column>
