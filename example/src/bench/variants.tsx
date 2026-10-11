@@ -3,13 +3,13 @@ import { ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import Animated, { useAnimatedProps, useSharedValue } from 'react-native-reanimated';
 import { fetch } from 'react-native-nitro-fetch';
 import { TextDecoder } from 'react-native-nitro-text-decoder';
-import { createFrameMonitor, StreamText, type StreamTextHandle } from 'react-native-text-stream';
+import { createFrameMonitor, StreamText } from 'react-native-text-stream';
 import { StreamdownText } from 'react-native-streamdown';
 import { pairs, type Point } from './stats';
 import { LAYOUT, type VariantId } from './config';
-import { StreamTextView } from '../StreamTextView';
 
-const BUBBLE = LAYOUT === 'bubble';
+// Bubble and block: the text sizes itself; box: each variant scrolls inside a fixed area.
+const BUBBLE = LAYOUT !== 'box';
 
 export interface VariantResult {
   /**
@@ -20,6 +20,8 @@ export interface VariantResult {
   /** Network chunks that reached JS (0 for the native path). */
   jsChunks: number;
   error?: string;
+  /** C only: StreamTextView main-thread stats, see FrameMonitor.streamTextRenderStats. */
+  render?: number[];
 }
 
 export interface VariantProps {
@@ -233,10 +235,13 @@ function StreamdownVariant({ url, markPainted, onFinish }: VariantProps) {
 
 const STREAMDOWN_STYLE = { paragraph: { color: TEXT_COLOR, fontSize: 14, lineHeight: 21 } } as any;
 
-// C: the native path; JS only hands the buffer over and polls for completion.
+// C: the native path; JS only hands the buffer over and polls for completion. The view records
+// when bytes reach the screen under its nativeID, read back through FrameMonitor.
+const displayLogs = createFrameMonitor();
+
 function NativeStream({ url, onFinish }: VariantProps) {
   const [buffer, setBuffer] = useState<ArrayBuffer>();
-  const view = useRef<StreamTextHandle>(null);
+  const logKey = url;
 
   useEffect(() => {
     fetch(url, { stream: true, nativeBuffer: true })
@@ -251,62 +256,33 @@ function NativeStream({ url, onFinish }: VariantProps) {
     const id = setInterval(() => {
       const status = header.getUint32(24, true);
       const committed = header.getUint32(8, true) + header.getUint32(12, true) * 2 ** 32;
-      const log = view.current?.getDisplayLog() ?? [];
-      const lastShown = log.length ? log[log.length - 1] : 0;
-      if (status !== 0 && lastShown >= committed) {
-        clearInterval(id);
-        onFinish({ shown: pairs(log), jsChunks: 0 });
-      }
-    }, 100);
-    return () => clearInterval(id);
-  }, [buffer, onFinish]);
-
-  return (
-    <StreamText
-      source={buffer}
-      fontSize={14}
-      lineHeight={21}
-      color={TEXT_COLOR}
-      // Same padding as the ScrollView-based variants.
-      contentInset={{ top: 14, left: 12, bottom: 40, right: 12 }}
-      recordDisplayLog
-      ref={view}
-      style={StyleSheet.absoluteFill}
-    />
-  );
-}
-
-// C in a bubble: the Fabric StreamTextView sizes itself to its text through native state updates.
-const displayLogs = createFrameMonitor();
-
-function NativeStreamBubble({ url, onFinish }: VariantProps) {
-  const [buffer, setBuffer] = useState<ArrayBuffer>();
-  // The view records its display log under its nativeID.
-  const logKey = url;
-
-  useEffect(() => {
-    fetch(url, { stream: true, nativeBuffer: true })
-      .then((res) => setBuffer(res.nativeBuffer))
-      .catch((e) => onFinish({ shown: [], jsChunks: 0, error: String(e) }));
-  }, [url, onFinish]);
-
-  useEffect(() => {
-    if (!buffer) return;
-    const header = new DataView(buffer, 0, 64);
-    const id = setInterval(() => {
-      const status = header.getUint32(24, true);
-      const committed = header.getUint32(8, true) + header.getUint32(12, true) * 2 ** 32;
       const log = displayLogs.streamTextDisplayLog(logKey);
       const lastShown = log.length ? log[log.length - 1] : 0;
       if (status !== 0 && lastShown >= committed) {
         clearInterval(id);
-        onFinish({ shown: pairs(log), jsChunks: 0 });
+        onFinish({ shown: pairs(log), jsChunks: 0, render: displayLogs.streamTextRenderStats(logKey) });
       }
     }, 100);
     return () => clearInterval(id);
   }, [buffer, onFinish, logKey]);
 
-  return <StreamTextView source={buffer} fontSize={14} color={TEXT_COLOR} nativeID={logKey} />;
+  const text = (
+    <StreamText
+      source={buffer}
+      fontSize={14}
+      lineHeight={21}
+      color={TEXT_COLOR}
+      nativeID={logKey}
+      recordDisplayLog
+    />
+  );
+  if (BUBBLE) return text;
+  // StreamText sizes itself to its text; a fixed panel scrolls it.
+  return (
+    <ScrollView style={StyleSheet.absoluteFill} contentContainerStyle={styles.content}>
+      {text}
+    </ScrollView>
+  );
 }
 
 export const VARIANT_COMPONENTS: Record<VariantId, React.ComponentType<VariantProps>> = {
@@ -314,7 +290,7 @@ export const VARIANT_COMPONENTS: Record<VariantId, React.ComponentType<VariantPr
   A2: JsPerFrame,
   B1: ReanimatedText,
   B2: StreamdownVariant,
-  C: BUBBLE ? NativeStreamBubble : NativeStream,
+  C: NativeStream,
 };
 
 const HISTORY = [
@@ -322,6 +298,11 @@ const HISTORY = [
   { mine: false, text: 'Sure. The response is written into a native buffer, and the view reads it every frame.' },
   { mine: true, text: 'Show me a longer answer, streamed.' },
 ];
+
+/** The component alone: a plain View that sizes to the text, inside the clipping stage. */
+export function BlockFrame({ children }: { children: React.ReactNode }) {
+  return <View style={styles.block}>{children}</View>;
+}
 
 /** A chat list whose last bubble holds the variant; the bubble grows with the text. */
 export function ChatFrame({ children }: { children: React.ReactNode }) {
@@ -342,6 +323,7 @@ const styles = StyleSheet.create({
   text: { color: TEXT_COLOR, fontSize: 14, lineHeight: 21 },
   bubbleInput: { padding: 0 },
   chat: { padding: 12, gap: 10 },
+  block: { padding: 12 },
   bubble: { maxWidth: '85%', borderRadius: 18, paddingHorizontal: 14, paddingVertical: 10 },
   mine: { alignSelf: 'flex-end', backgroundColor: '#8B5CF6' },
   theirs: { alignSelf: 'flex-start', backgroundColor: '#24242E' },

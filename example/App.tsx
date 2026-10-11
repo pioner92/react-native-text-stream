@@ -11,10 +11,12 @@ import {
 } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { fetch } from 'react-native-nitro-fetch';
-import { StreamText, useStreamTextRef } from 'react-native-text-stream';
+import { StreamText, useStreamTextRef, type StreamTextStatus } from 'react-native-text-stream';
 import { createUtf8StreamDecoder } from './src/utf8';
 import { BenchScreen } from './src/bench/BenchScreen';
-import { ChatSpike } from './src/ChatSpike';
+import { HistoryBench } from './src/bench/HistoryBench';
+import { MountBench } from './src/bench/MountBench';
+import { ChatDemo } from './src/ChatDemo';
 
 // iOS simulator reaches the host's localhost directly.
 const SERVER = 'http://localhost:9877';
@@ -35,32 +37,42 @@ const C = {
 };
 
 export default function App(): React.JSX.Element {
-  const [bench, setBench] = useState(false);
-  // Spike: opens straight on the chat bubble test; remove after the experiment.
-  const [spike, setSpike] = useState(true);
-  if (spike) {
-    return (
-      <SafeAreaProvider>
-        <SafeAreaView style={styles.screen} edges={['top', 'bottom']}>
-          <ChatSpike onBack={() => setSpike(false)} />
-        </SafeAreaView>
-      </SafeAreaProvider>
-    );
+  const [screen, setScreen] = useState<'demo' | 'chat' | 'bench' | 'history' | 'mount'>('demo');
+  if (screen === 'demo') {
+    return <Demo onOpenChat={() => setScreen('chat')} onOpenBench={() => setScreen('bench')} />;
   }
-  if (!bench) return <Demo onOpenBench={() => setBench(true)} />;
   return (
     <SafeAreaProvider>
       <StatusBar barStyle="light-content" />
       <SafeAreaView style={styles.screen} edges={['top', 'bottom']}>
-        <BenchScreen onBack={() => setBench(false)} />
+        {screen === 'chat' ? (
+          <ChatDemo onBack={() => setScreen('demo')} />
+        ) : screen === 'history' ? (
+          <HistoryBench onBack={() => setScreen('bench')} />
+        ) : screen === 'mount' ? (
+          <MountBench onBack={() => setScreen('bench')} />
+        ) : (
+          <BenchScreen
+            onBack={() => setScreen('demo')}
+            onOpenHistory={() => setScreen('history')}
+            onOpenMount={() => setScreen('mount')}
+          />
+        )}
       </SafeAreaView>
     </SafeAreaProvider>
   );
 }
 
-function Demo({ onOpenBench }: { onOpenBench: () => void }): React.JSX.Element {
+function Demo({
+  onOpenChat,
+  onOpenBench,
+}: {
+  onOpenChat: () => void;
+  onOpenBench: () => void;
+}): React.JSX.Element {
   // The buffer goes through the ref: starting a stream doesn't re-render this screen.
   const streamRef = useStreamTextRef();
+  const [native, setNative] = useState<{ status: StreamTextStatus; bytes: number }>({ status: 'idle', bytes: 0 });
   const [jsText, setJsText] = useState('');
   const [jsBytes, setJsBytes] = useState(0);
   const [jsCallbacks, setJsCallbacks] = useState(0);
@@ -126,9 +138,14 @@ function Demo({ onOpenBench }: { onOpenBench: () => void }): React.JSX.Element {
         <View style={styles.header}>
           <View style={styles.eyebrowRow}>
             <Text style={styles.eyebrow}>REACT NATIVE · NITRO</Text>
-            <Pressable onPress={onOpenBench} hitSlop={12}>
-              <Text style={styles.benchLink}>Benchmarks ›</Text>
-            </Pressable>
+            <View style={styles.links}>
+              <Pressable onPress={onOpenChat} hitSlop={12}>
+                <Text style={styles.benchLink}>Chat ›</Text>
+              </Pressable>
+              <Pressable onPress={onOpenBench} hitSlop={12}>
+                <Text style={styles.benchLink}>Benchmarks ›</Text>
+              </Pressable>
+            </View>
           </View>
           <Text style={styles.title}>Native Text Streaming</Text>
           <Text style={styles.subtitle}>
@@ -146,15 +163,25 @@ function Demo({ onOpenBench }: { onOpenBench: () => void }): React.JSX.Element {
           title="StreamText"
           caption="URLSession → TSB1 buffer → UITextView · 0 JS callbacks"
         >
-          <StreamText
-            ref={streamRef}
-            fontSize={14}
-            lineHeight={21}
-            contentInset={{ top: 14, left: 12, bottom: 40, right: 12 }}
+          {/* Inverted: offset 0 is the bottom, so the newest text stays in view without JS. */}
+          <ScrollView
+            style={[StyleSheet.absoluteFill, styles.inverted]}
+            contentContainerStyle={styles.invertedContent}
             indicatorStyle="white"
-            color={C.text}
-            showStats
-            style={StyleSheet.absoluteFill}
+          >
+            <View style={styles.inverted}>
+              <StreamText
+                ref={streamRef}
+                fontSize={14}
+                lineHeight={21}
+                color={C.text}
+                onStatusChange={(status, bytes) => setNative({ status, bytes })}
+              />
+            </View>
+          </ScrollView>
+          <StatusPill
+            state={native.status === 'streaming' ? 'live' : native.status === 'done' ? 'done' : 'idle'}
+            detail={native.status === 'done' ? formatBytes(native.bytes) : 'native'}
           />
         </Card>
 
@@ -317,7 +344,11 @@ const styles = StyleSheet.create({
   header: { paddingTop: 8, paddingBottom: 14 },
   eyebrowRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   eyebrow: { color: C.native, fontSize: 11, fontWeight: '700', letterSpacing: 1.6 },
+  links: { flexDirection: 'row', gap: 16 },
   benchLink: { color: C.muted, fontSize: 13, fontWeight: '600' },
+  inverted: { transform: [{ scaleY: -1 }] },
+  // Pinned to the visual top while the text is shorter than the card.
+  invertedContent: { flexGrow: 1, justifyContent: 'flex-end', paddingHorizontal: 12, paddingTop: 40, paddingBottom: 14 },
   title: { color: C.text, fontSize: 30, fontWeight: '800', letterSpacing: -0.6, marginTop: 4 },
   subtitle: { color: C.muted, fontSize: 14, lineHeight: 20, marginTop: 6 },
   threads: { flexDirection: 'row', gap: 10, marginTop: 14 },

@@ -7,7 +7,7 @@ import {
   View,
 } from 'react-native';
 import { fetch } from 'react-native-nitro-fetch';
-import { StreamTextView } from './StreamTextView';
+import { StreamText, useStreamTextRef } from 'react-native-text-stream';
 
 const STREAM_URL = 'http://localhost:9877/?fmt=raw&chunk=7&tps=60&repeat=40';
 
@@ -17,9 +17,11 @@ const HISTORY = [
   { mine: true, text: 'Show me a longer answer, streamed.' },
 ];
 
-export function ChatSpike({ onBack }: { onBack: () => void }) {
-  const [buffer, setBuffer] = useState<ArrayBuffer>();
+// The streamed answer is a StreamText in the last bubble: it grows with the text, natively.
+export function ChatDemo({ onBack }: { onBack: () => void }) {
+  const streamRef = useStreamTextRef();
   const [jsTicks, setJsTicks] = useState(0);
+  const [accent, setAccent] = useState(false);
 
   useEffect(() => {
     const id = setInterval(() => setJsTicks((n) => n + 1), 100);
@@ -27,9 +29,9 @@ export function ChatSpike({ onBack }: { onBack: () => void }) {
   }, []);
 
   const stream = async () => {
-    setBuffer(undefined);
+    streamRef.clear();
     const res = await fetch(STREAM_URL, { stream: true, nativeBuffer: true });
-    setBuffer(res.nativeBuffer);
+    streamRef.attach(res.nativeBuffer);
   };
 
   const freeze = () =>
@@ -50,6 +52,9 @@ export function ChatSpike({ onBack }: { onBack: () => void }) {
         <Pressable onPress={stream} style={styles.button}>
           <Text style={styles.buttonText}>Stream</Text>
         </Pressable>
+        <Pressable onPress={() => setAccent((a) => !a)} style={[styles.button, styles.ghost]}>
+          <Text style={styles.buttonText}>Color</Text>
+        </Pressable>
         <Pressable onPress={freeze} style={[styles.button, styles.freeze]}>
           <Text style={styles.buttonText}>Freeze 5s</Text>
         </Pressable>
@@ -60,9 +65,14 @@ export function ChatSpike({ onBack }: { onBack: () => void }) {
             <Text style={styles.text}>{m.text}</Text>
           </View>
         ))}
-        <View style={[styles.bubble, styles.theirs, styles.streamBubble]}>
-          <StreamTextView source={buffer} fontSize={15} color="#ECECF1" />
-        </View>
+        {/* The StreamText is the bubble itself: its padding comes from the style. */}
+        <StreamText
+          ref={streamRef}
+          fontSize={15}
+          lineHeight={21}
+          color={accent ? '#F472B6' : '#ECECF1'}
+          style={[styles.bubble, styles.theirs, styles.streamBubble]}
+        />
         <Text style={styles.footer}>— end of list —</Text>
       </ScrollView>
     </View>
@@ -76,6 +86,7 @@ const styles = StyleSheet.create({
   ticks: { color: '#ECECF1', flex: 1, fontVariant: ['tabular-nums'] },
   button: { backgroundColor: '#8B5CF6', borderRadius: 10, paddingHorizontal: 10, paddingVertical: 7 },
   freeze: { backgroundColor: '#B45309' },
+  ghost: { backgroundColor: '#24242E' },
   buttonText: { color: 'white', fontWeight: '700' },
   list: { paddingVertical: 12, gap: 10 },
   bubble: { maxWidth: '85%', borderRadius: 18, paddingHorizontal: 14, paddingVertical: 10 },

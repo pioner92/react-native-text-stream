@@ -1,7 +1,7 @@
 // Local streaming server for the example app: node server/stream-server.mjs
 //
 // GET  /?fmt=raw|sse|ndjson&tps=<chunks/s, 0 = burst>&chunk=<bytes (raw) or chars>
-//        &repeat=<paragraphs> | &bytes=<approximate body size>&id=<run id>
+//        &repeat=<paragraphs> | &bytes=<approximate body size>&id=<run id>&para=<paragraph bytes>
 // GET  /log?id=<run id>          -> { total, events: [[sentAtMs, cumulativeBytes], ...] }
 // POST /results?name=<file>      -> writes the JSON body to bench-results/<file>.json
 import fs from 'node:fs';
@@ -24,8 +24,15 @@ function buildText(q) {
   const targetBytes = Number(q.get('bytes') ?? 0);
   const out = [];
   let size = 0;
+  // para=<bytes>: merge sentences into paragraphs of about this size (0 = one per sentence).
+  const paraBytes = Number(q.get('para') ?? 0);
+  let inPara = 0;
   for (let i = 0; targetBytes ? size < targetBytes : i < Number(q.get('repeat') ?? 20); i++) {
-    const p = PARAGRAPHS[i % PARAGRAPHS.length] + '\n\n';
+    const sentence = PARAGRAPHS[i % PARAGRAPHS.length];
+    inPara += Buffer.byteLength(sentence);
+    const breakHere = !paraBytes || inPara >= paraBytes;
+    if (breakHere) inPara = 0;
+    const p = sentence + (breakHere ? '\n\n' : ' ');
     out.push(p);
     size += Buffer.byteLength(p);
   }

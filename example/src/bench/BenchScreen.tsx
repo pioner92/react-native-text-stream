@@ -12,10 +12,11 @@ import {
   type Scenario,
   type VariantId,
   LAYOUT,
+  TAG,
 } from './config';
 import { startJsLoad, startJsProbe } from './probes';
 import { latencyStats, median, type LatencyStats, type Point } from './stats';
-import { ChatFrame, VARIANT_COMPONENTS, type VariantResult } from './variants';
+import { BlockFrame, ChatFrame, VARIANT_COMPONENTS, type VariantResult } from './variants';
 
 const SCENARIOS = ALL_SCENARIOS.filter((s) => !FOCUS.scenarios || FOCUS.scenarios.includes(s.id));
 const VARIANTS = ALL_VARIANTS.filter((v) => !FOCUS.variants || FOCUS.variants.includes(v.id));
@@ -39,6 +40,10 @@ export interface RunMetrics extends LatencyStats {
   uiIdleMs: number | null;
   /** Main-thread time to tear the view down after the run (not part of the run's UI stats). */
   teardownMs: number;
+  /** C only: [ticks, appendMs, layoutMs, commitMs, maxTickMs, heightReports, maxTickBytes, slowTicks, grows]. */
+  render?: number[];
+  memBeforeMb: number;
+  memAfterMb: number;
 }
 
 interface Mounted {
@@ -58,7 +63,15 @@ const waitIdle = (m: FrameMonitor) =>
 const afterCommit = () =>
   new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
 
-export function BenchScreen({ onBack }: { onBack: () => void }) {
+export function BenchScreen({
+  onBack,
+  onOpenHistory,
+  onOpenMount,
+}: {
+  onBack: () => void;
+  onOpenHistory: () => void;
+  onOpenMount: () => void;
+}) {
   const [mounted, setMounted] = useState<Mounted | null>(null);
   const [status, setStatus] = useState('Ready');
   const [results, setResults] = useState<RunMetrics[]>([]);
@@ -70,9 +83,13 @@ export function BenchScreen({ onBack }: { onBack: () => void }) {
     const runId = `${s.id}-${variant}-${rep}-${Date.now()}`;
     const url = streamUrl(s, runId);
 
+    const memBeforeMb = monitor.current.memoryFootprintMb();
     const stopProbe = startJsProbe();
     const stopLoad = s.jsLoad ? startJsLoad(s.jsLoad.busyMs, s.jsLoad.everyMs) : () => {};
     monitor.current.start();
+    // Wait for the monitor's first frame: a stall before it would not count as a frame.
+    await monitor.current.markPainted();
+    await monitor.current.markPainted();
 
     const result = await new Promise<VariantResult | null>((resolve) => {
       const timer = setTimeout(() => resolve(null), RUN_TIMEOUT_MS);
@@ -90,6 +107,7 @@ export function BenchScreen({ onBack }: { onBack: () => void }) {
     // Keep monitoring until the UI is smooth again, so deferred work lands in this run's stats.
     const idleAt = await waitIdle(monitor.current);
     const ui = await monitor.current.stop();
+    const memAfterMb = monitor.current.memoryFootprintMb();
     stopLoad();
     const js = stopProbe();
     if (FOCUS.holdMs) await sleep(FOCUS.holdMs);
@@ -124,6 +142,9 @@ export function BenchScreen({ onBack }: { onBack: () => void }) {
       uiMaxFrameMs: Math.round(ui.maxFrameMs),
       uiIdleMs: idleAt != null && log.events.length ? Math.round(idleAt - log.events[0][0]) : null,
       teardownMs: Math.round(teardownMs),
+      render: result?.render,
+      memBeforeMb: Math.round(memBeforeMb),
+      memAfterMb: Math.round(memAfterMb),
     };
   }, []);
 
@@ -152,10 +173,10 @@ export function BenchScreen({ onBack }: { onBack: () => void }) {
           }
         }
       }
-      const name = `bench-${LAYOUT === 'bubble' ? 'bubble-' : ''}${startedAt.replace(/[:.]/g, '-')}`;
+      const name = `bench-${LAYOUT}-${TAG}-${startedAt.replace(/[:.]/g, '-')}`;
       await globalThis.fetch(`${SERVER}/results?name=${name}`, {
         method: 'POST',
-        body: JSON.stringify({ startedAt, layout: LAYOUT, reps: REPS, scenarios: SCENARIOS, runs: all }, null, 2),
+        body: JSON.stringify({ startedAt, tag: TAG, layout: LAYOUT, reps: REPS, scenarios: SCENARIOS, runs: all }, null, 2),
       });
       setStatus(`Done · saved bench-results/${name}.json`);
     } catch (e) {
@@ -173,7 +194,12 @@ export function BenchScreen({ onBack }: { onBack: () => void }) {
         <Pressable onPress={onBack} hitSlop={12}>
           <Text style={styles.back}>‹ Demo</Text>
         </Pressable>
-        <Text style={styles.title}>Benchmark</Text>
+        <Pressable onPress={onOpenMount} hitSlop={12}>
+          <Text style={styles.back}>Mount ›</Text>
+        </Pressable>
+        <Pressable onPress={onOpenHistory} hitSlop={12}>
+          <Text style={styles.back}>History ›</Text>
+        </Pressable>
         <Pressable onPress={runAll} style={styles.run}>
           <Text style={styles.runText}>Run all</Text>
         </Pressable>
@@ -186,6 +212,10 @@ export function BenchScreen({ onBack }: { onBack: () => void }) {
             <ChatFrame key={mounted.key}>
               <Variant url={mounted.url} markPainted={markPainted} onFinish={mounted.onFinish} />
             </ChatFrame>
+          ) : LAYOUT === 'block' ? (
+            <BlockFrame key={mounted.key}>
+              <Variant url={mounted.url} markPainted={markPainted} onFinish={mounted.onFinish} />
+            </BlockFrame>
           ) : (
             <Variant key={mounted.key} url={mounted.url} markPainted={markPainted} onFinish={mounted.onFinish} />
           )
