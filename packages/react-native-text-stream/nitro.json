@@ -13,12 +13,6 @@
     "androidCxxLibName": "TextStream"
   },
   "autolinking": {
-    "TextStream": {
-      "ios": {
-        "language": "swift",
-        "implementationClassName": "HybridTextStream"
-      }
-    },
     "FrameMonitor": {
       "ios": {
         "language": "swift",

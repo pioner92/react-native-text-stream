@@ -6,6 +6,7 @@
 #include <cmath>
 #include <jsi/jsi.h>
 #include <memory>
+#include <optional>
 #include <react/renderer/components/view/ConcreteViewShadowNode.h>
 #include <react/renderer/components/view/ViewEventEmitter.h>
 #include <react/renderer/components/view/ViewProps.h>
@@ -13,6 +14,7 @@
 #include <react/renderer/core/LayoutConstraints.h>
 #include <react/renderer/core/propsConversions.h>
 #include <react/renderer/graphics/Color.h>
+#include <string>
 #include <yoga/Yoga.h>
 
 namespace facebook::react {
@@ -22,13 +24,15 @@ inline constexpr const char StreamTextViewComponentName[] = "StreamTextView";
 /**
  * Reads `source` straight from the JS value: Fabric's folly-based prop conversion would lose an
  * ArrayBuffer. Needs RawPropsParser's JSI mode, which is the default since React Native 0.85.
+ * Returns nullopt for props that arrived as folly::dynamic: once setNativeProps was used, Fabric
+ * merges every later update through folly, and the buffer in it is gone, so keep the current one.
  */
-inline std::shared_ptr<jsi::MutableBuffer> streamTextSourceFromRawValue(const RawValue &rawValue) {
+inline std::optional<std::shared_ptr<jsi::MutableBuffer>> streamTextSourceFromRawValue(const RawValue &rawValue) {
   std::pair<jsi::Runtime *, jsi::Value> jsiValue;
   try {
     jsiValue = static_cast<std::pair<jsi::Runtime *, jsi::Value>>(rawValue);
   } catch (const std::exception &) {
-    return nullptr; // props that arrived as folly::dynamic carry no buffer
+    return std::nullopt;
   }
   auto &[runtime, value] = jsiValue;
   if (runtime == nullptr || !value.isObject()) {
@@ -52,16 +56,49 @@ class StreamTextViewProps final : public ViewProps {
       : ViewProps(context, sourceProps, rawProps),
         source(sourceProps.source),
         fontSize(convertRawProp(context, rawProps, "fontSize", sourceProps.fontSize, Float{15})),
-        color(convertRawProp(context, rawProps, "color", sourceProps.color, SharedColor{})) {
+        fontFamily(convertRawProp(context, rawProps, "fontFamily", sourceProps.fontFamily, {})),
+        fontWeight(convertRawProp(context, rawProps, "fontWeight", sourceProps.fontWeight, {})),
+        color(convertRawProp(context, rawProps, "color", sourceProps.color, SharedColor{})),
+        lineHeight(convertRawProp(context, rawProps, "lineHeight", sourceProps.lineHeight, Float{0})),
+        letterSpacing(convertRawProp(context, rawProps, "letterSpacing", sourceProps.letterSpacing, Float{0})),
+        textAlign(convertRawProp(context, rawProps, "textAlign", sourceProps.textAlign, {})),
+        selectable(convertRawProp(context, rawProps, "selectable", sourceProps.selectable, true)),
+        selectionColor(convertRawProp(context, rawProps, "selectionColor", sourceProps.selectionColor, SharedColor{})),
+        recordDisplayLog(convertRawProp(context, rawProps, "recordDisplayLog", sourceProps.recordDisplayLog, false)) {
     // Always look the key up: the parser only forwards keys that the constructor asks for.
     if (const RawValue *rawSource = rawProps.at("source", nullptr, nullptr)) {
-      source = streamTextSourceFromRawValue(*rawSource);
+      if (auto parsed = streamTextSourceFromRawValue(*rawSource)) {
+        source = std::move(*parsed);
+      }
     }
   }
 
   std::shared_ptr<jsi::MutableBuffer> source;
   Float fontSize{15};
+  std::string fontFamily;
+  std::string fontWeight;
   SharedColor color{};
+  /** 0 = the font's own line height. */
+  Float lineHeight{0};
+  Float letterSpacing{0};
+  std::string textAlign;
+  bool selectable{true};
+  SharedColor selectionColor{};
+  bool recordDisplayLog{false};
+};
+
+class StreamTextViewEventEmitter final : public ViewEventEmitter {
+ public:
+  using ViewEventEmitter::ViewEventEmitter;
+
+  void onStatusChange(std::string status, double bytes) const {
+    dispatchEvent("statusChange", [status = std::move(status), bytes](jsi::Runtime &runtime) {
+      auto payload = jsi::Object(runtime);
+      payload.setProperty(runtime, "status", jsi::String::createFromUtf8(runtime, status));
+      payload.setProperty(runtime, "bytes", bytes);
+      return payload;
+    });
+  }
 };
 
 struct StreamTextViewState {
@@ -72,7 +109,7 @@ struct StreamTextViewState {
 class StreamTextViewShadowNode final : public ConcreteViewShadowNode<
                                            StreamTextViewComponentName,
                                            StreamTextViewProps,
-                                           ViewEventEmitter,
+                                           StreamTextViewEventEmitter,
                                            StreamTextViewState> {
  public:
   using ConcreteViewShadowNode::ConcreteViewShadowNode;

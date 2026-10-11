@@ -19,6 +19,9 @@ namespace margelo::nitro::textstream {
       prototype.registerHybridMethod("markPainted", &HybridFrameMonitorSpec::markPainted);
       prototype.registerHybridMethod("waitIdle", &HybridFrameMonitorSpec::waitIdle);
       prototype.registerHybridMethod("streamTextDisplayLog", &HybridFrameMonitorSpec::streamTextDisplayLog);
+      prototype.registerHybridMethod("streamTextRenderStats", &HybridFrameMonitorSpec::streamTextRenderStats);
+      prototype.registerHybridMethod("streamTextTotals", &HybridFrameMonitorSpec::streamTextTotals);
+      prototype.registerHybridMethod("memoryFootprintMb", &HybridFrameMonitorSpec::memoryFootprintMb);
     });
   }
 

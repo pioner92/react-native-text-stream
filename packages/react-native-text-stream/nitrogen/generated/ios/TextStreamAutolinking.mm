@@ -10,7 +10,6 @@
 #import "TextStream-Swift-Cxx-Umbrella.hpp"
 #import <type_traits>
 
-#include "HybridTextStreamSpecSwift.hpp"
 #include "HybridFrameMonitorSpecSwift.hpp"
 
 @interface TextStreamAutolinking : NSObject
@@ -22,13 +21,6 @@
   using namespace margelo::nitro;
   using namespace margelo::nitro::textstream;
 
-  HybridObjectRegistry::registerHybridObjectConstructor(
-    "TextStream",
-    []() -> std::shared_ptr<HybridObject> {
-      std::shared_ptr<HybridTextStreamSpec> hybridObject = TextStream::TextStreamAutolinking::createTextStream();
-      return hybridObject;
-    }
-  );
   HybridObjectRegistry::registerHybridObjectConstructor(
     "FrameMonitor",
     []() -> std::shared_ptr<HybridObject> {

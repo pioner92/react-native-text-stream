@@ -116,5 +116,15 @@
         }
       ]
     ]
+  },
+  "codegenConfig": {
+    "name": "TextStreamSpec",
+    "type": "modules",
+    "jsSrcsDir": "src/codegen",
+    "ios": {
+      "modulesProvider": {
+        "StreamTextBuffers": "StreamTextBuffersProvider"
+      }
+    }
   }
 }

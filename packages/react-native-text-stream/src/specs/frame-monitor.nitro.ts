@@ -32,4 +32,18 @@ export interface FrameMonitor extends HybridObject<{ ios: 'swift' }> {
    * `nativeID` is `key`: when its bytes reached the screen.
    */
   streamTextDisplayLog(key: string): number[]
+  /**
+   * `[ticks, appendMs, layoutMs, commitMs, maxTickMs, heightReports, maxTickBytes, slowTicks, grows]`
+   * main-thread cost of the StreamTextView with `nativeID` `key`; empty until its stream finished.
+   */
+  streamTextRenderStats(key: string): number[]
+  /**
+   * `[inits, initMs, ticks, tickMs, layoutMs, commitMs, attaches, attachMs, widthLayouts, widthLayoutMs]`
+   * summed over every StreamTextView since the last reset. tickMs includes the layout and commit
+   * done in ticks; layoutMs/commitMs also count the measuring done outside ticks; attachMs and
+   * widthLayoutMs (a view's width changed) include any tick and commit they ran.
+   */
+  streamTextTotals(reset: boolean): number[]
+  /** The app's physical memory footprint in MB (what Xcode's memory gauge shows). */
+  memoryFootprintMb(): number
 }

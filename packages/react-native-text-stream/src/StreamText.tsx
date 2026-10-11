@@ -1,53 +1,96 @@
-import React, { forwardRef, useImperativeHandle, useMemo, useRef } from 'react'
-import type { ViewProps } from 'react-native'
+import React, { forwardRef, useCallback, useEffect, useImperativeHandle, useRef } from 'react'
 import {
-  callback,
-  getHostComponent,
-  type HybridRef,
-} from 'react-native-nitro-modules'
-import TextStreamConfig from '../nitrogen/generated/shared/json/TextStreamConfig.json'
+  codegenNativeCommands,
+  processColor,
+  TurboModuleRegistry,
+  type ColorValue,
+  type NativeSyntheticEvent,
+  type TurboModule,
+  type ViewProps,
+} from 'react-native'
+import * as NativeComponentRegistry from 'react-native/Libraries/NativeComponent/NativeComponentRegistry'
 import type {
+  StreamTextAlign,
+  StreamTextFontWeight,
   StreamTextState,
   StreamTextStatus,
-  TextStreamMethods,
-  TextStreamProps,
-} from './specs/text-stream.nitro'
+} from './types'
 
-const NativeStreamText = getHostComponent<TextStreamProps, TextStreamMethods>(
-  'TextStream',
-  () => TextStreamConfig
-)
+type StatusEvent = NativeSyntheticEvent<{ status: StreamTextStatus; bytes: number }>
 
-type NativeRef = HybridRef<TextStreamProps, TextStreamMethods>
+type NativeProps = ViewProps & {
+  source?: ArrayBuffer | null
+  fontSize?: number
+  fontFamily?: string
+  fontWeight?: string
+  color?: ColorValue
+  lineHeight?: number
+  letterSpacing?: number
+  textAlign?: string
+  selectable?: boolean
+  selectionColor?: ColorValue
+  recordDisplayLog?: boolean
+  onStatusChange?: (event: StatusEvent) => void
+}
 
-export type StreamTextFontWeight =
-  | 'normal'
-  | 'bold'
-  | '100'
-  | '200'
-  | '300'
-  | '400'
-  | '500'
-  | '600'
-  | '700'
-  | '800'
-  | '900'
+// Hand-written Fabric component (cpp/StreamTextViewShadowNode.hpp, ios/fabric/).
+const NativeStreamText = NativeComponentRegistry.get<NativeProps>('StreamTextView', () => ({
+  uiViewClassName: 'StreamTextView',
+  validAttributes: {
+    // Two ArrayBuffers deep-compare as equal (no enumerable keys): compare by identity.
+    source: { diff: (a: unknown, b: unknown) => a !== b },
+    fontSize: true,
+    fontFamily: true,
+    fontWeight: true,
+    color: { process: processColor },
+    lineHeight: true,
+    letterSpacing: true,
+    textAlign: true,
+    selectable: true,
+    selectionColor: { process: processColor },
+    recordDisplayLog: true,
+  },
+  directEventTypes: {
+    topStatusChange: { registrationName: 'onStatusChange' },
+  },
+}))
 
-export type StreamTextProps = Omit<
-  TextStreamProps,
-  'source' | 'fontWeight' | 'onStatusChange' | 'onAtEndChange' | 'onContentSizeChange'
-> &
-  Pick<ViewProps, 'style' | 'testID' | 'pointerEvents'> & {
-    /** A TSB1 buffer, e.g. `res.nativeBuffer`. Or hand it over with `ref.attach()`. */
-    source?: ArrayBuffer | null
-    fontWeight?: StreamTextFontWeight
-    /** Fires when the stream starts, and when it ends once all of its text is on screen. */
-    onStatusChange?: (status: StreamTextStatus, bytes: number) => void
-    /** Fires when the user scrolls away from the end, or back to it. */
-    onAtEndChange?: (atEnd: boolean) => void
-    /** Fires when the text's laid-out size changes, at most every 100 ms. */
-    onContentSizeChange?: (width: number, height: number) => void
-  }
+// Fabric view commands carry only plain values, so an ArrayBuffer goes to the hand-written
+// StreamTextBuffers TurboModule (cpp/StreamTextBuffers.hpp) first; `attach` sends its id.
+interface StreamTextBuffers extends TurboModule {
+  /** Keeps a natively-backed buffer for one `attach` command; 0 for a buffer created in JS. */
+  put(buffer: ArrayBuffer): number
+}
+const Buffers = TurboModuleRegistry.get<StreamTextBuffers>('StreamTextBuffers')
+
+const Commands = codegenNativeCommands<{
+  attach(view: never, bufferId: number): void
+  clear(view: never): void
+}>({ supportedCommands: ['attach', 'clear'] })
+
+export interface StreamTextProps extends ViewProps {
+  /**
+   * A TSB1 buffer, e.g. `res.nativeBuffer` from the patched nitro-fetch. The view reads new bytes
+   * from it on every frame and grows with the text, without JS. Or hand it over with `ref.attach()`.
+   */
+  source?: ArrayBuffer | null
+  fontSize?: number
+  /** A font family or PostScript name, e.g. "Menlo"; defaults to the system font. */
+  fontFamily?: string
+  fontWeight?: StreamTextFontWeight
+  color?: ColorValue
+  /** Line height in points; defaults to the font's own. */
+  lineHeight?: number
+  letterSpacing?: number
+  textAlign?: StreamTextAlign
+  /** Defaults to true. */
+  selectable?: boolean
+  selectionColor?: ColorValue
+  /** Fires when a stream starts, and with its final status once all of its text is on screen. */
+  onStatusChange?: (status: StreamTextStatus, bytes: number) => void
+  /** Benchmarks only: records when bytes reach the screen, under `nativeID`. */
+  recordDisplayLog?: boolean
+}
 
 /** What `<StreamText ref={…} />` gives you. */
 export interface StreamTextHandle {
@@ -55,98 +98,138 @@ export interface StreamTextHandle {
   attach(buffer: ArrayBuffer | undefined): void
   /** Same as `attach(undefined)`. */
   clear(): void
-  scrollToEnd(options?: { animated?: boolean }): void
-  /** A snapshot of the stream's state, read synchronously. */
+  /** The stream's state, read synchronously. */
   getStatus(): StreamTextState
-  /** The text shown so far. */
+  /** The text received so far. */
   getText(): Promise<string>
-  /** Benchmarks only, with `recordDisplayLog`: `[wallClockMs, bytesShown, ...]` pairs. */
-  getDisplayLog(): number[]
 }
 
-const IDLE_STATE: StreamTextState = { status: 'idle', bytes: 0, shownBytes: 0 }
+type HostInstance = object
 
-type EventName = 'onStatusChange' | 'onAtEndChange' | 'onContentSizeChange'
+const TSB_HEADER_SIZE = 64
+const IDLE: StreamTextState = { status: 'idle', bytes: 0 }
 
-/**
- * Native views take functions wrapped in `callback()`. A wrapper that stays the same across
- * renders and calls the latest handler keeps a new arrow function from re-sending the prop.
- */
-// `_name` only ties the handler type to its prop.
-function useEventProp<K extends EventName>(_name: K, handler: StreamTextProps[K]): any {
-  const latest = useRef(handler)
-  latest.current = handler
-  const stable = useMemo(
-    () => callback((...args: unknown[]) => (latest.current as any)?.(...args)),
-    []
-  )
-  return handler ? stable : undefined
+/** TSB1 header: `committed` is a little-endian u64 at offset 8. */
+function committedBytes(buffer: ArrayBuffer): number {
+  const header = new DataView(buffer, 0, TSB_HEADER_SIZE)
+  return header.getUint32(8, true) + header.getUint32(12, true) * 2 ** 32
 }
 
-/**
- * A native text view that renders a TSB1 buffer as it fills, without JS per chunk.
- *
- * ```tsx
- * const streamRef = useStreamTextRef()
- * streamRef.attach(res.nativeBuffer)
- * <StreamText ref={streamRef} />
- * ```
- */
-export const StreamText = forwardRef<StreamTextHandle, StreamTextProps>(
-  function StreamText(
-    { onStatusChange, onAtEndChange, onContentSizeChange, ...props },
-    ref
-  ) {
-    const native = useRef<NativeRef | null>(null)
-    // A buffer attached before the native view was ready; applied once it is.
-    const pending = useRef<{ buffer: ArrayBuffer | undefined } | null>(null)
-
-    const hybridRef = useMemo(
-      () =>
-        callback((view: NativeRef) => {
-          native.current = view
-          if (pending.current) {
-            view.attachSource(pending.current.buffer)
-            pending.current = null
-          }
-        }),
-      []
-    )
-
-    useImperativeHandle(
-      ref,
-      () => {
-        const attach = (buffer: ArrayBuffer | undefined) => {
-          if (native.current) native.current.attachSource(buffer)
-          else pending.current = { buffer }
-        }
-        return {
-          attach,
-          clear: () => attach(undefined),
-          scrollToEnd: (options) =>
-            native.current?.scrollToEnd(options?.animated ?? true),
-          getStatus: () => native.current?.getStatus() ?? IDLE_STATE,
-          getText: () => native.current?.getText() ?? Promise.resolve(''),
-          getDisplayLog: () => native.current?.getDisplayLog() ?? [],
-        }
-      },
-      []
-    )
-
-    return (
-      <NativeStreamText
-        {...props}
-        onStatusChange={useEventProp('onStatusChange', onStatusChange)}
-        onAtEndChange={useEventProp('onAtEndChange', onAtEndChange)}
-        onContentSizeChange={useEventProp('onContentSizeChange', onContentSizeChange)}
-        hybridRef={hybridRef}
-      />
-    )
+function decodeUtf8(bytes: Uint8Array): string {
+  const Decoder = (globalThis as { TextDecoder?: new (label: string) => { decode(b: Uint8Array): string } })
+    .TextDecoder
+  if (Decoder) return new Decoder('utf-8').decode(bytes)
+  // Fallback for runtimes without TextDecoder; invalid sequences become U+FFFD.
+  let out = ''
+  for (let i = 0; i < bytes.length; ) {
+    const b = bytes[i]!
+    const n = b < 0x80 ? 1 : b >= 0xf0 ? 4 : b >= 0xe0 ? 3 : b >= 0xc0 ? 2 : 0
+    if (n === 0 || i + n > bytes.length) {
+      out += '�'
+      i++
+      continue
+    }
+    let cp = n === 1 ? b : b & (0xff >> (n + 1))
+    for (let k = 1; k < n; k++) cp = (cp << 6) | (bytes[i + k]! & 0x3f)
+    out += String.fromCodePoint(cp)
+    i += n
   }
-)
+  return out
+}
 
-export type StreamTextRef = React.RefObject<StreamTextHandle | null> &
-  StreamTextHandle
+/**
+ * A native text view that renders a TSB1 buffer as it fills and grows with its text, like
+ * `<Text>`: put it in a chat bubble, a list cell or a ScrollView. No JS runs per chunk, and
+ * it keeps growing while the JS thread is busy.
+ */
+export const StreamText = forwardRef<StreamTextHandle, StreamTextProps>(function StreamText(
+  { source, onStatusChange, ...props },
+  ref
+) {
+  const native = useRef<HostInstance | null>(null)
+  // Whichever was set last, the `source` prop or `attach()`; read by getStatus/getText.
+  const current = useRef<ArrayBuffer | null>(source ?? null)
+  const lastStatus = useRef<StreamTextStatus | null>(null)
+  // A buffer attached before the native view mounted.
+  const pending = useRef<{ buffer: ArrayBuffer | null } | null>(null)
+
+  // Only a real change of the prop resets: a buffer attached before mount must survive the first run.
+  const previousSource = useRef(source)
+  useEffect(() => {
+    if (previousSource.current === source) return
+    previousSource.current = source
+    current.current = source ?? null
+    lastStatus.current = null
+  }, [source])
+
+  const send = useCallback((instance: HostInstance, buffer: ArrayBuffer | null) => {
+    if (!buffer) return Commands.clear(instance as never)
+    const bufferId = Buffers?.put(buffer) ?? 0
+    if (bufferId === 0) {
+      console.warn('StreamText: attach() needs a natively-backed ArrayBuffer, e.g. res.nativeBuffer')
+      return
+    }
+    Commands.attach(instance as never, bufferId)
+  }, [])
+
+  const setNative = useCallback(
+    (instance: HostInstance | null) => {
+      native.current = instance
+      if (instance && pending.current) {
+        send(instance, pending.current.buffer)
+        pending.current = null
+      }
+    },
+    [send]
+  )
+
+  const handleStatus = useCallback(
+    (event: StatusEvent) => {
+      lastStatus.current = event.nativeEvent.status
+      onStatusChange?.(event.nativeEvent.status, event.nativeEvent.bytes)
+    },
+    [onStatusChange]
+  )
+
+  useImperativeHandle(
+    ref,
+    () => {
+      const attach = (buffer: ArrayBuffer | undefined) => {
+        current.current = buffer ?? null
+        lastStatus.current = null
+        if (native.current) send(native.current, buffer ?? null)
+        else pending.current = { buffer: buffer ?? null }
+      }
+      return {
+        attach,
+        clear: () => attach(undefined),
+        getStatus: () => {
+          const buffer = current.current
+          if (!buffer || buffer.byteLength < TSB_HEADER_SIZE) return IDLE
+          return { status: lastStatus.current ?? 'streaming', bytes: committedBytes(buffer) }
+        },
+        getText: async () => {
+          const buffer = current.current
+          if (!buffer || buffer.byteLength < TSB_HEADER_SIZE) return ''
+          return decodeUtf8(new Uint8Array(buffer, TSB_HEADER_SIZE, committedBytes(buffer)))
+        },
+      }
+    },
+    [send]
+  )
+
+  return (
+    <NativeStreamText
+      {...props}
+      ref={setNative as never}
+      source={source}
+      // Always subscribed: getStatus() needs the final status even without an onStatusChange prop.
+      onStatusChange={handleStatus}
+    />
+  )
+})
+
+export type StreamTextRef = React.RefObject<StreamTextHandle | null> & StreamTextHandle
 
 /**
  * A ref for `<StreamText ref={streamRef} />` that you can call directly, even before the view mounts.
@@ -160,11 +243,11 @@ export type StreamTextRef = React.RefObject<StreamTextHandle | null> &
 export function useStreamTextRef(): StreamTextRef {
   const ref = useRef<StreamTextRef | null>(null)
   if (ref.current == null) {
-    let pending: { buffer: ArrayBuffer | undefined } | null = null
+    let pendingBuffer: { buffer: ArrayBuffer | undefined } | null = null
     let handle: StreamTextHandle | null = null
     const attach = (buffer: ArrayBuffer | undefined) => {
       if (handle) handle.attach(buffer)
-      else pending = { buffer }
+      else pendingBuffer = { buffer }
     }
     ref.current = {
       // React writes the view's handle here on mount and null on unmount.
@@ -173,17 +256,15 @@ export function useStreamTextRef(): StreamTextRef {
       },
       set current(next: StreamTextHandle | null) {
         handle = next
-        if (next && pending) {
-          next.attach(pending.buffer)
-          pending = null
+        if (next && pendingBuffer) {
+          next.attach(pendingBuffer.buffer)
+          pendingBuffer = null
         }
       },
       attach,
       clear: () => attach(undefined),
-      scrollToEnd: (options) => handle?.scrollToEnd(options),
-      getStatus: () => handle?.getStatus() ?? IDLE_STATE,
+      getStatus: () => handle?.getStatus() ?? IDLE,
       getText: () => handle?.getText() ?? Promise.resolve(''),
-      getDisplayLog: () => handle?.getDisplayLog() ?? [],
     }
   }
   return ref.current

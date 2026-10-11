@@ -108,6 +108,30 @@ namespace margelo::nitro::textstream {
       auto __value = std::move(__result.value());
       return __value;
     }
+    inline std::vector<double> streamTextRenderStats(const std::string& key) override {
+      auto __result = _swiftPart.streamTextRenderStats(key);
+      if (__result.hasError()) [[unlikely]] {
+        std::rethrow_exception(__result.error());
+      }
+      auto __value = std::move(__result.value());
+      return __value;
+    }
+    inline std::vector<double> streamTextTotals(bool reset) override {
+      auto __result = _swiftPart.streamTextTotals(std::forward<decltype(reset)>(reset));
+      if (__result.hasError()) [[unlikely]] {
+        std::rethrow_exception(__result.error());
+      }
+      auto __value = std::move(__result.value());
+      return __value;
+    }
+    inline double memoryFootprintMb() override {
+      auto __result = _swiftPart.memoryFootprintMb();
+      if (__result.hasError()) [[unlikely]] {
+        std::rethrow_exception(__result.error());
+      }
+      auto __value = std::move(__result.value());
+      return __value;
+    }
 
   private:
     TextStream::HybridFrameMonitorSpec_cxx _swiftPart;

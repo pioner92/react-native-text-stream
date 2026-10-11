@@ -12,18 +12,6 @@ import NitroModules
 public final class TextStreamAutolinking {
   public typealias bridge = margelo.nitro.textstream.bridge.swift
 
-  public static func createTextStream() -> bridge.std__shared_ptr_HybridTextStreamSpec_ {
-    let hybridObject = HybridTextStream()
-    return { () -> bridge.std__shared_ptr_HybridTextStreamSpec_ in
-      let __cxxWrapped = hybridObject.getCxxWrapper()
-      return __cxxWrapped.getCxxPart()
-    }()
-  }
-  
-  public static func isTextStreamRecyclable() -> Bool {
-    return HybridTextStream.self is any RecyclableView.Type
-  }
-  
   public static func createFrameMonitor() -> bridge.std__shared_ptr_HybridFrameMonitorSpec_ {
     let hybridObject = HybridFrameMonitor()
     return { () -> bridge.std__shared_ptr_HybridFrameMonitorSpec_ in

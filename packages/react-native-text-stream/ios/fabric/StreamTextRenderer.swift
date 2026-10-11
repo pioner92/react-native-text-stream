@@ -1,24 +1,28 @@
 import UIKit
 
 /// Renders a TSB1 buffer (see TextStreamBuffer.h) as it fills and sizes itself to the text:
-/// after each append it reports the laid-out height, which the Fabric component view feeds
-/// into its shadow node's state. No JS is involved per chunk.
+/// after each append it reports the laid-out height (only when it changes, i.e. per line), which
+/// the Fabric component view feeds into its shadow node's state. No JS is involved per chunk.
+///
+/// Cost model:
+/// - a background watcher reads the header (two atomic loads) every few milliseconds and wakes the
+///   main thread as soon as bytes or a final status land, so new text shows on the next frame
+///   rather than after the next display-link tick; without new bytes the main thread sleeps;
+/// - a wake appends at most `bytesPerTick`, adapted so the work stays within `frameBudget`; a
+///   burst is spread over frames by the display link, which runs only while there is a backlog;
+/// - TextKit 1 with contiguous layout: appending lays out only the tail, and the used rect gives
+///   the height without laying out the whole text again.
 @objc(StreamTextRenderer)
 public final class StreamTextRenderer: UIView {
   private static let sliceBytes = 16 * 1024
   /// Main-thread time per frame we allow for append + layout (a 60 Hz frame is ~16.7 ms).
   private static let frameBudget: CFTimeInterval = 0.006
   private static let minBytesPerTick = 4 * 1024
-  private static let maxBytesPerTick = 1024 * 1024
-  private static let idleAfter: CFTimeInterval = 0.25
-  private static let idlePollFast: DispatchTimeInterval = .milliseconds(33)
-  private static let idlePollSlow: DispatchTimeInterval = .milliseconds(100)
-  private static let idleSlowAfter: CFTimeInterval = 2
+  private static let maxBytesPerTick = 256 * 1024
 
-  private let textView: UITextView
-  /// The text view keeps this fixed height and the renderer clips it: a text view whose frame
-  /// grows re-lays out all of its text on every resize.
-  private static let textViewHeight: CGFloat = 1_000_000
+  /// Created on the first text: an empty view (e.g. mounted before its first token) is just a
+  /// plain UIView, which is much cheaper to create and keep than a text view.
+  private var textView: StreamTextView?
 
   // Reader state, main thread only.
   private var base: UnsafeMutableRawPointer?
@@ -27,52 +31,74 @@ public final class StreamTextRenderer: UIView {
   private var offset: UInt64 = 0
   private var utf8Tail: [UInt8] = []
   private var finished = false
-  private var lastDataAt: CFTimeInterval = 0
+  /// The attached buffer was finished and small: show it in one go rather than frame by frame.
+  private var instantFill = false
   private var bytesPerTick = 32 * 1024
   private var displayLink: CADisplayLink?
-  private var idleTimer: DispatchSourceTimer?
-  private var idlePollIsSlow = false
+  private lazy var watcher = BufferWatcher { [weak self] in self?.watcherWoke() }
 
   private var textAttributes: [NSAttributedString.Key: Any] = [:]
-  private var reportedHeight: CGFloat = -1
+  private var layoutWidth: CGFloat = -1
+  /// Starts at the shadow node state's initial height.
+  private var reportedHeight: CGFloat = 0
+  private var reportedStatus: String?
   private var unloggedShown: UInt64?
-
-  /// Benchmarks only: when set, records when bytes reach the screen under this key.
-  @objc public var displayLogKey: String?
+  /// Benchmarks only (with `displayLogKey`): main-thread cost per phase.
+  private var stats = StreamTextRenderStats.Sample()
 
   /// Called on the main thread with the text's height at the current width.
   @objc public var onHeightChange: ((CGFloat) -> Void)?
+  /// Called on the main thread: "streaming" when a stream starts, and its final status
+  /// ("done", "error", "cancelled", "truncated") once all of its text is on screen.
+  @objc public var onStatusChange: ((String, Double) -> Void)?
+  /// Benchmarks only: when set, records when bytes reach the screen under this key.
+  @objc public var displayLogKey: String?
 
-  @objc public var fontSize: CGFloat = 15 {
-    didSet { updateTextAttributes() }
+  /// The component view sets it, then calls `applyTextStyle()` once.
+  @objc public var textStyle = StreamTextStyle()
+
+  @objc public var selectable: Bool = true {
+    didSet { textView?.isSelectable = selectable }
   }
 
-  @objc public var textColor: UIColor? {
-    didSet { updateTextAttributes() }
+  @objc public var selectionColor: UIColor? {
+    // nil restores the inherited tint.
+    didSet { textView?.tintColor = selectionColor }
   }
 
   public override init(frame: CGRect) {
-    // TextKit 1: appending to the end re-lays out only the tail, and the used rect gives the height
-    // without laying out the whole text again (TextKit 2 does that once the view isn't scrolling).
-    if #available(iOS 16.0, *) {
-      textView = UITextView(usingTextLayoutManager: false)
-    } else {
-      textView = UITextView()
+    let started = CACurrentMediaTime()
+    defer {
+      let time = CACurrentMediaTime() - started
+      StreamTextRenderStats.shared.addTotals { $0.inits += 1; $0.initTime += time }
     }
     super.init(frame: frame)
-    // Contiguous layout: appending to the end lays out only the new tail.
-    textView.layoutManager.allowsNonContiguousLayout = false
     clipsToBounds = true
+    applyTextStyle()
+  }
+
+  /// The text view, created on first use.
+  private func ensureTextView() -> StreamTextView {
+    if let textView { return textView }
+    let textView = Self.textViewPool.popLast() ?? StreamTextView()
     textView.isEditable = false
-    textView.isSelectable = true
-    // Sized by its text: the surrounding list scrolls, not this view.
+    textView.isSelectable = selectable
     textView.isScrollEnabled = false
+    // No indicators: they'd be extra subviews per bubble, and VoiceOver would list each as a scroll bar.
+    textView.showsVerticalScrollIndicator = false
+    textView.showsHorizontalScrollIndicator = false
     textView.backgroundColor = .clear
+    textView.tintColor = selectionColor
     textView.textContainerInset = .zero
     textView.textContainer.lineFragmentPadding = 0
-    textView.frame = CGRect(x: 0, y: 0, width: bounds.width, height: Self.textViewHeight)
+    // Contiguous layout: appending to the end lays out only the new tail.
+    textView.layoutManager.allowsNonContiguousLayout = false
+    textView.typingAttributes = textAttributes
+    textView.frame = CGRect(x: 0, y: 0, width: bounds.width, height: StreamTextLayout.textViewHeight)
+    textView.visibleBounds = { [weak self] in self?.bounds ?? .zero }
     addSubview(textView)
-    updateTextAttributes()
+    self.textView = textView
+    return textView
   }
 
   @available(*, unavailable)
@@ -80,7 +106,36 @@ public final class StreamTextRenderer: UIView {
 
   deinit {
     displayLink?.invalidate()
-    idleTimer?.cancel()
+    watcher.stop()
+    if let textView { Self.recycle(textView) }
+  }
+
+  /// Cleared text views, reused by new renderers: creating one is the main cost of mounting a
+  /// renderer that gets text. Bounded, so leaving a long chat doesn't pin hundreds of them.
+  private static var textViewPool: [StreamTextView] = []
+  private static let textViewPoolSize = 24
+
+  /// Under memory pressure the pool is the first thing to go.
+  private static let poolDrain: NSObjectProtocol = NotificationCenter.default.addObserver(
+    forName: UIApplication.didReceiveMemoryWarningNotification, object: nil, queue: .main
+  ) { _ in textViewPool.removeAll() }
+
+  private static func recycle(_ textView: StreamTextView) {
+    _ = poolDrain
+    textView.removeFromSuperview()
+    guard textViewPool.count < textViewPoolSize else { return }
+    textView.text = ""
+    textView.visibleBounds = nil
+    textViewPool.append(textView)
+  }
+
+  /// Stops reading the buffer and the frame loop, without callbacks. The component view calls it
+  /// before it releases the buffer, as the watcher reads it off the main thread.
+  @objc public func invalidate() {
+    setTicking(false)
+    watcher.stop()
+    base = nil
+    finished = true
   }
 
   // MARK: - Source
@@ -88,78 +143,155 @@ public final class StreamTextRenderer: UIView {
   /// Starts rendering the TSB1 buffer at `base` (`size` bytes); nil detaches. The caller keeps
   /// the memory alive until the next call.
   @objc public func attach(base newBase: UnsafeMutableRawPointer?, size: Int) {
+    let attachStarted = CACurrentMediaTime()
+    defer {
+      let time = CACurrentMediaTime() - attachStarted
+      StreamTextRenderStats.shared.addTotals { $0.attaches += 1; $0.attachTime += time }
+    }
     setTicking(false)
+    watcher.stop()
+    instantFill = false
+    // A new source starts its own status sequence (a finished one reports only its final status).
+    reportedStatus = nil
     base = nil
     capacity = 0
     offset = 0
     utf8Tail.removeAll()
     finished = false
     unloggedShown = nil
-    if let displayLogKey { StreamTextDisplayLogs.shared.clear(displayLogKey) }
-    textView.text = ""
-    reportHeight()
+    if let displayLogKey {
+      StreamTextDisplayLogs.shared.clear(displayLogKey)
+      StreamTextRenderStats.shared.clear(displayLogKey)
+    }
+    stats = StreamTextRenderStats.Sample()
+    if let textView, textView.textStorage.length > 0 { textView.text = "" }
+    setTextViewHeight(StreamTextLayout.textViewHeight)
+    // The height is reported once at the end: clearing and refilling in one go is one commit.
+    defer { reportHeight() }
 
-    guard let newBase, size >= Int(TSB_HEADER_SIZE) else { return }
+    guard let newBase, size >= Int(TSB_HEADER_SIZE) else {
+      reportStatus("idle", bytes: 0)
+      return
+    }
     let header = newBase.assumingMemoryBound(to: TSBHeader.self).pointee
     guard header.magic == TSB_MAGIC, Int(header.version) == Int(TSB_VERSION),
           header.capacity <= UInt64(size - Int(TSB_HEADER_SIZE)) else {
       NSLog("[StreamText] source is not a valid TSB1 buffer")
+      reportStatus("idle", bytes: 0)
       return
     }
     base = newBase
     capacity = header.capacity
-    lastDataAt = CACurrentMediaTime()
-    setTicking(window != nil)
-    tick()
+    // A finished stream (e.g. a message remounted by a list) that is small enough is shown in one
+    // go, at its final height, instead of being typed out again over several frames.
+    instantFill = tsb_status(newBase) != UInt32(TSB_STATUS_OPEN) && tsb_committed(newBase) <= StreamTextLayout.instantFillBytes
+    if !instantFill {
+      reportStatus("streaming", bytes: 0)
+      setTicking(window != nil)
+      if window != nil { watcher.start(base: newBase, from: 0) }
+    }
+    // A freshly mounted view has no width yet: the text is laid out once it gets one.
+    tick(fillAll: instantFill)
   }
 
   public override func didMoveToWindow() {
     super.didMoveToWindow()
-    setTicking(window != nil && base != nil && !finished)
+    let active = window != nil && base != nil && !finished
+    setTicking(active)
+    if active, let base { watcher.start(base: base, from: offset) } else { watcher.stop() }
   }
-
-  private var layoutWidth: CGFloat = -1
 
   public override func layoutSubviews() {
     super.layoutSubviews()
     // Only a new width re-wraps the text; a new height is our own report coming back.
     guard bounds.width != layoutWidth else { return }
+    let started = CACurrentMediaTime()
     layoutWidth = bounds.width
-    textView.frame = CGRect(x: 0, y: 0, width: bounds.width, height: Self.textViewHeight)
+    if let textView { setTextViewHeight(textView.frame.height) }
     reportHeight()
+    let time = CACurrentMediaTime() - started
+    StreamTextRenderStats.shared.addTotals { $0.widthLayouts += 1; $0.widthLayoutTime += time }
   }
 
-  private func updateTextAttributes() {
-    let font = UIFont.systemFont(ofSize: fontSize)
-    textAttributes = [.font: font, .foregroundColor: textColor ?? .label]
-    textView.typingAttributes = textAttributes
+  // MARK: - Style
+
+  /// Re-applies the style to the whole text: O(text), so only call it when a style prop changed.
+  @objc public func applyTextStyle() {
+    let attributes = textStyle.attributes()
+    textAttributes = attributes
+    guard let textView else { return }
+    textView.typingAttributes = attributes
     let storage = textView.textStorage
-    storage.setAttributes(textAttributes, range: NSRange(location: 0, length: storage.length))
+    storage.setAttributes(attributes, range: NSRange(location: 0, length: storage.length))
     reportHeight()
   }
 
-  private func reportHeight() {
-    let width = bounds.width
-    guard width > 0 else { return }
+  // MARK: - Measuring
+
+  private func setTextViewHeight(_ height: CGFloat) {
+    textView?.frame = CGRect(x: 0, y: 0, width: bounds.width, height: height)
+  }
+
+  /// Returns the time spent committing the new height, if there was one.
+  @discardableResult
+  private func reportHeight() -> CFTimeInterval {
+    guard bounds.width > 0 else { return 0 }
+    let started = CACurrentMediaTime()
+    guard let textView else {
+      // No text view yet, so no text: an empty view has no height.
+      guard reportedHeight != 0 else { return 0 }
+      reportedHeight = 0
+      onHeightChange?(0)
+      return CACurrentMediaTime() - started
+    }
     let layoutManager = textView.layoutManager
     layoutManager.ensureLayout(for: textView.textContainer)
-    let insets = textView.textContainerInset
-    let height = ceil(layoutManager.usedRect(for: textView.textContainer).height + insets.top + insets.bottom)
-    guard height != reportedHeight else { return }
+    // Empty text still has a line for the caret; like <Text>, an empty view has no height (and
+    // mounting one doesn't need a commit).
+    var height = textView.textStorage.length == 0 ? 0 : ceil(layoutManager.usedRect(for: textView.textContainer).height)
+    // Text is only laid out inside the text view's frame: grow it before the text reaches the end.
+    if height > textView.frame.height * 0.75 {
+      var newHeight = textView.frame.height
+      while height > newHeight * 0.75 { newHeight *= 2 }
+      setTextViewHeight(newHeight)
+      layoutManager.ensureLayout(for: textView.textContainer)
+      height = ceil(layoutManager.usedRect(for: textView.textContainer).height)
+      stats.grows += 1
+    }
+    let laidOut = CACurrentMediaTime()
+    stats.layout += laidOut - started
+    guard height != reportedHeight else {
+      StreamTextRenderStats.shared.addTotals { $0.layout += laidOut - started }
+      return 0
+    }
     reportedHeight = height
     onHeightChange?(height)
+    let committed = CACurrentMediaTime()
+    stats.commit += committed - laidOut
+    stats.heightReports += 1
+    StreamTextRenderStats.shared.addTotals {
+      $0.layout += laidOut - started
+      $0.commit += committed - laidOut
+    }
+    return committed - laidOut
+  }
+
+  private func reportStatus(_ status: String, bytes: UInt64) {
+    guard status != reportedStatus else { return }
+    reportedStatus = status
+    onStatusChange?(status, Double(bytes))
   }
 
   // MARK: - Frame loop
 
   private func setTicking(_ on: Bool) {
-    stopIdlePolling()
     if on {
       if let link = displayLink {
         link.isPaused = false
         return
       }
       let link = CADisplayLink(target: RendererLinkProxy(self), selector: #selector(RendererLinkProxy.tick))
+      // Text gains nothing from 120 Hz; 60 is plenty and halves the wakeups on ProMotion.
       link.preferredFrameRateRange = CAFrameRateRange(minimum: 30, maximum: 60, preferred: 60)
       link.add(to: .main, forMode: .common)
       displayLink = link
@@ -169,40 +301,14 @@ public final class StreamTextRenderer: UIView {
     }
   }
 
-  private func startIdlePolling() {
-    guard idleTimer == nil, let link = displayLink else { return }
-    link.isPaused = true
-    let timer = DispatchSource.makeTimerSource(queue: .main)
-    timer.setEventHandler { [weak self] in self?.idlePoll() }
-    idleTimer = timer
-    scheduleIdlePoll(slow: false)
-    timer.resume()
+  /// New bytes or a final status landed: show them now, not at the next frame.
+  private func watcherWoke() {
+    watcher.didWake()
+    guard base != nil, !finished else { return }
+    tick()
   }
 
-  private func scheduleIdlePoll(slow: Bool) {
-    idlePollIsSlow = slow
-    let interval = slow ? Self.idlePollSlow : Self.idlePollFast
-    idleTimer?.schedule(deadline: .now() + interval, repeating: interval,
-                        leeway: slow ? .milliseconds(20) : .milliseconds(5))
-  }
-
-  private func stopIdlePolling() {
-    idleTimer?.cancel()
-    idleTimer = nil
-  }
-
-  private func idlePoll() {
-    guard let base else { return }
-    if tsb_committed(base) > offset || tsb_status(base) != UInt32(TSB_STATUS_OPEN) {
-      stopIdlePolling()
-      displayLink?.isPaused = false
-      tick()
-    } else if !idlePollIsSlow && CACurrentMediaTime() - lastDataAt > Self.idleSlowAfter {
-      scheduleIdlePoll(slow: true)
-    }
-  }
-
-  fileprivate func tick() {
+  fileprivate func tick(fillAll: Bool = false) {
     // Text appended last tick has been laid out and committed by now: log it as shown.
     if let bytes = unloggedShown, let displayLogKey {
       StreamTextDisplayLogs.shared.append(displayLogKey, bytes: bytes)
@@ -212,16 +318,14 @@ public final class StreamTextRenderer: UIView {
       setTicking(false)
       return
     }
-    let consumedBefore = offset
     // Status first: once it is terminal, the committed value read after it is final.
     let status = tsb_status(base)
     let committed = min(tsb_committed(base), capacity)
-    let now = CACurrentMediaTime()
+    let consumedBefore = offset
 
     if committed > offset {
-      lastDataAt = now
-      let storage = textView.textStorage
-      let budget = UInt64(bytesPerTick)
+      let storage = ensureTextView().textStorage
+      let budget = fillAll ? committed - offset : UInt64(bytesPerTick)
       let end = min(committed, offset + budget)
       let started = CACurrentMediaTime()
       let appended = end - offset
@@ -233,31 +337,58 @@ public final class StreamTextRenderer: UIView {
         offset += UInt64(count)
       } while offset < end
       storage.endEditing()
-      reportHeight()
-      if appended >= budget {
-        let perByte = max(CACurrentMediaTime() - started, 1e-6) / Double(appended)
-        bytesPerTick = min(max(Int(Self.frameBudget / perByte), Self.minBytesPerTick), Self.maxBytesPerTick)
+      stats.append += CACurrentMediaTime() - started
+      // Before the first layout there is no width: the text is laid out once the view gets one.
+      let measured = bounds.width > 0
+      let commitTime = fillAll ? 0 : reportHeight()
+      let tickTime = CACurrentMediaTime() - started
+      stats.ticks += 1
+      stats.maxTick = max(stats.maxTick, tickTime)
+      stats.maxTickBytes = max(stats.maxTickBytes, Double(appended))
+      if tickTime > 0.008 { stats.slowTicks += 1 }
+      StreamTextRenderStats.shared.addTotals { $0.ticks += 1; $0.tickTime += tickTime }
+      // Re-estimate from ticks that hit the budget and were laid out (small appends say little about
+      // the cost per byte), without the commit, whose cost doesn't grow with the bytes. The budget
+      // at most doubles per tick, so one cheap tick can't schedule a huge append.
+      if !fillAll && measured && appended >= budget {
+        let perByte = max(tickTime - commitTime, 1e-6) / Double(appended)
+        let estimate = min(Int(Self.frameBudget / perByte), bytesPerTick * 2)
+        bytesPerTick = min(max(estimate, Self.minBytesPerTick), Self.maxBytesPerTick)
       }
     }
+    if displayLogKey != nil && offset > consumedBefore { unloggedShown = offset }
 
     if status != UInt32(TSB_STATUS_OPEN) && offset >= committed {
       if !utf8Tail.isEmpty {
+        // A truncated sequence at the very end: show it as U+FFFD rather than dropping it.
         appendString(String(decoding: utf8Tail, as: UTF8.self))
         utf8Tail.removeAll()
-        reportHeight()
       }
+      if !fillAll { reportHeight() }
       finished = true
-      // One more tick, so the last append can still be logged.
-      if displayLogKey != nil && offset > consumedBefore { unloggedShown = offset; return }
-      setTicking(false)
+      // Everything is in the text storage now: let go of the buffer (the watcher first, as it reads it).
+      watcher.stop()
+      self.base = nil
+      if let displayLogKey { StreamTextRenderStats.shared.set(displayLogKey, stats) }
+      reportStatus(terminalStatus(status), bytes: committed)
+      // One more tick when there is an append left to log.
+      if unloggedShown == nil { setTicking(false) }
       return
     }
-    if displayLogKey != nil && offset > consumedBefore { unloggedShown = offset }
-    if offset >= committed && now - lastDataAt > Self.idleAfter {
-      startIdlePolling()
+    // Frames only while there is a backlog, or an append left to log; otherwise the watcher wakes us.
+    if let displayLink { displayLink.isPaused = offset >= committed && unloggedShown == nil }
+  }
+
+  private func terminalStatus(_ status: UInt32) -> String {
+    switch status {
+    case UInt32(TSB_STATUS_DONE): return "done"
+    case UInt32(TSB_STATUS_CANCELLED): return "cancelled"
+    case UInt32(TSB_STATUS_OVERFLOW): return "truncated"
+    default: return "error"
     }
   }
 
+  /// Decodes `count` bytes from the buffer and appends them, carrying a split sequence over.
   private func appendUTF8(_ start: UnsafePointer<UInt8>, _ count: Int) {
     var p = start
     var remaining = count
@@ -274,6 +405,7 @@ public final class StreamTextRenderer: UIView {
     guard remaining > 0 else { return }
     let complete = rendererUTF8CompletePrefixLength(p, remaining)
     if complete > 0 {
+      // One copy into an NSString; invalid input falls back to U+FFFD replacement.
       let text = NSString(bytes: p, length: complete, encoding: String.Encoding.utf8.rawValue) as String?
         ?? String(decoding: UnsafeBufferPointer(start: p, count: complete), as: UTF8.self)
       appendString(text)
@@ -284,14 +416,74 @@ public final class StreamTextRenderer: UIView {
   }
 
   private func appendString(_ text: String) {
-    textView.textStorage.append(NSAttributedString(string: text, attributes: textAttributes))
+    ensureTextView().textStorage.append(NSAttributedString(string: text, attributes: textAttributes))
   }
 }
 
+/// Exposes only the end of the text, in the renderer's visible frame: an accessibility snapshot of
+/// a text view holding megabytes of text otherwise stalls the main thread for seconds, and the text
+/// view itself is much taller than what is on screen.
+private final class StreamTextView: UITextView {
+  private static let accessibleTailCharacters = 2000
+
+  var visibleBounds: (() -> CGRect)?
+
+  init() {
+    // An explicit TextKit 1 stack (see StreamTextRenderer); the container follows the view's size.
+    let storage = NSTextStorage()
+    let layoutManager = NSLayoutManager()
+    storage.addLayoutManager(layoutManager)
+    let container = NSTextContainer(size: .zero)
+    container.widthTracksTextView = true
+    container.heightTracksTextView = true
+    layoutManager.addTextContainer(container)
+    super.init(frame: .zero, textContainer: container)
+  }
+
+  @available(*, unavailable)
+  required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
+
+  override var isAccessibilityElement: Bool {
+    get { true }
+    set {}
+  }
+
+  override var accessibilityTraits: UIAccessibilityTraits {
+    get { .staticText }
+    set {}
+  }
+
+  override var accessibilityValue: String? {
+    get {
+      let text = textStorage.string as NSString
+      let length = text.length
+      guard length > Self.accessibleTailCharacters else { return text as String }
+      let start = text.rangeOfComposedCharacterSequence(at: length - Self.accessibleTailCharacters).location
+      return "…" + text.substring(from: start)
+    }
+    set {}
+  }
+
+  override var accessibilityFrame: CGRect {
+    get {
+      guard let superview, let visible = visibleBounds?() else { return super.accessibilityFrame }
+      return UIAccessibility.convertToScreenCoordinates(visible, in: superview)
+    }
+    set {}
+  }
+
+  override var accessibilityElements: [Any]? {
+    get { nil }
+    set {}
+  }
+}
+
+/// Total length of the UTF-8 sequence that starts with `lead` (1 for invalid leads).
 private func rendererUTF8SequenceLength(_ lead: UInt8) -> Int {
   lead < 0xC0 ? 1 : lead >= 0xF0 ? 4 : lead >= 0xE0 ? 3 : 2
 }
 
+/// Length of the longest prefix that does not end inside a UTF-8 sequence.
 private func rendererUTF8CompletePrefixLength(_ p: UnsafePointer<UInt8>, _ n: Int) -> Int {
   var i = n - 1
   while i >= 0 && n - i <= 4 {
@@ -301,7 +493,7 @@ private func rendererUTF8CompletePrefixLength(_ p: UnsafePointer<UInt8>, _ n: In
     }
     i -= 1
   }
-  return n
+  return n  // invalid trailing bytes: let the decoder replace them
 }
 
 /// Benchmark display logs, `[wallClockMs, bytesShown, ...]` per key; written on main, read from JS.
@@ -322,6 +514,154 @@ public final class StreamTextDisplayLogs: NSObject {
 
   @objc public func log(for key: String) -> [Double] {
     lock.withLock { logs[key] ?? [] }
+  }
+}
+
+/// Benchmark render stats per key, written when a stream finishes; read from JS.
+@objc(StreamTextRenderStats)
+public final class StreamTextRenderStats: NSObject {
+  struct Sample {
+    var ticks = 0.0, append = 0.0, layout = 0.0, commit = 0.0, maxTick = 0.0
+    var heightReports = 0.0, maxTickBytes = 0.0, slowTicks = 0.0, grows = 0.0
+  }
+
+  /// Main-thread time summed over every renderer, keyed or not (seconds).
+  struct Totals {
+    var inits = 0.0, initTime = 0.0, ticks = 0.0, tickTime = 0.0, layout = 0.0, commit = 0.0
+    var attaches = 0.0, attachTime = 0.0, widthLayouts = 0.0, widthLayoutTime = 0.0
+  }
+
+  @objc public static let shared = StreamTextRenderStats()
+  private let lock = NSLock()
+  private var samples: [String: Sample] = [:]
+  private var totals = Totals()
+
+  /// Off until a benchmark asks for totals: views then pay nothing but a flag check.
+  @objc public static var enabled = false
+
+  func addTotals(_ update: (inout Totals) -> Void) {
+    guard Self.enabled else { return }
+    lock.withLock { update(&totals) }
+  }
+
+  /// `[inits, initMs, ticks, tickMs, layoutMs, commitMs, attaches, attachMs, widthLayouts, widthLayoutMs]`
+  /// since the last reset.
+  @objc public func totals(reset: Bool) -> [Double] {
+    lock.withLock {
+      let t = totals
+      if reset { totals = Totals() }
+      return [t.inits, t.initTime * 1000, t.ticks, t.tickTime * 1000, t.layout * 1000, t.commit * 1000,
+              t.attaches, t.attachTime * 1000, t.widthLayouts, t.widthLayoutTime * 1000]
+    }
+  }
+
+  func set(_ key: String, _ sample: Sample) {
+    lock.withLock { samples[key] = sample }
+  }
+
+  func clear(_ key: String) {
+    lock.withLock { samples[key] = nil }
+  }
+
+  /// `[ticks, appendMs, layoutMs, commitMs, maxTickMs, heightReports, maxTickBytes, slowTicks, grows]`,
+  /// or empty until the stream finished.
+  @objc public func stats(for key: String) -> [Double] {
+    guard let s = lock.withLock({ samples[key] }) else { return [] }
+    return [s.ticks, s.append * 1000, s.layout * 1000, s.commit * 1000, s.maxTick * 1000,
+            s.heightReports, s.maxTickBytes, s.slowTicks, s.grows]
+  }
+}
+
+/// Watches a buffer's header off the main thread and wakes the renderer when bytes or a final
+/// status land. It polls fast while data flows and backs off while the producer is quiet (a model
+/// "thinking"), and stops itself once the status is final.
+private final class BufferWatcher {
+  private static let queue = DispatchQueue(label: "StreamText.watcher", qos: .userInteractive)
+
+  private let lock = NSLock()
+  private let wake: () -> Void
+  // Guarded by `lock`.
+  private var base: UnsafeMutableRawPointer?
+  private var seenBytes: UInt64 = 0
+  private var seenFinal = false
+  private var wakePending = false
+  private var lastChange: CFTimeInterval = 0
+  private var intervalMs = 0
+  private var timer: DispatchSourceTimer?
+
+  init(wake: @escaping () -> Void) {
+    self.wake = wake
+  }
+
+  /// Watches `base` for bytes beyond `from`. Main thread.
+  func start(base: UnsafeMutableRawPointer, from bytes: UInt64) {
+    stop()
+    let timer = DispatchSource.makeTimerSource(queue: Self.queue)
+    lock.withLock {
+      self.base = base
+      seenBytes = bytes
+      seenFinal = false
+      wakePending = false
+      lastChange = CACurrentMediaTime()
+      self.timer = timer
+      schedule(timer, ms: 8)
+    }
+    timer.setEventHandler { [weak self] in self?.poll() }
+    timer.resume()
+  }
+
+  /// After this returns, the watcher no longer reads the buffer. Main thread.
+  func stop() {
+    let timer = lock.withLock { () -> DispatchSourceTimer? in
+      base = nil
+      defer { self.timer = nil }
+      return self.timer
+    }
+    timer?.cancel()
+  }
+
+  /// The renderer handled the wake; the next change wakes it again. Main thread.
+  func didWake() {
+    lock.withLock { wakePending = false }
+  }
+
+  private func poll() {
+    let shouldWake: Bool = lock.withLock {
+      guard let base else { return false }
+      // Status first: once it is terminal, the committed value read after it is final.
+      let final = tsb_status(base) != UInt32(TSB_STATUS_OPEN)
+      let committed = tsb_committed(base)
+      let now = CACurrentMediaTime()
+      var changed = false
+      if committed > seenBytes {
+        seenBytes = committed
+        changed = true
+      }
+      if final && !seenFinal {
+        seenFinal = true
+        changed = true
+      }
+      if changed { lastChange = now }
+      if seenFinal {
+        timer?.cancel()
+        timer = nil
+      } else if let timer {
+        // 8 ms while data flows, then 16 ms, then 50 ms once the producer has been quiet for 5 s.
+        let quiet = now - lastChange
+        let ms = quiet < 1 ? 8 : quiet < 5 ? 16 : 50
+        if ms != intervalMs { schedule(timer, ms: ms) }
+      }
+      guard changed, !wakePending else { return false }
+      wakePending = true
+      return true
+    }
+    if shouldWake { DispatchQueue.main.async(execute: wake) }
+  }
+
+  /// Under `lock`.
+  private func schedule(_ timer: DispatchSourceTimer, ms: Int) {
+    intervalMs = ms
+    timer.schedule(deadline: .now() + .milliseconds(ms), repeating: .milliseconds(ms), leeway: .milliseconds(ms / 4))
   }
 }
 

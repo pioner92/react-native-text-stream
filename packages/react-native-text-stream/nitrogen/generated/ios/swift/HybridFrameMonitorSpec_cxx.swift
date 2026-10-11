@@ -209,4 +209,52 @@ open class HybridFrameMonitorSpec_cxx {
       return bridge.create_Result_std__vector_double__(__exceptionPtr)
     }
   }
+  
+  @inline(__always)
+  public final func streamTextRenderStats(key: std.string) -> bridge.Result_std__vector_double__ {
+    do {
+      let __result = try self.__implementation.streamTextRenderStats(key: String(key))
+      let __resultCpp = { () -> bridge.std__vector_double_ in
+        var __vector = bridge.create_std__vector_double_(__result.count)
+        for __item in __result {
+          __vector.push_back(__item)
+        }
+        return __vector
+      }()
+      return bridge.create_Result_std__vector_double__(__resultCpp)
+    } catch (let __error) {
+      let __exceptionPtr = __error.toCpp()
+      return bridge.create_Result_std__vector_double__(__exceptionPtr)
+    }
+  }
+  
+  @inline(__always)
+  public final func streamTextTotals(reset: Bool) -> bridge.Result_std__vector_double__ {
+    do {
+      let __result = try self.__implementation.streamTextTotals(reset: reset)
+      let __resultCpp = { () -> bridge.std__vector_double_ in
+        var __vector = bridge.create_std__vector_double_(__result.count)
+        for __item in __result {
+          __vector.push_back(__item)
+        }
+        return __vector
+      }()
+      return bridge.create_Result_std__vector_double__(__resultCpp)
+    } catch (let __error) {
+      let __exceptionPtr = __error.toCpp()
+      return bridge.create_Result_std__vector_double__(__exceptionPtr)
+    }
+  }
+  
+  @inline(__always)
+  public final func memoryFootprintMb() -> bridge.Result_double_ {
+    do {
+      let __result = try self.__implementation.memoryFootprintMb()
+      let __resultCpp = __result
+      return bridge.create_Result_double_(__resultCpp)
+    } catch (let __error) {
+      let __exceptionPtr = __error.toCpp()
+      return bridge.create_Result_double_(__exceptionPtr)
+    }
+  }
 }
