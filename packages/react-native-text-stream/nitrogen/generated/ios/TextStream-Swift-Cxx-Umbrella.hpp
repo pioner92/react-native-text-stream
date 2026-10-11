@@ -16,18 +16,23 @@ namespace margelo::nitro::textstream { class HybridFrameMonitorSpec; }
 namespace margelo::nitro::textstream { class HybridStreamTextTestingSpec; }
 // Forward declaration of `StreamTextSnapshot` to properly resolve imports.
 namespace margelo::nitro::textstream { struct StreamTextSnapshot; }
+// Forward declaration of `StreamTextTestStyle` to properly resolve imports.
+namespace margelo::nitro::textstream { struct StreamTextTestStyle; }
 
 // Include C++ defined types
 #include "FrameStats.hpp"
 #include "HybridFrameMonitorSpec.hpp"
 #include "HybridStreamTextTestingSpec.hpp"
 #include "StreamTextSnapshot.hpp"
+#include "StreamTextTestStyle.hpp"
 #include <NitroModules/ArrayBuffer.hpp>
 #include <NitroModules/Promise.hpp>
 #include <NitroModules/Result.hpp>
 #include <exception>
 #include <memory>
+#include <optional>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 // C++ helpers for Swift

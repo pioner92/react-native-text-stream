@@ -20,6 +20,7 @@ namespace margelo::nitro::textstream { struct FrameStats; }
 #include <NitroModules/Promise.hpp>
 #include <vector>
 #include <string>
+#include <unordered_map>
 
 namespace margelo::nitro::textstream {
 
@@ -59,6 +60,7 @@ namespace margelo::nitro::textstream {
       virtual std::vector<double> streamTextDisplayLog(const std::string& key) = 0;
       virtual std::vector<double> streamTextRenderStats(const std::string& key) = 0;
       virtual std::vector<double> streamTextTotals(bool reset) = 0;
+      virtual std::unordered_map<std::string, double> streamTextPhases(bool reset) = 0;
       virtual double memoryFootprintMb() = 0;
 
     protected:

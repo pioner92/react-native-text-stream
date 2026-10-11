@@ -181,6 +181,147 @@ open class HybridStreamTextTestingSpec_cxx {
   }
   
   @inline(__always)
+  public final func drainTextViewPool() -> bridge.Result_void_ {
+    do {
+      try self.__implementation.drainTextViewPool()
+      return bridge.create_Result_void_()
+    } catch (let __error) {
+      let __exceptionPtr = __error.toCpp()
+      return bridge.create_Result_void_(__exceptionPtr)
+    }
+  }
+  
+  @inline(__always)
+  public final func setPreparedLayout(enabled: Bool) -> bridge.Result_void_ {
+    do {
+      try self.__implementation.setPreparedLayout(enabled: enabled)
+      return bridge.create_Result_void_()
+    } catch (let __error) {
+      let __exceptionPtr = __error.toCpp()
+      return bridge.create_Result_void_(__exceptionPtr)
+    }
+  }
+  
+  @inline(__always)
+  public final func setPreparedCoreText(enabled: Bool) -> bridge.Result_void_ {
+    do {
+      try self.__implementation.setPreparedCoreText(enabled: enabled)
+      return bridge.create_Result_void_()
+    } catch (let __error) {
+      let __exceptionPtr = __error.toCpp()
+      return bridge.create_Result_void_(__exceptionPtr)
+    }
+  }
+  
+  @inline(__always)
+  public final func clearPreparedLayouts() -> bridge.Result_void_ {
+    do {
+      try self.__implementation.clearPreparedLayouts()
+      return bridge.create_Result_void_()
+    } catch (let __error) {
+      let __exceptionPtr = __error.toCpp()
+      return bridge.create_Result_void_(__exceptionPtr)
+    }
+  }
+  
+  @inline(__always)
+  public final func preparedCacheCount() -> bridge.Result_double_ {
+    do {
+      let __result = try self.__implementation.preparedCacheCount()
+      let __resultCpp = __result
+      return bridge.create_Result_double_(__resultCpp)
+    } catch (let __error) {
+      let __exceptionPtr = __error.toCpp()
+      return bridge.create_Result_double_(__exceptionPtr)
+    }
+  }
+  
+  @inline(__always)
+  public final func preparedCacheDump() -> bridge.Result_std__string_ {
+    do {
+      let __result = try self.__implementation.preparedCacheDump()
+      let __resultCpp = std.string(__result)
+      return bridge.create_Result_std__string_(__resultCpp)
+    } catch (let __error) {
+      let __exceptionPtr = __error.toCpp()
+      return bridge.create_Result_std__string_(__exceptionPtr)
+    }
+  }
+  
+  @inline(__always)
+  public final func simulateMemoryWarning() -> bridge.Result_void_ {
+    do {
+      try self.__implementation.simulateMemoryWarning()
+      return bridge.create_Result_void_()
+    } catch (let __error) {
+      let __exceptionPtr = __error.toCpp()
+      return bridge.create_Result_void_(__exceptionPtr)
+    }
+  }
+  
+  @inline(__always)
+  public final func compareEngines(text: std.string, style: StreamTextTestStyle, width: Double) -> bridge.Result_std__unordered_map_std__string__double__ {
+    do {
+      let __result = try self.__implementation.compareEngines(text: String(text), style: style, width: width)
+      let __resultCpp = { () -> bridge.std__unordered_map_std__string__double_ in
+        var __map = bridge.create_std__unordered_map_std__string__double_(__result.count)
+        for (__k, __v) in __result {
+          bridge.emplace_std__unordered_map_std__string__double_(&__map, std.string(__k), __v)
+        }
+        return __map
+      }()
+      return bridge.create_Result_std__unordered_map_std__string__double__(__resultCpp)
+    } catch (let __error) {
+      let __exceptionPtr = __error.toCpp()
+      return bridge.create_Result_std__unordered_map_std__string__double__(__exceptionPtr)
+    }
+  }
+  
+  @inline(__always)
+  public final func measureMount(text: std.string, width: Double) -> bridge.Result_std__shared_ptr_Promise_std__unordered_map_std__string__double____ {
+    do {
+      let __result = try self.__implementation.measureMount(text: String(text), width: width)
+      let __resultCpp = { () -> bridge.std__shared_ptr_Promise_std__unordered_map_std__string__double___ in
+        let __promise = bridge.create_std__shared_ptr_Promise_std__unordered_map_std__string__double___()
+        let __promiseHolder = bridge.wrap_std__shared_ptr_Promise_std__unordered_map_std__string__double___(__promise)
+        __result
+          .then({ __result in __promiseHolder.resolve({ () -> bridge.std__unordered_map_std__string__double_ in
+              var __map = bridge.create_std__unordered_map_std__string__double_(__result.count)
+              for (__k, __v) in __result {
+                bridge.emplace_std__unordered_map_std__string__double_(&__map, std.string(__k), __v)
+              }
+              return __map
+            }()) })
+          .catch({ __error in __promiseHolder.reject(__error.toCpp()) })
+        return __promise
+      }()
+      return bridge.create_Result_std__shared_ptr_Promise_std__unordered_map_std__string__double____(__resultCpp)
+    } catch (let __error) {
+      let __exceptionPtr = __error.toCpp()
+      return bridge.create_Result_std__shared_ptr_Promise_std__unordered_map_std__string__double____(__exceptionPtr)
+    }
+  }
+  
+  @inline(__always)
+  public final func selectWordAt(key: std.string, x: Double, y: Double) -> bridge.Result_std__shared_ptr_Promise_std__string___ {
+    do {
+      let __result = try self.__implementation.selectWordAt(key: String(key), x: x, y: y)
+      let __resultCpp = { () -> bridge.std__shared_ptr_Promise_std__string__ in
+        let __promise = bridge.create_std__shared_ptr_Promise_std__string__()
+        let __promiseHolder = bridge.wrap_std__shared_ptr_Promise_std__string__(__promise)
+        __result
+          .then({ __result in __promiseHolder.resolve(std.string(__result)) })
+          .catch({ __error in __promiseHolder.reject(__error.toCpp()) })
+        return __promise
+      }()
+      return bridge.create_Result_std__shared_ptr_Promise_std__string___(__resultCpp)
+    } catch (let __error) {
+      let __exceptionPtr = __error.toCpp()
+      return bridge.create_Result_std__shared_ptr_Promise_std__string___(__exceptionPtr)
+    }
+  }
+  
+  @inline(__always)
   public final func snapshot(key: std.string) -> bridge.Result_std__shared_ptr_Promise_StreamTextSnapshot___ {
     do {
       let __result = try self.__implementation.snapshot(key: String(key))

@@ -3,6 +3,7 @@
 // view grows without the JS thread.
 #pragma once
 
+#include <array>
 #include <cmath>
 #include <jsi/jsi.h>
 #include <memory>
@@ -12,6 +13,7 @@
 #include <react/renderer/components/view/ViewProps.h>
 #include <react/renderer/core/ConcreteComponentDescriptor.h>
 #include <react/renderer/core/LayoutConstraints.h>
+#include <react/renderer/core/LayoutContext.h>
 #include <react/renderer/core/propsConversions.h>
 #include <react/renderer/graphics/Color.h>
 #include <string>
@@ -46,6 +48,10 @@ inline std::optional<std::shared_ptr<jsi::MutableBuffer>> streamTextSourceFromRa
   return object.getArrayBuffer(*runtime).tryGetMutableBuffer(*runtime);
 }
 
+class StreamTextViewProps;
+/** Starts laying out a new finished `source` in the background (ios/fabric/StreamTextPrepared.mm). */
+void streamTextPrepareEarly(const StreamTextViewProps &props);
+
 class StreamTextViewProps final : public ViewProps {
  public:
   StreamTextViewProps() = default;
@@ -70,6 +76,9 @@ class StreamTextViewProps final : public ViewProps {
       if (auto parsed = streamTextSourceFromRawValue(*rawSource)) {
         source = std::move(*parsed);
       }
+    }
+    if (source && source != sourceProps.source) {
+      streamTextPrepareEarly(*this);
     }
   }
 
@@ -101,10 +110,32 @@ class StreamTextViewEventEmitter final : public ViewEventEmitter {
   }
 };
 
+struct StreamTextPreparedHandle; // ios/fabric/StreamTextPrepared.mm
+/** A layout of a finished `source`, prepared in measure; the view draws it without a text view. */
+using StreamTextPreparedRef = std::shared_ptr<const StreamTextPreparedHandle>;
+
 struct StreamTextViewState {
   Float height{0};
   int revision{0};
+  /**
+   * The `source` prop in effect when the view reported `height`. Until that prop changes, the view
+   * decides what it shows (it streamed the text, swapped in a text view, or an `attach`/`clear`
+   * command replaced it), so its height wins over a prepared layout of the prop.
+   */
+  const void *propSource{nullptr};
+  StreamTextPreparedRef prepared;
 };
+
+/**
+ * A layout of these props' `source` at exactly `width` if it is finished and small: `current` when
+ * it still fits, a cached one, or a new one (off the main thread; on it only cheap ones). Else null.
+ */
+StreamTextPreparedRef
+streamTextPrepare(const StreamTextViewProps &props, Float width, const StreamTextPreparedRef &current);
+Float streamTextPreparedHeight(const StreamTextPreparedRef &prepared);
+Float streamTextPreparedWidth(const StreamTextPreparedRef &prepared);
+/** `prepared` is of these props' text and style, at `width` give or take Yoga's pixel rounding. */
+bool streamTextPreparedFits(const StreamTextPreparedRef &prepared, const StreamTextViewProps &props, Float width);
 
 class StreamTextViewShadowNode final : public ConcreteViewShadowNode<
                                            StreamTextViewComponentName,
@@ -116,9 +147,15 @@ class StreamTextViewShadowNode final : public ConcreteViewShadowNode<
 
   StreamTextViewShadowNode(const ShadowNode &sourceShadowNode, const ShadowNodeFragment &fragment)
       : ConcreteViewShadowNode(sourceShadowNode, fragment) {
-    // Yoga caches measurements: a new height from the native view must invalidate them.
+    // Yoga caches measurements: a new height from the native view, a new text or a style that moves
+    // the lines must invalidate them (none of these are Yoga styles).
     const auto &source = static_cast<const StreamTextViewShadowNode &>(sourceShadowNode);
-    if (getStateData().revision != source.getStateData().revision) {
+    const auto &props = getConcreteProps();
+    const auto &previous = source.getConcreteProps();
+    if (getStateData().revision != source.getStateData().revision || props.source != previous.source ||
+        props.fontSize != previous.fontSize || props.fontFamily != previous.fontFamily ||
+        props.fontWeight != previous.fontWeight || props.lineHeight != previous.lineHeight ||
+        props.letterSpacing != previous.letterSpacing || props.textAlign != previous.textAlign) {
       YGNodeMarkDirty(&yogaNode_);
     }
   }
@@ -132,9 +169,55 @@ class StreamTextViewShadowNode final : public ConcreteViewShadowNode<
 
   Size measureContent(const LayoutContext & /*layoutContext*/, const LayoutConstraints &constraints)
       const override {
-    // Fills the available width; the height is whatever the native view last laid out.
+    // Fills the available width; the height is that of a prepared layout, or else whatever the
+    // native view last laid out.
     Float width = std::isfinite(constraints.maximumSize.width) ? constraints.maximumSize.width : 0;
-    return constraints.clamp(Size{width, getStateData().height});
+    auto prepared = viewHeightWins() ? nullptr : streamTextPrepare(getConcreteProps(), width, getStateData().prepared);
+    if (prepared) {
+      measured_[measuredNext_++ % measured_.size()] = prepared;
+    }
+    return constraints.clamp(Size{width, prepared ? streamTextPreparedHeight(prepared) : getStateData().height});
+  }
+
+  void layout(LayoutContext layoutContext) override {
+    ConcreteViewShadowNode::layout(layoutContext);
+    // The state carries to the view the layout Yoga sized this frame with, and its height to later
+    // Yoga passes on any thread.
+    Float width = getLayoutMetrics().getContentFrame().size.width;
+    const auto &props = getConcreteProps();
+    const auto &state = getStateData();
+    StreamTextPreparedRef prepared;
+    if (!viewHeightWins()) {
+      for (const auto &candidate : measured_) {
+        if (streamTextPreparedFits(candidate, props, width) &&
+            (!prepared ||
+             std::fabs(streamTextPreparedWidth(candidate) - width) < std::fabs(streamTextPreparedWidth(prepared) - width))) {
+          prepared = candidate;
+        }
+      }
+      // Yoga reused an earlier measurement: the layout from then is still in the state.
+      if (!prepared && streamTextPreparedFits(state.prepared, props, width)) {
+        prepared = state.prepared;
+      }
+      if (!prepared) {
+        prepared = streamTextPrepare(props, width, nullptr);
+      }
+    }
+    if (prepared != state.prepared || (prepared && state.height != streamTextPreparedHeight(prepared))) {
+      setStateData(StreamTextViewState{
+          prepared ? streamTextPreparedHeight(prepared) : state.height, state.revision, state.propSource, prepared});
+    }
+  }
+
+ private:
+  /** The layouts measure produced (Yoga may measure at a few widths), for layout() to pick from. */
+  mutable std::array<StreamTextPreparedRef, 3> measured_;
+  mutable size_t measuredNext_{0};
+
+  bool viewHeightWins() const {
+    const auto &state = getStateData();
+    const auto &source = getConcreteProps().source;
+    return state.revision > 0 && !state.prepared && state.propSource == (source ? source->data() : nullptr);
   }
 };
 

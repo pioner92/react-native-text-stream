@@ -23,6 +23,11 @@ public final class StreamTextRenderer: UIView {
   /// Created on the first text: an empty view (e.g. mounted before its first token) is just a
   /// plain UIView, which is much cheaper to create and keep than a text view.
   private var textView: StreamTextView?
+  /// A finished text laid out ahead (StreamTextPreparedLayout), drawn without a text view until
+  /// something needs one: a long press to select, a new width or a new style.
+  private var canvas: StreamTextCanvas?
+  /// A style prop that changes lines arrived for the canvas; the next `updatePrepared` settles it.
+  private var canvasStyleStale = false
 
   // Reader state, main thread only.
   private var base: UnsafeMutableRawPointer?
@@ -72,6 +77,7 @@ public final class StreamTextRenderer: UIView {
   func debugState() -> (text: String, height: CGFloat, status: String, hasTextView: Bool, fontSize: CGFloat,
                         color: String, selectable: Bool, accessibilityValue: String) {
     let storage = textView?.textStorage
+      ?? canvas.map { NSTextStorage(attributedString: NSAttributedString(string: $0.layout.text.string, attributes: textAttributes)) }
     let attributes = storage.flatMap { $0.length > 0 ? $0.attributes(at: 0, effectiveRange: nil) : nil }
       ?? textView?.typingAttributes ?? textAttributes
     let font = attributes[.font] as? UIFont
@@ -79,19 +85,26 @@ public final class StreamTextRenderer: UIView {
     (attributes[.foregroundColor] as? UIColor)?.resolvedColor(with: traitCollection).getRed(&r, green: &g, blue: &b, alpha: &a)
     let color = "#" + [r, g, b, a].map { String(format: "%02X", Int(($0 * 255).rounded())) }.joined()
     return (storage?.string ?? "", reportedHeight, reportedStatus ?? "", textView != nil, font?.pointSize ?? 0,
-            color, textView?.isSelectable ?? selectable, textView?.accessibilityValue ?? "")
+            color, textView?.isSelectable ?? selectable,
+            textView?.accessibilityValue ?? canvas?.accessibilityValue ?? "")
   }
 
   /// The component view sets it, then calls `applyTextStyle()` once.
   @objc public var textStyle = StreamTextStyle()
 
   @objc public var selectable: Bool = true {
-    didSet { textView?.isSelectable = selectable }
+    didSet {
+      textView?.isSelectable = selectable
+      canvas?.isSelectable = selectable
+    }
   }
 
   @objc public var selectionColor: UIColor? {
     // nil restores the inherited tint.
-    didSet { textView?.tintColor = selectionColor }
+    didSet {
+      textView?.tintColor = selectionColor
+      canvas?.tintColor = selectionColor
+    }
   }
 
   public override init(frame: CGRect) {
@@ -108,7 +121,13 @@ public final class StreamTextRenderer: UIView {
   /// The text view, created on first use.
   private func ensureTextView() -> StreamTextView {
     if let textView { return textView }
-    let textView = Self.textViewPool.popLast() ?? StreamTextView()
+    let created = CACurrentMediaTime()
+    let pooled = Self.textViewPool.popLast()
+    let textView = pooled ?? StreamTextView()
+    defer {
+      StreamTextRenderStats.shared.addPhase(pooled == nil ? "textView.create" : "textView.reuse",
+                                            time: CACurrentMediaTime() - created)
+    }
     textView.isEditable = false
     textView.isSelectable = selectable
     textView.isScrollEnabled = false
@@ -126,7 +145,77 @@ public final class StreamTextRenderer: UIView {
     textView.visibleBounds = { [weak self] in self?.bounds ?? .zero }
     addSubview(textView)
     self.textView = textView
+    if let canvas {
+      // Laid out again on the main thread, the next time it is measured: same engine, same lines.
+      self.canvas = nil
+      canvas.removeFromSuperview()
+      textView.textStorage.setAttributedString(NSAttributedString(string: canvas.layout.text.string, attributes: textAttributes))
+    }
     return textView
+  }
+
+  /// Shows a prepared layout of the finished text the buffer holds, instead of filling a text view.
+  private func showPrepared(_ prepared: StreamTextPreparedLayout, status: UInt32) {
+    if let textView {
+      Self.recycle(textView)
+      self.textView = nil
+    }
+    let canvas = StreamTextCanvas(layout: prepared, color: textColor)
+    canvas.visibleBounds = { [weak self] in self?.bounds ?? .zero }
+    canvas.isSelectable = selectable
+    canvas.tintColor = selectionColor
+    addSubview(canvas)
+    self.canvas = canvas
+    offset = prepared.bytes
+    finished = true
+    base = nil
+    // The shadow node has this height already: no commit.
+    reportedHeight = prepared.height
+    if let displayLogKey { StreamTextDisplayLogs.shared.append(displayLogKey, bytes: offset) }
+    reportStatus(terminalStatus(status), bytes: prepared.bytes)
+  }
+
+  /// The layout the shadow node prepared for the current props, after a transaction. Replaces the
+  /// canvas's layout when the width or style changed; without one, the text view takes over.
+  @objc public func updatePrepared(_ prepared: StreamTextPreparedLayout?) {
+    defer { canvasStyleStale = false }
+    guard let canvas else { return }
+    if let prepared, prepared !== canvas.layout, prepared.bytes == canvas.layout.bytes {
+      canvas.replace(prepared)
+      canvas.color = textColor
+      // The shadow node has this height already.
+      reportedHeight = prepared.height
+      return
+    }
+    if canvasStyleStale || abs(canvas.layout.width - bounds.width) > 0.5 {
+      _ = ensureTextView()
+      setTextViewHeight(StreamTextLayout.textViewHeight)
+      reportHeight()
+    }
+  }
+
+  /// An ancestor scroll view moved: tiles near the screen are drawn, far ones dropped.
+  @objc public func visibleAreaChanged() {
+    canvas?.updateTiles()
+  }
+
+  /// Tests: selects the word at `point` as the selection gestures would, copies and returns it.
+  func debugSelectWord(at point: CGPoint) -> String {
+    let input: UITextInput & UIResponder
+    if let canvas { input = canvas } else if let textView { input = textView } else { return "" }
+    guard let position = input.closestPosition(to: point),
+          let word = input.tokenizer.rangeEnclosingPosition(position, with: .word, inDirection: .storage(.forward))
+    else { return "" }
+    input.selectedTextRange = word
+    _ = input.becomeFirstResponder()
+    input.copy(nil)
+    return input.text(in: word) ?? ""
+  }
+
+  /// Tests: "canvas", "textView" or "" (nothing shown yet), and the canvas's engine.
+  var debugMode: (mode: String, engine: String, tiles: Int) {
+    if let canvas { return ("canvas", canvas.layout.isCoreText ? "coreText" : "textKit", canvas.tileCount) }
+    return (textView != nil ? "textView" : "", "", 0)
   }
 
   @available(*, unavailable)
@@ -148,7 +237,14 @@ public final class StreamTextRenderer: UIView {
     forName: UIApplication.didReceiveMemoryWarningNotification, object: nil, queue: .main
   ) { _ in textViewPool.removeAll() }
 
+  /// Benchmarks: a cold start for the next mounts. Main thread.
+  static func drainTextViewPool() {
+    textViewPool.removeAll()
+  }
+
   private static func recycle(_ textView: StreamTextView) {
+    let started = CACurrentMediaTime()
+    defer { StreamTextRenderStats.shared.addPhase("textView.recycle", time: CACurrentMediaTime() - started) }
     _ = poolDrain
     textView.removeFromSuperview()
     guard textViewPool.count < textViewPoolSize else { return }
@@ -170,7 +266,8 @@ public final class StreamTextRenderer: UIView {
 
   /// Starts rendering the TSB1 buffer at `base` (`size` bytes); nil detaches. The caller keeps
   /// the memory alive until the next call.
-  @objc public func attach(base newBase: UnsafeMutableRawPointer?, size: Int) {
+  /// `prepared`: the layout the shadow node prepared for this buffer, if it is finished and small.
+  @objc public func attach(base newBase: UnsafeMutableRawPointer?, size: Int, prepared: StreamTextPreparedLayout?) {
     let attachStarted = CACurrentMediaTime()
     defer {
       let time = CACurrentMediaTime() - attachStarted
@@ -193,6 +290,8 @@ public final class StreamTextRenderer: UIView {
     }
     stats = StreamTextRenderStats.Sample()
     if let textView, textView.textStorage.length > 0 { textView.text = "" }
+    canvas?.removeFromSuperview()
+    canvas = nil
     setTextViewHeight(StreamTextLayout.textViewHeight)
     // The height is reported once at the end: clearing and refilling in one go is one commit.
     defer { reportHeight() }
@@ -213,6 +312,11 @@ public final class StreamTextRenderer: UIView {
     // A finished stream (e.g. a message remounted by a list) that is small enough is shown in one
     // go, at its final height, instead of being typed out again over several frames.
     instantFill = tsb_status(newBase) != UInt32(TSB_STATUS_OPEN) && tsb_committed(newBase) <= StreamTextLayout.instantFillBytes
+    if instantFill, let prepared, prepared.bytes == min(tsb_committed(newBase), capacity),
+       abs(prepared.width - bounds.width) <= 0.5 {
+      showPrepared(prepared, status: tsb_status(newBase))
+      return
+    }
     if !instantFill {
       reportStatus("streaming", bytes: 0)
       setTicking(window != nil)
@@ -235,6 +339,8 @@ public final class StreamTextRenderer: UIView {
     guard bounds.width != layoutWidth else { return }
     let started = CACurrentMediaTime()
     layoutWidth = bounds.width
+    // A prepared layout only fits the width it was made for.
+    if let canvas, abs(canvas.layout.width - bounds.width) > 0.5 { _ = ensureTextView() }
     if let textView { setTextViewHeight(textView.frame.height) }
     reportHeight()
     let time = CACurrentMediaTime() - started
@@ -243,10 +349,23 @@ public final class StreamTextRenderer: UIView {
 
   // MARK: - Style
 
+  private var textColor: UIColor { textAttributes[.foregroundColor] as? UIColor ?? .label }
+
   /// Re-applies the style to the whole text: O(text), so only call it when a style prop changed.
   @objc public func applyTextStyle() {
+    applyTextStyle(layoutChanged: true)
+  }
+
+  /// `layoutChanged`: a prop that moves the lines changed (anything but the color). A canvas waits
+  /// for the layout the shadow node prepares for the new style (`updatePrepared`).
+  @objc public func applyTextStyle(layoutChanged: Bool) {
     let attributes = textStyle.attributes()
     textAttributes = attributes
+    if let canvas {
+      canvas.color = textColor
+      if layoutChanged || !canvas.layout.colorIndependent { canvasStyleStale = true }
+      return
+    }
     guard let textView else { return }
     textView.typingAttributes = attributes
     let storage = textView.textStorage
@@ -265,6 +384,12 @@ public final class StreamTextRenderer: UIView {
   private func reportHeight() -> CFTimeInterval {
     guard bounds.width > 0 else { return 0 }
     let started = CACurrentMediaTime()
+    if let canvas {
+      guard canvas.layout.height != reportedHeight else { return 0 }
+      reportedHeight = canvas.layout.height
+      onHeightChange?(reportedHeight)
+      return CACurrentMediaTime() - started
+    }
     guard let textView else {
       // No text view yet, so no text: an empty view has no height.
       guard reportedHeight != 0 else { return 0 }
@@ -287,6 +412,7 @@ public final class StreamTextRenderer: UIView {
       stats.grows += 1
     }
     let laidOut = CACurrentMediaTime()
+    StreamTextRenderStats.shared.addPhase("measure.layout", time: laidOut - started)
     stats.layout += laidOut - started
     guard height != reportedHeight else {
       StreamTextRenderStats.shared.addTotals { $0.layout += laidOut - started }
@@ -366,6 +492,7 @@ public final class StreamTextRenderer: UIView {
       } while offset < end
       storage.endEditing()
       stats.append += CACurrentMediaTime() - started
+      StreamTextRenderStats.shared.addPhase("fill.append", time: CACurrentMediaTime() - started)
       // Before the first layout there is no width: the text is laid out once the view gets one.
       let measured = bounds.width > 0
       let commitTime = fillAll ? 0 : reportHeight()
@@ -566,6 +693,30 @@ public final class StreamTextRenderStats: NSObject {
 
   /// Off until a benchmark asks for totals: views then pay nothing but a flag check.
   @objc public static var enabled = false
+
+  private var phases: [String: (count: Double, time: Double)] = [:]
+
+  /// Benchmarks: adds one run of a named phase (seconds). Any thread.
+  @objc public func addPhase(_ name: String, time: CFTimeInterval) {
+    guard Self.enabled else { return }
+    lock.withLock {
+      let current = phases[name] ?? (0, 0)
+      phases[name] = (current.count + 1, current.time + time)
+    }
+  }
+
+  /// `{"<phase>.count": n, "<phase>.ms": total}` since the last reset.
+  @objc public func phases(reset: Bool) -> [String: Double] {
+    lock.withLock {
+      var out: [String: Double] = [:]
+      for (name, value) in phases {
+        out[name + ".count"] = value.count
+        out[name + ".ms"] = value.time * 1000
+      }
+      if reset { phases.removeAll() }
+      return out
+    }
+  }
 
   func addTotals(_ update: (inout Totals) -> Void) {
     guard Self.enabled else { return }

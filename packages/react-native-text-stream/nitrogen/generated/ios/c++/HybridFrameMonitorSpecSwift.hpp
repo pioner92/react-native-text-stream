@@ -19,6 +19,7 @@ namespace margelo::nitro::textstream { struct FrameStats; }
 #include <NitroModules/Promise.hpp>
 #include <vector>
 #include <string>
+#include <unordered_map>
 
 #include "TextStream-Swift-Cxx-Umbrella.hpp"
 
@@ -118,6 +119,14 @@ namespace margelo::nitro::textstream {
     }
     inline std::vector<double> streamTextTotals(bool reset) override {
       auto __result = _swiftPart.streamTextTotals(std::forward<decltype(reset)>(reset));
+      if (__result.hasError()) [[unlikely]] {
+        std::rethrow_exception(__result.error());
+      }
+      auto __value = std::move(__result.value());
+      return __value;
+    }
+    inline std::unordered_map<std::string, double> streamTextPhases(bool reset) override {
+      auto __result = _swiftPart.streamTextPhases(std::forward<decltype(reset)>(reset));
       if (__result.hasError()) [[unlikely]] {
         std::rethrow_exception(__result.error());
       }

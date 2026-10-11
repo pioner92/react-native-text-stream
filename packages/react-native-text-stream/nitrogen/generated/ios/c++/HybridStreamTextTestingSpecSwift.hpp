@@ -14,14 +14,19 @@ namespace TextStream { class HybridStreamTextTestingSpec_cxx; }
 
 // Forward declaration of `ArrayBufferHolder` to properly resolve imports.
 namespace NitroModules { class ArrayBufferHolder; }
+// Forward declaration of `StreamTextTestStyle` to properly resolve imports.
+namespace margelo::nitro::textstream { struct StreamTextTestStyle; }
 // Forward declaration of `StreamTextSnapshot` to properly resolve imports.
 namespace margelo::nitro::textstream { struct StreamTextSnapshot; }
 
 #include <NitroModules/ArrayBuffer.hpp>
 #include <NitroModules/ArrayBufferHolder.hpp>
-#include "StreamTextSnapshot.hpp"
-#include <NitroModules/Promise.hpp>
 #include <string>
+#include <unordered_map>
+#include "StreamTextTestStyle.hpp"
+#include <optional>
+#include <NitroModules/Promise.hpp>
+#include "StreamTextSnapshot.hpp"
 
 #include "TextStream-Swift-Cxx-Umbrella.hpp"
 
@@ -104,6 +109,76 @@ namespace margelo::nitro::textstream {
       if (__result.hasError()) [[unlikely]] {
         std::rethrow_exception(__result.error());
       }
+    }
+    inline void drainTextViewPool() override {
+      auto __result = _swiftPart.drainTextViewPool();
+      if (__result.hasError()) [[unlikely]] {
+        std::rethrow_exception(__result.error());
+      }
+    }
+    inline void setPreparedLayout(bool enabled) override {
+      auto __result = _swiftPart.setPreparedLayout(std::forward<decltype(enabled)>(enabled));
+      if (__result.hasError()) [[unlikely]] {
+        std::rethrow_exception(__result.error());
+      }
+    }
+    inline void setPreparedCoreText(bool enabled) override {
+      auto __result = _swiftPart.setPreparedCoreText(std::forward<decltype(enabled)>(enabled));
+      if (__result.hasError()) [[unlikely]] {
+        std::rethrow_exception(__result.error());
+      }
+    }
+    inline void clearPreparedLayouts() override {
+      auto __result = _swiftPart.clearPreparedLayouts();
+      if (__result.hasError()) [[unlikely]] {
+        std::rethrow_exception(__result.error());
+      }
+    }
+    inline double preparedCacheCount() override {
+      auto __result = _swiftPart.preparedCacheCount();
+      if (__result.hasError()) [[unlikely]] {
+        std::rethrow_exception(__result.error());
+      }
+      auto __value = std::move(__result.value());
+      return __value;
+    }
+    inline std::string preparedCacheDump() override {
+      auto __result = _swiftPart.preparedCacheDump();
+      if (__result.hasError()) [[unlikely]] {
+        std::rethrow_exception(__result.error());
+      }
+      auto __value = std::move(__result.value());
+      return __value;
+    }
+    inline void simulateMemoryWarning() override {
+      auto __result = _swiftPart.simulateMemoryWarning();
+      if (__result.hasError()) [[unlikely]] {
+        std::rethrow_exception(__result.error());
+      }
+    }
+    inline std::unordered_map<std::string, double> compareEngines(const std::string& text, const StreamTextTestStyle& style, double width) override {
+      auto __result = _swiftPart.compareEngines(text, std::forward<decltype(style)>(style), std::forward<decltype(width)>(width));
+      if (__result.hasError()) [[unlikely]] {
+        std::rethrow_exception(__result.error());
+      }
+      auto __value = std::move(__result.value());
+      return __value;
+    }
+    inline std::shared_ptr<Promise<std::unordered_map<std::string, double>>> measureMount(const std::string& text, double width) override {
+      auto __result = _swiftPart.measureMount(text, std::forward<decltype(width)>(width));
+      if (__result.hasError()) [[unlikely]] {
+        std::rethrow_exception(__result.error());
+      }
+      auto __value = std::move(__result.value());
+      return __value;
+    }
+    inline std::shared_ptr<Promise<std::string>> selectWordAt(const std::string& key, double x, double y) override {
+      auto __result = _swiftPart.selectWordAt(key, std::forward<decltype(x)>(x), std::forward<decltype(y)>(y));
+      if (__result.hasError()) [[unlikely]] {
+        std::rethrow_exception(__result.error());
+      }
+      auto __value = std::move(__result.value());
+      return __value;
     }
     inline std::shared_ptr<Promise<StreamTextSnapshot>> snapshot(const std::string& key) override {
       auto __result = _swiftPart.snapshot(key);

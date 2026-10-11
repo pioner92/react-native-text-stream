@@ -18,6 +18,16 @@ public protocol HybridStreamTextTestingSpec_protocol: HybridObject {
   func setStatus(buffer: ArrayBuffer, status: Double) throws -> Void
   func startProducer(buffer: ArrayBuffer, bytes: ArrayBuffer, chunk: Double, intervalMs: Double, finalStatus: Double) throws -> Void
   func stopProducers() throws -> Void
+  func drainTextViewPool() throws -> Void
+  func setPreparedLayout(enabled: Bool) throws -> Void
+  func setPreparedCoreText(enabled: Bool) throws -> Void
+  func clearPreparedLayouts() throws -> Void
+  func preparedCacheCount() throws -> Double
+  func preparedCacheDump() throws -> String
+  func simulateMemoryWarning() throws -> Void
+  func compareEngines(text: String, style: StreamTextTestStyle, width: Double) throws -> Dictionary<String, Double>
+  func measureMount(text: String, width: Double) throws -> Promise<Dictionary<String, Double>>
+  func selectWordAt(key: String, x: Double, y: Double) throws -> Promise<String>
   func snapshot(key: String) throws -> Promise<StreamTextSnapshot>
 }
 

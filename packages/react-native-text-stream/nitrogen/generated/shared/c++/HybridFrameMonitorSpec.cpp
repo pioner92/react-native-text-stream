@@ -21,6 +21,7 @@ namespace margelo::nitro::textstream {
       prototype.registerHybridMethod("streamTextDisplayLog", &HybridFrameMonitorSpec::streamTextDisplayLog);
       prototype.registerHybridMethod("streamTextRenderStats", &HybridFrameMonitorSpec::streamTextRenderStats);
       prototype.registerHybridMethod("streamTextTotals", &HybridFrameMonitorSpec::streamTextTotals);
+      prototype.registerHybridMethod("streamTextPhases", &HybridFrameMonitorSpec::streamTextPhases);
       prototype.registerHybridMethod("memoryFootprintMb", &HybridFrameMonitorSpec::memoryFootprintMb);
     });
   }

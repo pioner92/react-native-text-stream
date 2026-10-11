@@ -19,6 +19,16 @@ namespace margelo::nitro::textstream {
       prototype.registerHybridMethod("setStatus", &HybridStreamTextTestingSpec::setStatus);
       prototype.registerHybridMethod("startProducer", &HybridStreamTextTestingSpec::startProducer);
       prototype.registerHybridMethod("stopProducers", &HybridStreamTextTestingSpec::stopProducers);
+      prototype.registerHybridMethod("drainTextViewPool", &HybridStreamTextTestingSpec::drainTextViewPool);
+      prototype.registerHybridMethod("setPreparedLayout", &HybridStreamTextTestingSpec::setPreparedLayout);
+      prototype.registerHybridMethod("setPreparedCoreText", &HybridStreamTextTestingSpec::setPreparedCoreText);
+      prototype.registerHybridMethod("clearPreparedLayouts", &HybridStreamTextTestingSpec::clearPreparedLayouts);
+      prototype.registerHybridMethod("preparedCacheCount", &HybridStreamTextTestingSpec::preparedCacheCount);
+      prototype.registerHybridMethod("preparedCacheDump", &HybridStreamTextTestingSpec::preparedCacheDump);
+      prototype.registerHybridMethod("simulateMemoryWarning", &HybridStreamTextTestingSpec::simulateMemoryWarning);
+      prototype.registerHybridMethod("compareEngines", &HybridStreamTextTestingSpec::compareEngines);
+      prototype.registerHybridMethod("measureMount", &HybridStreamTextTestingSpec::measureMount);
+      prototype.registerHybridMethod("selectWordAt", &HybridStreamTextTestingSpec::selectWordAt);
       prototype.registerHybridMethod("snapshot", &HybridStreamTextTestingSpec::snapshot);
     });
   }

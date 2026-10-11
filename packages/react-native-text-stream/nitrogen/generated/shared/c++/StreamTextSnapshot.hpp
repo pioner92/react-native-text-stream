@@ -47,10 +47,13 @@ namespace margelo::nitro::textstream {
     std::string color     SWIFT_PRIVATE;
     bool selectable     SWIFT_PRIVATE;
     std::string accessibilityValue     SWIFT_PRIVATE;
+    std::string mode     SWIFT_PRIVATE;
+    std::string engine     SWIFT_PRIVATE;
+    double tiles     SWIFT_PRIVATE;
 
   public:
     StreamTextSnapshot() = default;
-    explicit StreamTextSnapshot(std::string text, double height, std::string status, bool hasTextView, double fontSize, std::string color, bool selectable, std::string accessibilityValue): text(text), height(height), status(status), hasTextView(hasTextView), fontSize(fontSize), color(color), selectable(selectable), accessibilityValue(accessibilityValue) {}
+    explicit StreamTextSnapshot(std::string text, double height, std::string status, bool hasTextView, double fontSize, std::string color, bool selectable, std::string accessibilityValue, std::string mode, std::string engine, double tiles): text(text), height(height), status(status), hasTextView(hasTextView), fontSize(fontSize), color(color), selectable(selectable), accessibilityValue(accessibilityValue), mode(mode), engine(engine), tiles(tiles) {}
 
   public:
     friend bool operator==(const StreamTextSnapshot& lhs, const StreamTextSnapshot& rhs) = default;
@@ -73,7 +76,10 @@ namespace margelo::nitro {
         JSIConverter<double>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "fontSize"))),
         JSIConverter<std::string>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "color"))),
         JSIConverter<bool>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "selectable"))),
-        JSIConverter<std::string>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "accessibilityValue")))
+        JSIConverter<std::string>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "accessibilityValue"))),
+        JSIConverter<std::string>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "mode"))),
+        JSIConverter<std::string>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "engine"))),
+        JSIConverter<double>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "tiles")))
       );
     }
     static inline jsi::Value toJSI(jsi::Runtime& runtime, const margelo::nitro::textstream::StreamTextSnapshot& arg) {
@@ -86,6 +92,9 @@ namespace margelo::nitro {
       obj.setProperty(runtime, PropNameIDCache::get(runtime, "color"), JSIConverter<std::string>::toJSI(runtime, arg.color));
       obj.setProperty(runtime, PropNameIDCache::get(runtime, "selectable"), JSIConverter<bool>::toJSI(runtime, arg.selectable));
       obj.setProperty(runtime, PropNameIDCache::get(runtime, "accessibilityValue"), JSIConverter<std::string>::toJSI(runtime, arg.accessibilityValue));
+      obj.setProperty(runtime, PropNameIDCache::get(runtime, "mode"), JSIConverter<std::string>::toJSI(runtime, arg.mode));
+      obj.setProperty(runtime, PropNameIDCache::get(runtime, "engine"), JSIConverter<std::string>::toJSI(runtime, arg.engine));
+      obj.setProperty(runtime, PropNameIDCache::get(runtime, "tiles"), JSIConverter<double>::toJSI(runtime, arg.tiles));
       return obj;
     }
     static inline bool canConvert(jsi::Runtime& runtime, const jsi::Value& value) {
@@ -104,6 +113,9 @@ namespace margelo::nitro {
       if (!JSIConverter<std::string>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "color")))) return false;
       if (!JSIConverter<bool>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "selectable")))) return false;
       if (!JSIConverter<std::string>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "accessibilityValue")))) return false;
+      if (!JSIConverter<std::string>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "mode")))) return false;
+      if (!JSIConverter<std::string>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "engine")))) return false;
+      if (!JSIConverter<double>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "tiles")))) return false;
       return true;
     }
   };

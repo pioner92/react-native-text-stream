@@ -44,6 +44,12 @@ export interface FrameMonitor extends HybridObject<{ ios: 'swift' }> {
    * widthLayoutMs (a view's width changed) include any tick and commit they ran.
    */
   streamTextTotals(reset: boolean): number[]
+  /**
+   * Mount phases summed over every StreamTextView since the last reset, as
+   * `{ "<phase>.count": n, "<phase>.ms": total }` (renderer.init, props.style, attach, textView.create,
+   * textView.reuse, textView.recycle, fill.append, measure.layout, height.commit). Turns them on.
+   */
+  streamTextPhases(reset: boolean): Record<string, number>
   /** The app's physical memory footprint in MB (what Xcode's memory gauge shows). */
   memoryFootprintMb(): number
 }

@@ -35,7 +35,9 @@ namespace TextStream { class HybridStreamTextTestingSpec_cxx; }
 #include <exception>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 /**
@@ -148,6 +150,31 @@ namespace margelo::nitro::textstream::bridge::swift {
     return vector[index];
   }
   
+  // pragma MARK: std::unordered_map<std::string, double>
+  /**
+   * Specialized version of `std::unordered_map<std::string, double>`.
+   */
+  using std__unordered_map_std__string__double_ = std::unordered_map<std::string, double>;
+  inline std::unordered_map<std::string, double> create_std__unordered_map_std__string__double_(size_t size) noexcept {
+    std::unordered_map<std::string, double> map;
+    map.reserve(size);
+    return map;
+  }
+  inline std::vector<std::string> get_std__unordered_map_std__string__double__keys(const std__unordered_map_std__string__double_& map) noexcept {
+    std::vector<std::string> keys;
+    keys.reserve(map.size());
+    for (const auto& entry : map) {
+      keys.push_back(entry.first);
+    }
+    return keys;
+  }
+  inline double get_std__unordered_map_std__string__double__value(const std__unordered_map_std__string__double_& map, const std::string& key) noexcept {
+    return map.find(key)->second;
+  }
+  inline void emplace_std__unordered_map_std__string__double_(std__unordered_map_std__string__double_& map, const std::string& key, const double& value) noexcept {
+    map.emplace(key, value);
+  }
+  
   // pragma MARK: std::shared_ptr<HybridFrameMonitorSpec>
   /**
    * Specialized version of `std::shared_ptr<HybridFrameMonitorSpec>`.
@@ -196,6 +223,15 @@ namespace margelo::nitro::textstream::bridge::swift {
     return Result<std::vector<double>>::withError(error);
   }
   
+  // pragma MARK: Result<std::unordered_map<std::string, double>>
+  using Result_std__unordered_map_std__string__double__ = Result<std::unordered_map<std::string, double>>;
+  inline Result_std__unordered_map_std__string__double__ create_Result_std__unordered_map_std__string__double__(const std::unordered_map<std::string, double>& value) noexcept {
+    return Result<std::unordered_map<std::string, double>>::withValue(value);
+  }
+  inline Result_std__unordered_map_std__string__double__ create_Result_std__unordered_map_std__string__double__(const std::exception_ptr& error) noexcept {
+    return Result<std::unordered_map<std::string, double>>::withError(error);
+  }
+  
   // pragma MARK: Result<double>
   using Result_double_ = Result<double>;
   inline Result_double_ create_Result_double_(double value) noexcept {
@@ -203,6 +239,104 @@ namespace margelo::nitro::textstream::bridge::swift {
   }
   inline Result_double_ create_Result_double_(const std::exception_ptr& error) noexcept {
     return Result<double>::withError(error);
+  }
+  
+  // pragma MARK: std::optional<std::string>
+  /**
+   * Specialized version of `std::optional<std::string>`.
+   */
+  using std__optional_std__string_ = std::optional<std::string>;
+  inline std::optional<std::string> create_std__optional_std__string_(const std::string& value) noexcept {
+    return std::optional<std::string>(value);
+  }
+  inline bool has_value_std__optional_std__string_(const std::optional<std::string>& optional) noexcept {
+    return optional.has_value();
+  }
+  inline std::string get_std__optional_std__string_(const std::optional<std::string>& optional) noexcept {
+    return optional.value();
+  }
+  
+  // pragma MARK: std::optional<double>
+  /**
+   * Specialized version of `std::optional<double>`.
+   */
+  using std__optional_double_ = std::optional<double>;
+  inline std::optional<double> create_std__optional_double_(const double& value) noexcept {
+    return std::optional<double>(value);
+  }
+  inline bool has_value_std__optional_double_(const std::optional<double>& optional) noexcept {
+    return optional.has_value();
+  }
+  inline double get_std__optional_double_(const std::optional<double>& optional) noexcept {
+    return optional.value();
+  }
+  
+  // pragma MARK: std::shared_ptr<Promise<std::unordered_map<std::string, double>>>
+  /**
+   * Specialized version of `std::shared_ptr<Promise<std::unordered_map<std::string, double>>>`.
+   */
+  using std__shared_ptr_Promise_std__unordered_map_std__string__double___ = std::shared_ptr<Promise<std::unordered_map<std::string, double>>>;
+  inline std::shared_ptr<Promise<std::unordered_map<std::string, double>>> create_std__shared_ptr_Promise_std__unordered_map_std__string__double___() noexcept {
+    return Promise<std::unordered_map<std::string, double>>::create();
+  }
+  inline PromiseHolder<std::unordered_map<std::string, double>> wrap_std__shared_ptr_Promise_std__unordered_map_std__string__double___(std::shared_ptr<Promise<std::unordered_map<std::string, double>>> promise) noexcept {
+    return PromiseHolder<std::unordered_map<std::string, double>>(std::move(promise));
+  }
+  
+  // pragma MARK: std::function<void(const std::unordered_map<std::string, double>& /* result */)>
+  /**
+   * Specialized version of `std::function<void(const std::unordered_map<std::string, double>&)>`.
+   */
+  using Func_void_std__unordered_map_std__string__double_ = std::function<void(const std::unordered_map<std::string, double>& /* result */)>;
+  /**
+   * Wrapper class for a `std::function<void(const std::unordered_map<std::string, double>& / * result * /)>`, this can be used from Swift.
+   */
+  class Func_void_std__unordered_map_std__string__double__Wrapper final {
+  public:
+    explicit Func_void_std__unordered_map_std__string__double__Wrapper(std::function<void(const std::unordered_map<std::string, double>& /* result */)>&& func): _function(std::make_unique<std::function<void(const std::unordered_map<std::string, double>& /* result */)>>(std::move(func))) {}
+    inline void call(std::unordered_map<std::string, double> result) const noexcept {
+      _function->operator()(result);
+    }
+  private:
+    std::unique_ptr<std::function<void(const std::unordered_map<std::string, double>& /* result */)>> _function;
+  } SWIFT_NONCOPYABLE;
+  Func_void_std__unordered_map_std__string__double_ create_Func_void_std__unordered_map_std__string__double_(void* NON_NULL swiftClosureWrapper) noexcept;
+  inline Func_void_std__unordered_map_std__string__double__Wrapper wrap_Func_void_std__unordered_map_std__string__double_(Func_void_std__unordered_map_std__string__double_ value) noexcept {
+    return Func_void_std__unordered_map_std__string__double__Wrapper(std::move(value));
+  }
+  
+  // pragma MARK: std::shared_ptr<Promise<std::string>>
+  /**
+   * Specialized version of `std::shared_ptr<Promise<std::string>>`.
+   */
+  using std__shared_ptr_Promise_std__string__ = std::shared_ptr<Promise<std::string>>;
+  inline std::shared_ptr<Promise<std::string>> create_std__shared_ptr_Promise_std__string__() noexcept {
+    return Promise<std::string>::create();
+  }
+  inline PromiseHolder<std::string> wrap_std__shared_ptr_Promise_std__string__(std::shared_ptr<Promise<std::string>> promise) noexcept {
+    return PromiseHolder<std::string>(std::move(promise));
+  }
+  
+  // pragma MARK: std::function<void(const std::string& /* result */)>
+  /**
+   * Specialized version of `std::function<void(const std::string&)>`.
+   */
+  using Func_void_std__string = std::function<void(const std::string& /* result */)>;
+  /**
+   * Wrapper class for a `std::function<void(const std::string& / * result * /)>`, this can be used from Swift.
+   */
+  class Func_void_std__string_Wrapper final {
+  public:
+    explicit Func_void_std__string_Wrapper(std::function<void(const std::string& /* result */)>&& func): _function(std::make_unique<std::function<void(const std::string& /* result */)>>(std::move(func))) {}
+    inline void call(std::string result) const noexcept {
+      _function->operator()(result);
+    }
+  private:
+    std::unique_ptr<std::function<void(const std::string& /* result */)>> _function;
+  } SWIFT_NONCOPYABLE;
+  Func_void_std__string create_Func_void_std__string(void* NON_NULL swiftClosureWrapper) noexcept;
+  inline Func_void_std__string_Wrapper wrap_Func_void_std__string(Func_void_std__string value) noexcept {
+    return Func_void_std__string_Wrapper(std::move(value));
   }
   
   // pragma MARK: std::shared_ptr<Promise<StreamTextSnapshot>>
@@ -258,6 +392,33 @@ namespace margelo::nitro::textstream::bridge::swift {
   }
   inline Result_std__shared_ptr_ArrayBuffer__ create_Result_std__shared_ptr_ArrayBuffer__(const std::exception_ptr& error) noexcept {
     return Result<std::shared_ptr<ArrayBuffer>>::withError(error);
+  }
+  
+  // pragma MARK: Result<std::string>
+  using Result_std__string_ = Result<std::string>;
+  inline Result_std__string_ create_Result_std__string_(const std::string& value) noexcept {
+    return Result<std::string>::withValue(value);
+  }
+  inline Result_std__string_ create_Result_std__string_(const std::exception_ptr& error) noexcept {
+    return Result<std::string>::withError(error);
+  }
+  
+  // pragma MARK: Result<std::shared_ptr<Promise<std::unordered_map<std::string, double>>>>
+  using Result_std__shared_ptr_Promise_std__unordered_map_std__string__double____ = Result<std::shared_ptr<Promise<std::unordered_map<std::string, double>>>>;
+  inline Result_std__shared_ptr_Promise_std__unordered_map_std__string__double____ create_Result_std__shared_ptr_Promise_std__unordered_map_std__string__double____(const std::shared_ptr<Promise<std::unordered_map<std::string, double>>>& value) noexcept {
+    return Result<std::shared_ptr<Promise<std::unordered_map<std::string, double>>>>::withValue(value);
+  }
+  inline Result_std__shared_ptr_Promise_std__unordered_map_std__string__double____ create_Result_std__shared_ptr_Promise_std__unordered_map_std__string__double____(const std::exception_ptr& error) noexcept {
+    return Result<std::shared_ptr<Promise<std::unordered_map<std::string, double>>>>::withError(error);
+  }
+  
+  // pragma MARK: Result<std::shared_ptr<Promise<std::string>>>
+  using Result_std__shared_ptr_Promise_std__string___ = Result<std::shared_ptr<Promise<std::string>>>;
+  inline Result_std__shared_ptr_Promise_std__string___ create_Result_std__shared_ptr_Promise_std__string___(const std::shared_ptr<Promise<std::string>>& value) noexcept {
+    return Result<std::shared_ptr<Promise<std::string>>>::withValue(value);
+  }
+  inline Result_std__shared_ptr_Promise_std__string___ create_Result_std__shared_ptr_Promise_std__string___(const std::exception_ptr& error) noexcept {
+    return Result<std::shared_ptr<Promise<std::string>>>::withError(error);
   }
   
   // pragma MARK: Result<std::shared_ptr<Promise<StreamTextSnapshot>>>

@@ -16,6 +16,22 @@ export interface StreamTextSnapshot {
   selectable: boolean
   /** What VoiceOver reads. */
   accessibilityValue: string
+  /** "canvas" (a prepared layout, no text view), "textView", or "" before the first text. */
+  mode: string
+  /** The canvas's engine: "coreText" or "textKit"; "" without a canvas. */
+  engine: string
+  /** Image tiles the canvas holds. */
+  tiles: number
+}
+
+/** A text style for `compareEngines`. */
+export interface StreamTextTestStyle {
+  fontSize: number
+  lineHeight: number
+  fontFamily?: string
+  fontWeight?: string
+  letterSpacing?: number
+  textAlign?: string
 }
 
 /**
@@ -36,6 +52,37 @@ export interface StreamTextTesting extends HybridObject<{ ios: 'swift' }> {
   startProducer(buffer: ArrayBuffer, bytes: ArrayBuffer, chunk: number, intervalMs: number, finalStatus: number): void
   /** Stops every producer. */
   stopProducers(): void
+  /** Empties the pool of reusable text views, so the next mounts create theirs (a cold start). */
+  drainTextViewPool(): void
+  /** Off: finished sources are laid out on the main thread when mounted, as before prepared layouts. */
+  setPreparedLayout(enabled: boolean): void
+  /** False: prepared layouts use TextKit even where CoreText could. */
+  setPreparedCoreText(enabled: boolean): void
+  /** Forgets every prepared layout, so the next mounts lay out from scratch (a cold start). */
+  clearPreparedLayouts(): void
+  /** Prepared layouts cached for later mounts. */
+  preparedCacheCount(): number
+  /** Debugging: the cached layouts, one line each. */
+  preparedCacheDump(): string
+  /** Posts a memory warning, as the system would. */
+  simulateMemoryWarning(): void
+  /**
+   * How far the CoreText engine's lines are from TextKit's for `text` at `width`: line ranges
+   * (`mismatchedLines`), baselines (`maxBaselineDelta`), glyph x (`maxGlyphDx`), heights.
+   * `coreText` is 0 when the CoreText engine doesn't take this text.
+   */
+  compareEngines(text: string, style: StreamTextTestStyle, width: number): Record<string, number>
+  /**
+   * What showing `text` at `width` costs on the main thread, step by step (ms): the way the
+   * renderer does it today, a text view around a layout prepared ahead, and drawing a prepared
+   * layout without a text view.
+   */
+  measureMount(text: string, width: number): Promise<Record<string, number>>
+  /**
+   * Selects the word at (`x`, `y`) in the view's coordinates, through the same text input the
+   * system's selection uses, and returns the selected text (copied too). The view must stay as is.
+   */
+  selectWordAt(key: string, x: number, y: number): Promise<string>
   /** The view whose `nativeID` is `key` and that has `recordDisplayLog`; rejects if there is none. */
   snapshot(key: string): Promise<StreamTextSnapshot>
 }

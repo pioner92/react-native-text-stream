@@ -78,6 +78,11 @@ class HybridFrameMonitor: HybridFrameMonitorSpec {
     return StreamTextRenderStats.shared.totals(reset: reset)
   }
 
+  func streamTextPhases(reset: Bool) throws -> Dictionary<String, Double> {
+    StreamTextRenderStats.enabled = true
+    return StreamTextRenderStats.shared.phases(reset: reset)
+  }
+
   func memoryFootprintMb() throws -> Double {
     var info = task_vm_info_data_t()
     var count = mach_msg_type_number_t(MemoryLayout<task_vm_info_data_t>.size / MemoryLayout<natural_t>.size)

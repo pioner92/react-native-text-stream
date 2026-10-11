@@ -31,6 +31,44 @@ class HybridStreamTextTesting: HybridStreamTextTestingSpec {
     return base
   }
 
+  func setPreparedLayout(enabled: Bool) throws {
+    StreamTextPreparedLayout.enabled = enabled
+  }
+
+  func setPreparedCoreText(enabled: Bool) throws {
+    StreamTextPreparedLayout.coreText = enabled
+  }
+
+  func clearPreparedLayouts() throws {
+    StreamTextPreparedLayout.generation += 1
+    StreamTextPreparedLayout.cacheClear?()
+  }
+
+  func preparedCacheCount() throws -> Double {
+    Double(StreamTextPreparedLayout.cacheCount?() ?? 0)
+  }
+
+  func preparedCacheDump() throws -> String {
+    StreamTextPreparedLayout.cacheDump?() ?? ""
+  }
+
+  func simulateMemoryWarning() throws {
+    DispatchQueue.main.async {
+      NotificationCenter.default.post(name: UIApplication.didReceiveMemoryWarningNotification, object: nil)
+    }
+  }
+
+  func compareEngines(text: String, style: StreamTextTestStyle, width: Double) throws -> Dictionary<String, Double> {
+    let textStyle = StreamTextStyle()
+    textStyle.fontSize = CGFloat(style.fontSize)
+    textStyle.lineHeight = CGFloat(style.lineHeight)
+    textStyle.fontFamily = style.fontFamily
+    textStyle.fontWeight = style.fontWeight
+    textStyle.letterSpacing = CGFloat(style.letterSpacing ?? 0)
+    textStyle.textAlign = style.textAlign
+    return StreamTextPreparedLayout.compareEngines(text: text, style: textStyle, width: CGFloat(width))
+  }
+
   func append(buffer: ArrayBuffer, bytes: ArrayBuffer) throws {
     _ = tsb_append(try owned(buffer), bytes.data, UInt64(bytes.size))
   }
@@ -71,6 +109,30 @@ class HybridStreamTextTesting: HybridStreamTextTestingSpec {
     stopped.forEach { $0.cancel() }
   }
 
+  func drainTextViewPool() throws {
+    DispatchQueue.main.async { StreamTextRenderer.drainTextViewPool() }
+  }
+
+  func measureMount(text: String, width: Double) throws -> Promise<Dictionary<String, Double>> {
+    let promise = Promise<Dictionary<String, Double>>()
+    DispatchQueue.main.async {
+      promise.resolve(withResult: StreamTextMountProbe.run(text: text, width: CGFloat(width)))
+    }
+    return promise
+  }
+
+  func selectWordAt(key: String, x: Double, y: Double) throws -> Promise<String> {
+    let promise = Promise<String>()
+    DispatchQueue.main.async {
+      guard let renderer = StreamTextRenderer.debugView(key) else {
+        promise.reject(withError: RuntimeError.error(withMessage: "No StreamTextView with nativeID \(key) and recordDisplayLog"))
+        return
+      }
+      promise.resolve(withResult: renderer.debugSelectWord(at: CGPoint(x: x, y: y)))
+    }
+    return promise
+  }
+
   func snapshot(key: String) throws -> Promise<StreamTextSnapshot> {
     let promise = Promise<StreamTextSnapshot>()
     DispatchQueue.main.async {
@@ -87,7 +149,10 @@ class HybridStreamTextTesting: HybridStreamTextTestingSpec {
         fontSize: Double(state.fontSize),
         color: state.color,
         selectable: state.selectable,
-        accessibilityValue: state.accessibilityValue
+        accessibilityValue: state.accessibilityValue,
+        mode: renderer.debugMode.mode,
+        engine: renderer.debugMode.engine,
+        tiles: Double(renderer.debugMode.tiles)
       ))
     }
     return promise

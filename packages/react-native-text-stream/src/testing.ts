@@ -6,5 +6,5 @@ export function createStreamTextTesting(): StreamTextTesting {
   return NitroModules.createHybridObject<StreamTextTesting>('StreamTextTesting')
 }
 
-export type { StreamTextSnapshot, StreamTextTesting } from './specs/testing.nitro'
+export type { StreamTextSnapshot, StreamTextTestStyle, StreamTextTesting } from './specs/testing.nitro'
 export { bufferText, committedBytes, headerStatus } from './buffer'

@@ -13,13 +13,17 @@
 #error NitroModules cannot be found! Are you sure you installed NitroModules properly?
 #endif
 
+// Forward declaration of `StreamTextTestStyle` to properly resolve imports.
+namespace margelo::nitro::textstream { struct StreamTextTestStyle; }
 // Forward declaration of `StreamTextSnapshot` to properly resolve imports.
 namespace margelo::nitro::textstream { struct StreamTextSnapshot; }
 
 #include <NitroModules/ArrayBuffer.hpp>
-#include "StreamTextSnapshot.hpp"
-#include <NitroModules/Promise.hpp>
 #include <string>
+#include <unordered_map>
+#include "StreamTextTestStyle.hpp"
+#include <NitroModules/Promise.hpp>
+#include "StreamTextSnapshot.hpp"
 
 namespace margelo::nitro::textstream {
 
@@ -57,6 +61,16 @@ namespace margelo::nitro::textstream {
       virtual void setStatus(const std::shared_ptr<ArrayBuffer>& buffer, double status) = 0;
       virtual void startProducer(const std::shared_ptr<ArrayBuffer>& buffer, const std::shared_ptr<ArrayBuffer>& bytes, double chunk, double intervalMs, double finalStatus) = 0;
       virtual void stopProducers() = 0;
+      virtual void drainTextViewPool() = 0;
+      virtual void setPreparedLayout(bool enabled) = 0;
+      virtual void setPreparedCoreText(bool enabled) = 0;
+      virtual void clearPreparedLayouts() = 0;
+      virtual double preparedCacheCount() = 0;
+      virtual std::string preparedCacheDump() = 0;
+      virtual void simulateMemoryWarning() = 0;
+      virtual std::unordered_map<std::string, double> compareEngines(const std::string& text, const StreamTextTestStyle& style, double width) = 0;
+      virtual std::shared_ptr<Promise<std::unordered_map<std::string, double>>> measureMount(const std::string& text, double width) = 0;
+      virtual std::shared_ptr<Promise<std::string>> selectWordAt(const std::string& key, double x, double y) = 0;
       virtual std::shared_ptr<Promise<StreamTextSnapshot>> snapshot(const std::string& key) = 0;
 
     protected:

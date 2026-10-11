@@ -247,6 +247,24 @@ open class HybridFrameMonitorSpec_cxx {
   }
   
   @inline(__always)
+  public final func streamTextPhases(reset: Bool) -> bridge.Result_std__unordered_map_std__string__double__ {
+    do {
+      let __result = try self.__implementation.streamTextPhases(reset: reset)
+      let __resultCpp = { () -> bridge.std__unordered_map_std__string__double_ in
+        var __map = bridge.create_std__unordered_map_std__string__double_(__result.count)
+        for (__k, __v) in __result {
+          bridge.emplace_std__unordered_map_std__string__double_(&__map, std.string(__k), __v)
+        }
+        return __map
+      }()
+      return bridge.create_Result_std__unordered_map_std__string__double__(__resultCpp)
+    } catch (let __error) {
+      let __exceptionPtr = __error.toCpp()
+      return bridge.create_Result_std__unordered_map_std__string__double__(__exceptionPtr)
+    }
+  }
+  
+  @inline(__always)
   public final func memoryFootprintMb() -> bridge.Result_double_ {
     do {
       let __result = try self.__implementation.memoryFootprintMb()

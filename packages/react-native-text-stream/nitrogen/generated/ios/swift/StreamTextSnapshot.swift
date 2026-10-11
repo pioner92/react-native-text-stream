@@ -18,8 +18,8 @@ public extension StreamTextSnapshot {
   /**
    * Create a new instance of `StreamTextSnapshot`.
    */
-  init(text: String, height: Double, status: String, hasTextView: Bool, fontSize: Double, color: String, selectable: Bool, accessibilityValue: String) {
-    self.init(std.string(text), height, std.string(status), hasTextView, fontSize, std.string(color), selectable, std.string(accessibilityValue))
+  init(text: String, height: Double, status: String, hasTextView: Bool, fontSize: Double, color: String, selectable: Bool, accessibilityValue: String, mode: String, engine: String, tiles: Double) {
+    self.init(std.string(text), height, std.string(status), hasTextView, fontSize, std.string(color), selectable, std.string(accessibilityValue), std.string(mode), std.string(engine), tiles)
   }
 
   @inline(__always)
@@ -60,5 +60,20 @@ public extension StreamTextSnapshot {
   @inline(__always)
   var accessibilityValue: String {
     return String(self.__accessibilityValue)
+  }
+  
+  @inline(__always)
+  var mode: String {
+    return String(self.__mode)
+  }
+  
+  @inline(__always)
+  var engine: String {
+    return String(self.__engine)
+  }
+  
+  @inline(__always)
+  var tiles: Double {
+    return self.__tiles
   }
 }
