@@ -2,15 +2,16 @@
   "name": "react-native-text-stream",
   "private": true,
   "scripts": {
-    "build": "npm --prefix packages/react-native-text-stream run build",
-    "codegen": "npm --prefix example/modules/text-stream-testing run nitrogen",
-    "release": "npm --prefix packages/react-native-text-stream run release",
+    "build": "bun run --cwd packages/react-native-text-stream build",
+    "codegen": "bun run --cwd example/modules/text-stream-testing nitrogen",
+    "release": "bun run --cwd packages/react-native-text-stream release",
     "postinstall": "sh scripts/apply-patches.sh",
-    "test": "npm --prefix packages/react-native-text-stream test",
-    "test:harness": "npm --prefix example run test:harness"
+    "test": "bun run --cwd packages/react-native-text-stream test",
+    "test:harness": "bun run --cwd example test:harness"
   },
   "workspaces": [
     "packages/*",
     "example"
-  ]
+  ],
+  "packageManager": "bun@1.4.2"
 }

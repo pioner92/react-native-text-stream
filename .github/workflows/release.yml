@@ -27,18 +27,21 @@ jobs:
       - name: Setup Bun.js
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version: latest
+          bun-version: 1.4.2
       - name: Cache bun dependencies
         id: bun-cache
         uses: actions/cache@v4
         with:
           path: ~/.bun/install/cache
-          key: ${{ runner.os }}-bun-${{ hashFiles('**/bun.lockb') }}
+          key: ${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
           restore-keys: |
             ${{ runner.os }}-bun-
 
-      - name: Install npm dependencies (bun)
-        run: bun install
+      - name: Install dependencies (bun)
+        run: bun install --frozen-lockfile
+
+      - name: Test
+        run: bun run test
 
       - name: Build lib
         run: bun run build

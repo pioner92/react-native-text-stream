@@ -8,10 +8,10 @@
   "react-native": "src/index",
   "source": "src/index",
   "scripts": {
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit -p tsconfig.build.json && tsc --noEmit",
     "clean": "git clean -dfX",
     "release": "semantic-release",
-    "build": "npm run typecheck && bob build",
+    "build": "bun run typecheck && bob build",
     "test": "jest"
   },
   "keywords": [
@@ -54,6 +54,7 @@
     "@semantic-release/git": "^10.0.1",
     "@testing-library/react-native": "14.0.1",
     "@types/jest": "30.0.0",
+    "@types/node": "26.6.3",
     "@types/react": "19.2.0",
     "babel-jest": "30.5.2",
     "conventional-changelog-conventionalcommits": "^10.2.1",
@@ -112,7 +113,7 @@
       [
         "typescript",
         {
-          "project": "tsconfig.json"
+          "project": "tsconfig.build.json"
         }
       ]
     ]
