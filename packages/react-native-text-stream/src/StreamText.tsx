@@ -15,6 +15,7 @@ import type {
   StreamTextState,
   StreamTextStatus,
 } from './types'
+import { bufferText, committedBytes, TSB_HEADER_SIZE } from './buffer'
 
 type StatusEvent = NativeSyntheticEvent<{ status: StreamTextStatus; bytes: number }>
 
@@ -106,36 +107,7 @@ export interface StreamTextHandle {
 
 type HostInstance = object
 
-const TSB_HEADER_SIZE = 64
 const IDLE: StreamTextState = { status: 'idle', bytes: 0 }
-
-/** TSB1 header: `committed` is a little-endian u64 at offset 8. */
-function committedBytes(buffer: ArrayBuffer): number {
-  const header = new DataView(buffer, 0, TSB_HEADER_SIZE)
-  return header.getUint32(8, true) + header.getUint32(12, true) * 2 ** 32
-}
-
-function decodeUtf8(bytes: Uint8Array): string {
-  const Decoder = (globalThis as { TextDecoder?: new (label: string) => { decode(b: Uint8Array): string } })
-    .TextDecoder
-  if (Decoder) return new Decoder('utf-8').decode(bytes)
-  // Fallback for runtimes without TextDecoder; invalid sequences become U+FFFD.
-  let out = ''
-  for (let i = 0; i < bytes.length; ) {
-    const b = bytes[i]!
-    const n = b < 0x80 ? 1 : b >= 0xf0 ? 4 : b >= 0xe0 ? 3 : b >= 0xc0 ? 2 : 0
-    if (n === 0 || i + n > bytes.length) {
-      out += '�'
-      i++
-      continue
-    }
-    let cp = n === 1 ? b : b & (0xff >> (n + 1))
-    for (let k = 1; k < n; k++) cp = (cp << 6) | (bytes[i + k]! & 0x3f)
-    out += String.fromCodePoint(cp)
-    i += n
-  }
-  return out
-}
 
 /**
  * A native text view that renders a TSB1 buffer as it fills and grows with its text, like
@@ -166,8 +138,10 @@ export const StreamText = forwardRef<StreamTextHandle, StreamTextProps>(function
     if (!buffer) return Commands.clear(instance as never)
     const bufferId = Buffers?.put(buffer) ?? 0
     if (bufferId === 0) {
+      // The view can't read it: show nothing rather than keep the previous buffer.
       console.warn('StreamText: attach() needs a natively-backed ArrayBuffer, e.g. res.nativeBuffer')
-      return
+      current.current = null
+      return Commands.clear(instance as never)
     }
     Commands.attach(instance as never, bufferId)
   }, [])
@@ -208,11 +182,7 @@ export const StreamText = forwardRef<StreamTextHandle, StreamTextProps>(function
           if (!buffer || buffer.byteLength < TSB_HEADER_SIZE) return IDLE
           return { status: lastStatus.current ?? 'streaming', bytes: committedBytes(buffer) }
         },
-        getText: async () => {
-          const buffer = current.current
-          if (!buffer || buffer.byteLength < TSB_HEADER_SIZE) return ''
-          return decodeUtf8(new Uint8Array(buffer, TSB_HEADER_SIZE, committedBytes(buffer)))
-        },
+        getText: async () => (current.current ? bufferText(current.current) : ''),
       }
     },
     [send]

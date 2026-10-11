@@ -18,6 +18,12 @@
         "language": "swift",
         "implementationClassName": "HybridFrameMonitor"
       }
+    },
+    "StreamTextTesting": {
+      "ios": {
+        "language": "swift",
+        "implementationClassName": "HybridStreamTextTesting"
+      }
     }
   },
   "ignorePaths": [

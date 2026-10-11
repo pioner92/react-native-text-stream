@@ -5,7 +5,9 @@
     "build": "npm --prefix packages/react-native-text-stream run build",
     "codegen": "npm --prefix packages/react-native-text-stream run codegen",
     "release": "npm --prefix packages/react-native-text-stream run release",
-    "postinstall": "sh scripts/apply-patches.sh"
+    "postinstall": "sh scripts/apply-patches.sh",
+    "test": "npm --prefix packages/react-native-text-stream test",
+    "test:harness": "npm --prefix example run test:harness"
   },
   "workspaces": [
     "packages/*",

@@ -52,7 +52,35 @@ public final class StreamTextRenderer: UIView {
   /// ("done", "error", "cancelled", "truncated") once all of its text is on screen.
   @objc public var onStatusChange: ((String, Double) -> Void)?
   /// Benchmarks only: when set, records when bytes reach the screen under this key.
-  @objc public var displayLogKey: String?
+  @objc public var displayLogKey: String? {
+    didSet {
+      if let oldValue, Self.debugViews.object(forKey: oldValue as NSString) === self {
+        Self.debugViews.removeObject(forKey: oldValue as NSString)
+      }
+      if let displayLogKey { Self.debugViews.setObject(self, forKey: displayLogKey as NSString) }
+    }
+  }
+
+  /// Benchmarks and tests: renderers that have a displayLogKey, by key. Main thread.
+  private static let debugViews = NSMapTable<NSString, StreamTextRenderer>.strongToWeakObjects()
+
+  static func debugView(_ key: String) -> StreamTextRenderer? {
+    debugViews.object(forKey: key as NSString)
+  }
+
+  /// What the view shows, for tests. Main thread.
+  func debugState() -> (text: String, height: CGFloat, status: String, hasTextView: Bool, fontSize: CGFloat,
+                        color: String, selectable: Bool, accessibilityValue: String) {
+    let storage = textView?.textStorage
+    let attributes = storage.flatMap { $0.length > 0 ? $0.attributes(at: 0, effectiveRange: nil) : nil }
+      ?? textView?.typingAttributes ?? textAttributes
+    let font = attributes[.font] as? UIFont
+    var (r, g, b, a): (CGFloat, CGFloat, CGFloat, CGFloat) = (0, 0, 0, 0)
+    (attributes[.foregroundColor] as? UIColor)?.resolvedColor(with: traitCollection).getRed(&r, green: &g, blue: &b, alpha: &a)
+    let color = "#" + [r, g, b, a].map { String(format: "%02X", Int(($0 * 255).rounded())) }.joined()
+    return (storage?.string ?? "", reportedHeight, reportedStatus ?? "", textView != nil, font?.pointSize ?? 0,
+            color, textView?.isSelectable ?? selectable, textView?.accessibilityValue ?? "")
+  }
 
   /// The component view sets it, then calls `applyTextStyle()` once.
   @objc public var textStyle = StreamTextStyle()

@@ -13,7 +13,8 @@
     "release": "semantic-release",
     "build": "npm run typecheck && bob build",
     "codegen": "nitrogen --logLevel=\"debug\" && npm run build",
-    "postcodegen": "npm --prefix ../example run pod"
+    "postcodegen": "npm --prefix ../example run pod",
+    "test": "jest"
   },
   "keywords": [
     "react-native",
@@ -51,17 +52,23 @@
   },
   "devDependencies": {
     "@jamesacarr/eslint-formatter-github-actions": "^0.2.0",
+    "@react-native/babel-preset": "0.86.0",
+    "@react-native/jest-preset": "0.86.0",
     "@semantic-release/changelog": "^6.0.3",
     "@semantic-release/git": "^10.0.1",
-    "@types/jest": "^29.5.12",
+    "@testing-library/react-native": "14.0.1",
+    "@types/jest": "30.0.0",
     "@types/react": "19.2.0",
+    "babel-jest": "30.5.2",
+    "conventional-changelog-conventionalcommits": "^10.2.1",
+    "jest": "30.5.2",
     "nitrogen": "0.37.1",
     "react": "19.2.3",
     "react-native": "0.86.0",
     "react-native-builder-bob": "^0.40.18",
     "react-native-nitro-modules": "0.37.1",
-    "conventional-changelog-conventionalcommits": "^10.2.1",
     "semantic-release": "^25.0.7",
+    "test-renderer": "1.3.0",
     "typescript": "^6.0.3"
   },
   "peerDependencies": {

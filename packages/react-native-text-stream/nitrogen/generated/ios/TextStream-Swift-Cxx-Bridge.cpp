@@ -9,6 +9,7 @@
 
 // Include C++ implementation defined types
 #include "HybridFrameMonitorSpecSwift.hpp"
+#include "HybridStreamTextTestingSpecSwift.hpp"
 #include "TextStream-Swift-Cxx-Umbrella.hpp"
 #include <NitroModules/NitroDefines.hpp>
 
@@ -51,6 +52,30 @@ namespace margelo::nitro::textstream::bridge::swift {
     }
     #endif
     TextStream::HybridFrameMonitorSpec_cxx& swiftPart = swiftWrapper->getSwiftPart();
+    return swiftPart.toUnsafe();
+  }
+  
+  // pragma MARK: std::function<void(const StreamTextSnapshot& /* result */)>
+  Func_void_StreamTextSnapshot create_Func_void_StreamTextSnapshot(void* NON_NULL swiftClosureWrapper) noexcept {
+    auto swiftClosure = TextStream::Func_void_StreamTextSnapshot::fromUnsafe(swiftClosureWrapper);
+    return [swiftClosure = std::move(swiftClosure)](const StreamTextSnapshot& result) mutable -> void {
+      swiftClosure.call(result);
+    };
+  }
+  
+  // pragma MARK: std::shared_ptr<HybridStreamTextTestingSpec>
+  std::shared_ptr<HybridStreamTextTestingSpec> create_std__shared_ptr_HybridStreamTextTestingSpec_(void* NON_NULL swiftUnsafePointer) noexcept {
+    TextStream::HybridStreamTextTestingSpec_cxx swiftPart = TextStream::HybridStreamTextTestingSpec_cxx::fromUnsafe(swiftUnsafePointer);
+    return std::make_shared<margelo::nitro::textstream::HybridStreamTextTestingSpecSwift>(swiftPart);
+  }
+  void* NON_NULL get_std__shared_ptr_HybridStreamTextTestingSpec_(std__shared_ptr_HybridStreamTextTestingSpec_ cppType) {
+    std::shared_ptr<margelo::nitro::textstream::HybridStreamTextTestingSpecSwift> swiftWrapper = std::dynamic_pointer_cast<margelo::nitro::textstream::HybridStreamTextTestingSpecSwift>(cppType);
+    #ifdef NITRO_DEBUG
+    if (swiftWrapper == nullptr) [[unlikely]] {
+      throw std::runtime_error("Class \"HybridStreamTextTestingSpec\" is not implemented in Swift!");
+    }
+    #endif
+    TextStream::HybridStreamTextTestingSpec_cxx& swiftPart = swiftWrapper->getSwiftPart();
     return swiftPart.toUnsafe();
   }
 

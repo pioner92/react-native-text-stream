@@ -11,6 +11,7 @@
 #import <type_traits>
 
 #include "HybridFrameMonitorSpecSwift.hpp"
+#include "HybridStreamTextTestingSpecSwift.hpp"
 
 @interface TextStreamAutolinking : NSObject
 @end
@@ -25,6 +26,13 @@
     "FrameMonitor",
     []() -> std::shared_ptr<HybridObject> {
       std::shared_ptr<HybridFrameMonitorSpec> hybridObject = TextStream::TextStreamAutolinking::createFrameMonitor();
+      return hybridObject;
+    }
+  );
+  HybridObjectRegistry::registerHybridObjectConstructor(
+    "StreamTextTesting",
+    []() -> std::shared_ptr<HybridObject> {
+      std::shared_ptr<HybridStreamTextTestingSpec> hybridObject = TextStream::TextStreamAutolinking::createStreamTextTesting();
       return hybridObject;
     }
   );

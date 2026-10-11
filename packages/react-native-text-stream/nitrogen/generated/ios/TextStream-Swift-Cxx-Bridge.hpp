@@ -12,20 +12,30 @@
 namespace margelo::nitro::textstream { struct FrameStats; }
 // Forward declaration of `HybridFrameMonitorSpec` to properly resolve imports.
 namespace margelo::nitro::textstream { class HybridFrameMonitorSpec; }
+// Forward declaration of `HybridStreamTextTestingSpec` to properly resolve imports.
+namespace margelo::nitro::textstream { class HybridStreamTextTestingSpec; }
+// Forward declaration of `StreamTextSnapshot` to properly resolve imports.
+namespace margelo::nitro::textstream { struct StreamTextSnapshot; }
 
 // Forward declarations of Swift defined types
 // Forward declaration of `HybridFrameMonitorSpec_cxx` to properly resolve imports.
 namespace TextStream { class HybridFrameMonitorSpec_cxx; }
+// Forward declaration of `HybridStreamTextTestingSpec_cxx` to properly resolve imports.
+namespace TextStream { class HybridStreamTextTestingSpec_cxx; }
 
 // Include C++ defined types
 #include "FrameStats.hpp"
 #include "HybridFrameMonitorSpec.hpp"
+#include "HybridStreamTextTestingSpec.hpp"
+#include "StreamTextSnapshot.hpp"
+#include <NitroModules/ArrayBuffer.hpp>
 #include <NitroModules/Promise.hpp>
 #include <NitroModules/PromiseHolder.hpp>
 #include <NitroModules/Result.hpp>
 #include <exception>
 #include <functional>
 #include <memory>
+#include <string>
 #include <vector>
 
 /**
@@ -193,6 +203,70 @@ namespace margelo::nitro::textstream::bridge::swift {
   }
   inline Result_double_ create_Result_double_(const std::exception_ptr& error) noexcept {
     return Result<double>::withError(error);
+  }
+  
+  // pragma MARK: std::shared_ptr<Promise<StreamTextSnapshot>>
+  /**
+   * Specialized version of `std::shared_ptr<Promise<StreamTextSnapshot>>`.
+   */
+  using std__shared_ptr_Promise_StreamTextSnapshot__ = std::shared_ptr<Promise<StreamTextSnapshot>>;
+  inline std::shared_ptr<Promise<StreamTextSnapshot>> create_std__shared_ptr_Promise_StreamTextSnapshot__() noexcept {
+    return Promise<StreamTextSnapshot>::create();
+  }
+  inline PromiseHolder<StreamTextSnapshot> wrap_std__shared_ptr_Promise_StreamTextSnapshot__(std::shared_ptr<Promise<StreamTextSnapshot>> promise) noexcept {
+    return PromiseHolder<StreamTextSnapshot>(std::move(promise));
+  }
+  
+  // pragma MARK: std::function<void(const StreamTextSnapshot& /* result */)>
+  /**
+   * Specialized version of `std::function<void(const StreamTextSnapshot&)>`.
+   */
+  using Func_void_StreamTextSnapshot = std::function<void(const StreamTextSnapshot& /* result */)>;
+  /**
+   * Wrapper class for a `std::function<void(const StreamTextSnapshot& / * result * /)>`, this can be used from Swift.
+   */
+  class Func_void_StreamTextSnapshot_Wrapper final {
+  public:
+    explicit Func_void_StreamTextSnapshot_Wrapper(std::function<void(const StreamTextSnapshot& /* result */)>&& func): _function(std::make_unique<std::function<void(const StreamTextSnapshot& /* result */)>>(std::move(func))) {}
+    inline void call(StreamTextSnapshot result) const noexcept {
+      _function->operator()(result);
+    }
+  private:
+    std::unique_ptr<std::function<void(const StreamTextSnapshot& /* result */)>> _function;
+  } SWIFT_NONCOPYABLE;
+  Func_void_StreamTextSnapshot create_Func_void_StreamTextSnapshot(void* NON_NULL swiftClosureWrapper) noexcept;
+  inline Func_void_StreamTextSnapshot_Wrapper wrap_Func_void_StreamTextSnapshot(Func_void_StreamTextSnapshot value) noexcept {
+    return Func_void_StreamTextSnapshot_Wrapper(std::move(value));
+  }
+  
+  // pragma MARK: std::shared_ptr<HybridStreamTextTestingSpec>
+  /**
+   * Specialized version of `std::shared_ptr<HybridStreamTextTestingSpec>`.
+   */
+  using std__shared_ptr_HybridStreamTextTestingSpec_ = std::shared_ptr<HybridStreamTextTestingSpec>;
+  std::shared_ptr<HybridStreamTextTestingSpec> create_std__shared_ptr_HybridStreamTextTestingSpec_(void* NON_NULL swiftUnsafePointer) noexcept;
+  void* NON_NULL get_std__shared_ptr_HybridStreamTextTestingSpec_(std__shared_ptr_HybridStreamTextTestingSpec_ cppType);
+  
+  // pragma MARK: std::weak_ptr<HybridStreamTextTestingSpec>
+  using std__weak_ptr_HybridStreamTextTestingSpec_ = std::weak_ptr<HybridStreamTextTestingSpec>;
+  inline std__weak_ptr_HybridStreamTextTestingSpec_ weakify_std__shared_ptr_HybridStreamTextTestingSpec_(const std::shared_ptr<HybridStreamTextTestingSpec>& strong) noexcept { return strong; }
+  
+  // pragma MARK: Result<std::shared_ptr<ArrayBuffer>>
+  using Result_std__shared_ptr_ArrayBuffer__ = Result<std::shared_ptr<ArrayBuffer>>;
+  inline Result_std__shared_ptr_ArrayBuffer__ create_Result_std__shared_ptr_ArrayBuffer__(const std::shared_ptr<ArrayBuffer>& value) noexcept {
+    return Result<std::shared_ptr<ArrayBuffer>>::withValue(value);
+  }
+  inline Result_std__shared_ptr_ArrayBuffer__ create_Result_std__shared_ptr_ArrayBuffer__(const std::exception_ptr& error) noexcept {
+    return Result<std::shared_ptr<ArrayBuffer>>::withError(error);
+  }
+  
+  // pragma MARK: Result<std::shared_ptr<Promise<StreamTextSnapshot>>>
+  using Result_std__shared_ptr_Promise_StreamTextSnapshot___ = Result<std::shared_ptr<Promise<StreamTextSnapshot>>>;
+  inline Result_std__shared_ptr_Promise_StreamTextSnapshot___ create_Result_std__shared_ptr_Promise_StreamTextSnapshot___(const std::shared_ptr<Promise<StreamTextSnapshot>>& value) noexcept {
+    return Result<std::shared_ptr<Promise<StreamTextSnapshot>>>::withValue(value);
+  }
+  inline Result_std__shared_ptr_Promise_StreamTextSnapshot___ create_Result_std__shared_ptr_Promise_StreamTextSnapshot___(const std::exception_ptr& error) noexcept {
+    return Result<std::shared_ptr<Promise<StreamTextSnapshot>>>::withError(error);
   }
 
 } // namespace margelo::nitro::textstream::bridge::swift
