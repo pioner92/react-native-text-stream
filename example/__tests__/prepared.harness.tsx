@@ -242,9 +242,10 @@ describe('StreamText: prepared layouts', () => {
   it('a tall text keeps tiles only near the screen as it scrolls', async () => {
     const key = newKey();
     let scroll: ScrollView | null = null;
+    let contentHeight = 0;
     await render(
       <View style={{ height: 400 }}>
-        <ScrollView ref={(r) => { scroll = r; }}>
+        <ScrollView ref={(r) => { scroll = r; }} onContentSizeChange={(_w, h) => (contentHeight = h)}>
           <Column>
             <StreamText source={buffer(LONG, TSB.done)} nativeID={key} recordDisplayLog {...TEXT_STYLE} />
           </Column>
@@ -253,6 +254,7 @@ describe('StreamText: prepared layouts', () => {
     );
     const top = await waitForText(key, LONG);
     expect(top.mode).toBe('canvas');
+    await waitFor(() => expect(contentHeight).toBe(top.height)); // scrolls through the whole text
     // 400 pt on screen plus 512 pt drawn ahead: a handful of 256 pt tiles, not the whole text.
     expect(top.tiles).toBeGreaterThan(0);
     expect(top.tiles).toBeLessThanOrEqual(6);

@@ -215,6 +215,7 @@ export function MountBench({ onBack }: { onBack: () => void }) {
     if (running.current) return;
     const steps: [MountVariant, number, number][] = [
       ['stream', -5_000, 1],
+      ['stream', -50_000, 1], // long enough to fling through
       ['streamTextKit', -5_000, 1],
       ['streamLegacy', -5_000, 1],
       ['stream', 50_000, 1],
@@ -287,10 +288,13 @@ export function MountBench({ onBack }: { onBack: () => void }) {
       </View>
       <Text style={styles.status}>{status}</Text>
       {mounted?.key.startsWith('peek') ? (
-        // Peek scrolls, to look at tiles during a fling.
-        <ScrollView style={styles.stage}>
-          <MountStage key={mounted.key} mounted={mounted} onStatus={onStatus} onCommitted={onCommitted} />
-        </ScrollView>
+        // Peek scrolls, to look at tiles during a fling. The clipping stays on the frame: a ScrollView
+        // with overflow 'hidden' lays its content out at its own height, and wouldn't scroll.
+        <View style={styles.stage}>
+          <ScrollView>
+            <MountStage key={mounted.key} mounted={mounted} onStatus={onStatus} onCommitted={onCommitted} />
+          </ScrollView>
+        </View>
       ) : (
         <View style={styles.stage}>
           {mounted ? (
