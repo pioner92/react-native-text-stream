@@ -19,6 +19,7 @@ import {
   utf8,
   waitForSnapshot,
   waitForText,
+  itAndroid,
   itIOS,
 } from './helpers';
 
@@ -396,7 +397,7 @@ describe('StreamText: prepared layouts', () => {
     expect((await snapshot(key)).mode).toBe('canvas');
   });
 
-  // Not on Android yet: selection.
+  // Android: the selection is a TextView's, laid over the view (the test below).
   itIOS('selects right-to-left text on the canvas the way the text view does', async () => {
     // Hebrew over a few lines, a Latin word inside it, an Arabic paragraph: TextKit canvas, bidi runs.
     const hebrew = 'שלום עולם, זה טקסט בעברית שנכתב מימין לשמאל וממשיך לשורה הבאה. ';
@@ -453,6 +454,42 @@ describe('StreamText: prepared layouts', () => {
     // A Latin word inside it: a left-to-right run, still in a right-to-left paragraph.
     expect(onCanvas[2]).toMatchObject({ rtl: true, rects: [{ rtl: false, start: true, end: true }] });
     expect(onCanvas[3]).toMatchObject({ rtl: true, rects: [{ rtl: true }] });
+  });
+
+  itAndroid('selects right-to-left text where the view draws it, on the canvas and in a text view', async () => {
+    // Hebrew over a few lines, a Latin word inside it, an Arabic paragraph: bidi runs.
+    const hebrew = 'שלום עולם, זה טקסט בעברית שנכתב מימין לשמאל וממשיך לשורה הבאה. ';
+    const text = hebrew.repeat(2) + 'Hello ' + hebrew + '\n' + 'مرحبا بالعالم، هذا نص عربي.';
+    type Rect = { x: number; y: number; w: number; h: number; rtl: boolean };
+    const round = (rects: Rect[]) =>
+      rects.map((r) => ({ x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.w), rtl: r.rtl }));
+    const ranges: [number, number, string?][] = [
+      [0, 4, 'שלום'], // the first word
+      [5, 60], // across a line break
+      [hebrew.length * 2, 5, 'Hello'], // the Latin word
+      [text.indexOf('مرحبا'), 5, 'مرحبا'], // the Arabic paragraph
+    ];
+    for (const prepared of [true, false]) {
+      testing.setPreparedLayout(prepared);
+      const { key, s, view } = await mountFinished(text);
+      expect(s.mode).toBe(prepared ? 'canvas' : 'textView');
+      for (const [location, length, word] of ranges) {
+        const g = JSON.parse(await testing.selectionGeometry(key, location, length));
+        expect(g.text).toBe(text.slice(location, location + length));
+        expect(g.rtl).toBe(true);
+        // While selecting, the overlay draws the text instead of the view: in the same places.
+        expect({ range: [location, length], rects: round(g.rects) }).toEqual({ range: [location, length], rects: round(g.drawn) });
+        if (location === 5) expect(g.rects.length).toBeGreaterThan(1);
+        if (word) {
+          // A long press in the middle of the word selects it.
+          const r: Rect = g.rects[0];
+          expect(g.rects).toHaveLength(1);
+          expect(r.rtl).toBe(word !== 'Hello');
+          expect(await testing.selectWordAt(key, r.x + r.w / 2, r.y + r.h / 2)).toBe(word);
+        }
+      }
+      view.unmount();
+    }
   });
 
   it('bubbles mounted below the screen draw once scrolled to, and let go of tiles far away', async () => {

@@ -30,18 +30,24 @@ internal class StreamTextSelection(private val host: StreamTextView) {
 
   /** Starts selecting the word at (`x`, `y`): the long press `down` began there. */
   fun start(down: MotionEvent, text: CharSequence, style: StreamTextStyle, paint: TextPaint, highlight: Int?) {
-    dismiss()
-    val view = makeOverlay(text, style, paint, highlight)
-    overlay = view
-    host.addView(view)
-    layoutOverlay()
-    host.invalidate()
+    val view = open(text, style, paint, highlight)
     // The press began on the host: replay its down on the overlay, then the long press, which
     // selects the word there and shows the handles and the toolbar; the rest of the gesture follows.
     val replay = MotionEvent.obtain(down)
     view.dispatchTouchEvent(replay)
     replay.recycle()
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) view.performLongClick(down.x, down.y) else view.performLongClick()
+  }
+
+  /** Lays the overlay over the view, nothing selected yet. */
+  fun open(text: CharSequence, style: StreamTextStyle, paint: TextPaint, highlight: Int?): TextView {
+    dismiss()
+    val view = makeOverlay(text, style, paint, highlight)
+    overlay = view
+    host.addView(view)
+    layoutOverlay()
+    host.invalidate()
+    return view
   }
 
   /** Touches after the long press (dragging a handle out of it) go to the overlay. */

@@ -549,6 +549,61 @@ class StreamTextView(context: Context) : ReactViewGroup(context) {
         PixelUtil.toPixelFromDIP(x), PixelUtil.toPixelFromDIP(y), shownText(), style, paint, selectionColor)
   }
 
+  /**
+   * Tests: selects `length` characters from `location` in the overlay a long press lays over the
+   * view, and returns, in dp in the view, the selection's rects there and those of the same
+   * characters as the view draws them (the overlay draws the text instead while it is up), as JSON
+   * `{ text, rtl, rects: [{ x, y, w, h, rtl }], drawn: [...] }`, a rect a line.
+   */
+  fun debugSelectionGeometry(location: Int, length: Int): String {
+    val shown = shownText()
+    if (shown.isEmpty()) return "{}"
+    val overlay = selection.open(shown, style, paint, selectionColor)
+    try {
+      val end = location + length
+      android.text.Selection.setSelection(overlay.text as android.text.Spannable, location, end)
+      val layout = overlay.layout
+      val rects = JSONArray()
+      selectionRects(layout, location, end, overlay.totalPaddingLeft, overlay.totalPaddingTop, rects)
+      val drawn = JSONArray()
+      var base = 0
+      forEachShownSection { section, lines, y, _ ->
+        val sectionEnd = base + section.getLineStart(lines)
+        val from = max(location, base)
+        val to = min(end, sectionEnd)
+        if (from < to) selectionRects(section, from - base, to - base, paddingLeft, paddingTop + y, drawn)
+        base = sectionEnd
+      }
+      return JSONObject()
+          .put("text", overlay.text.subSequence(overlay.selectionStart, overlay.selectionEnd).toString())
+          .put("rtl", layout.getParagraphDirection(layout.getLineForOffset(location)) == Layout.DIR_RIGHT_TO_LEFT)
+          .put("rects", rects)
+          .put("drawn", drawn)
+          .toString()
+    } finally {
+      selection.dismiss()
+    }
+  }
+
+  private fun selectionRects(layout: Layout, start: Int, end: Int, left: Int, top: Int, out: JSONArray) {
+    val dp = { px: Float -> PixelUtil.toDIPFromPixel(px).toDouble() }
+    val path = android.graphics.Path()
+    val bounds = RectF()
+    for (line in layout.getLineForOffset(start)..layout.getLineForOffset(end)) {
+      val from = max(start, layout.getLineStart(line))
+      val to = min(end, layout.getLineEnd(line))
+      if (from >= to) continue
+      path.reset()
+      layout.getSelectionPath(from, to, path)
+      path.computeBounds(bounds, true)
+      if (bounds.isEmpty) continue
+      out.put(JSONObject()
+          .put("x", dp(left + bounds.left)).put("y", dp(top + bounds.top))
+          .put("w", dp(bounds.width())).put("h", dp(bounds.height()))
+          .put("rtl", layout.isRtlCharAt(from)))
+    }
+  }
+
   // MARK: - Measuring
 
   override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {

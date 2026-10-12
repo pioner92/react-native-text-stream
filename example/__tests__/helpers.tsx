@@ -12,6 +12,7 @@ export const describeIOS = Platform.OS === 'ios' ? describe : describe.skip;
 export const itIOS = Platform.OS === 'ios' ? it : it.skip;
 /** What only Android has, or only Android passes yet (named where used). */
 export const describeAndroid = Platform.OS === 'android' ? describe : describe.skip;
+export const itAndroid = Platform.OS === 'android' ? it : it.skip;
 
 const encoder = new TextEncoder();
 export const utf8 = (text: string) => encoder.encode(text);
