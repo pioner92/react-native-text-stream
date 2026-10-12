@@ -225,6 +225,10 @@ class StreamTextView(context: Context) : ReactViewGroup(context) {
   }
 
   /** What the view shows, for tests. Main thread. */
+  /** Tests: "canvas", "textView" or "" (nothing shown yet). */
+  val debugMode: String
+    get() = if (canvas != null) "canvas" else if (hadText) "textView" else ""
+
   fun debugState(): StreamTextDebugState {
     val c = paint.color
     return StreamTextDebugState(
@@ -236,7 +240,7 @@ class StreamTextView(context: Context) : ReactViewGroup(context) {
         color = "#%02X%02X%02X%02X".format(Color.red(c), Color.green(c), Color.blue(c), Color.alpha(c)),
         selectable = selectable,
         accessibilityValue = reading().text,
-        mode = if (canvas != null) "canvas" else if (hadText) "textView" else "",
+        mode = debugMode,
         engine = if (canvas != null) "staticLayout" else "",
         tiles = if (canvas != null) blocks?.count ?: 0 else flow.blockCount,
     )

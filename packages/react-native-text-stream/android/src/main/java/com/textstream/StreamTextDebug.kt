@@ -116,6 +116,25 @@ object StreamTextDebug {
     }
   }
 
+  private var mainLayouts = 0
+  private var mainLongestNs = 0L
+
+  internal fun noteMainLayout(nanos: Long) {
+    mainLayouts++
+    mainLongestNs = maxOf(mainLongestNs, nanos)
+  }
+
+  /** Tests: `[count, longest ms]` of the prepared layouts made on the main thread since the last reset. Main thread. */
+  @JvmStatic
+  fun mainLayouts(reset: Boolean): DoubleArray {
+    val out = doubleArrayOf(mainLayouts.toDouble(), mainLongestNs / 1e6)
+    if (reset) {
+      mainLayouts = 0
+      mainLongestNs = 0
+    }
+    return out
+  }
+
   /** Off: finished sources are laid out by the view at mount, as before prepared layouts. */
   @JvmStatic
   fun setPreparedLayout(enabled: Boolean) {

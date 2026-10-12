@@ -95,7 +95,7 @@ class StreamTextPreparedLayout private constructor(
         letterSpacing: Float,
         textAlign: String?,
     ): StreamTextPreparedLayout {
-      val started = if (StreamTextDebug.enabled && StreamTextDebug.timing) System.nanoTime() else 0L
+      val started = if (StreamTextDebug.enabled) System.nanoTime() else 0L
       val utf8 = ByteArray(bytes)
       data.duplicate().apply { position(StreamTextNative.HEADER_SIZE) }.get(utf8, 0, bytes)
       val out = StringBuilder(bytes)
@@ -120,7 +120,7 @@ class StreamTextPreparedLayout private constructor(
         // Where it ran: in measure on the JS thread, the main thread, or ahead on a prepare thread.
         val thread = Thread.currentThread()
         val where = when {
-          thread === android.os.Looper.getMainLooper().thread -> "main"
+          thread === android.os.Looper.getMainLooper().thread -> "main".also { StreamTextDebug.noteMainLayout(time) }
           thread.name == "StreamTextPrep" -> "prepareThread"
           else -> "js"
         }

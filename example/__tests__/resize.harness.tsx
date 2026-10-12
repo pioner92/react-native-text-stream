@@ -1,8 +1,8 @@
 import React from 'react';
-import { View } from 'react-native';
+import { Platform, View } from 'react-native';
 import { describe, expect, it, render } from 'react-native-harness';
 import { StreamText } from 'react-native-text-stream';
-import { buffer, describeIOS, newKey, testing, TEXT_STYLE, TSB, waitForSnapshot } from './helpers';
+import { buffer, newKey, testing, TEXT_STYLE, TSB, waitForSnapshot } from './helpers';
 
 const SENTENCES = [
   'Streaming text straight from the network into a native view, every token lands in a buffer. ',
@@ -40,13 +40,13 @@ function Chat({ keys, style }: { keys: string[]; style: object }) {
   );
 }
 
-// Not on Android yet: prepared layouts at a new width, resizeSurface.
-describeIOS('StreamText: the surface changes width (rotation, Split View)', () => {
+describe('StreamText: the surface changes width (rotation, Split View)', () => {
+  // iOS: CoreText, and TextKit without a lineHeight; Android: StaticLayout either way.
   for (const [engine, style] of [
-    ['coreText', TEXT_STYLE],
-    ['textKit', { fontSize: 14 }], // no lineHeight: TextKit lays it out
+    [Platform.OS === 'ios' ? 'coreText' : 'staticLayout', TEXT_STYLE],
+    [Platform.OS === 'ios' ? 'textKit' : 'staticLayout', { fontSize: 14 }],
   ] as const) {
-    it(`20 ${engine} bubbles stay on the canvas, and no frame shows a bubble at its old height`, async () => {
+    it(`20 ${engine} bubbles${'lineHeight' in style ? '' : ' without a lineHeight'} stay on the canvas, and no frame shows a bubble at its old height`, async () => {
       testing.clearPreparedLayouts();
       const keys = MESSAGES.map(() => newKey());
       await render(<Chat keys={keys} style={style} />);

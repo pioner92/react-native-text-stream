@@ -4,6 +4,11 @@ import android.app.Application
 import android.content.ComponentCallbacks2
 import android.os.Handler
 import android.os.Looper
+import android.view.View
+import android.view.ViewGroup
+import android.view.ViewTreeObserver
+import com.facebook.react.ReactRootView
+import com.facebook.react.uimanager.PixelUtil
 import com.facebook.proguard.annotations.DoNotStrip
 import com.margelo.nitro.NitroModules
 import com.margelo.nitro.core.ArrayBuffer
@@ -12,6 +17,9 @@ import com.textstream.StreamTextDebug
 import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledFuture
 import java.util.concurrent.TimeUnit
+import kotlin.math.roundToInt
+import org.json.JSONArray
+import org.json.JSONObject
 
 /** Tests only: writes TSB1 buffers like the nitro-fetch producer, and reads StreamTextViews. */
 @DoNotStrip
@@ -119,7 +127,59 @@ class HybridStreamTextTesting : HybridStreamTextTestingSpec() {
 
   override fun compareEngines(text: String, style: StreamTextTestStyle, width: Double): Map<String, Double> = emptyMap()
 
-  override fun resizeSurface(keys: Array<String>, width: Double, ms: Double): Promise<String> = unsupported()
+  override fun resizeSurface(keys: Array<String>, width: Double, ms: Double): Promise<String> {
+    val promise = Promise<String>()
+    main.post {
+      val views = keys.mapNotNull { StreamTextDebug.view(it) }
+      // The root view a rotation or a window resize lays out again, on the main thread.
+      val host = views.firstOrNull()?.let { view ->
+        generateSequence(view.parent) { it.parent }.firstOrNull { it is ReactRootView } as? View
+      }
+      if (keys.isEmpty() || views.size != keys.size || host == null) {
+        promise.reject(IllegalStateException("No views ${keys.toList()} with recordDisplayLog in a surface"))
+        return@post
+      }
+      val frames = HashMap<String, JSONArray>()
+      val last = HashMap<String, String>()
+      fun sample() {
+        for ((key, view) in keys.zip(views)) {
+          val entry = JSONObject()
+              .put("w", PixelUtil.toDIPFromPixel(view.width.toFloat()).toDouble())
+              .put("h", PixelUtil.toDIPFromPixel(view.height.toFloat()).toDouble())
+              .put("mode", view.debugMode)
+          if (last[key] == entry.toString()) continue
+          last[key] = entry.toString()
+          frames.getOrPut(key) { JSONArray() }.put(entry)
+        }
+      }
+      StreamTextDebug.mainLayouts(true)
+      val started = System.nanoTime()
+      val px = if (width > 0) PixelUtil.toPixelFromDIP(width).roundToInt() else (host.parent as View).width
+      host.layoutParams = host.layoutParams.apply {
+        this.width = if (width > 0) px else ViewGroup.LayoutParams.MATCH_PARENT
+      }
+      // Now, as iOS's layoutIfNeeded: the surface's commit and mount run inside the root's measure.
+      host.measure(
+          View.MeasureSpec.makeMeasureSpec(px, View.MeasureSpec.EXACTLY),
+          View.MeasureSpec.makeMeasureSpec(host.height, View.MeasureSpec.EXACTLY))
+      host.layout(host.left, host.top, host.left + px, host.top + host.height)
+      val mainMs = (System.nanoTime() - started) / 1e6
+      val (layouts, longestMs) = StreamTextDebug.mainLayouts(true)
+      // Then what each frame draws.
+      val observer = host.viewTreeObserver
+      val listener = ViewTreeObserver.OnDrawListener { sample() }
+      observer.addOnDrawListener(listener)
+      main.postDelayed({
+        sample()
+        host.viewTreeObserver.removeOnDrawListener(listener)
+        val views = JSONObject()
+        for ((key, list) in frames) views.put(key, list)
+        promise.resolve(
+            JSONObject().put("mainMs", mainMs).put("layouts", layouts).put("longestMs", longestMs).put("views", views).toString())
+      }, maxOf(ms.toLong(), 32L))
+    }
+    return promise
+  }
 
   override fun tileMemory(): Promise<String> = unsupported()
 
