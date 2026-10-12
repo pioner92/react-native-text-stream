@@ -38,7 +38,7 @@ export async function nitroFetch(
      */
     stream?: boolean;
     /**
-     * With `stream: true` (iOS): write the body natively into a TSB1 buffer
+     * With `stream: true`: write the body natively into a TSB1 buffer
      * exposed as `response.nativeBuffer` instead of `response.body`. The body
      * then never crosses into JS. `true` uses a 16 MB capacity.
      */

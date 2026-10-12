@@ -7,7 +7,8 @@ import java.nio.ByteBuffer
 @DoNotStrip
 class HybridUrlRequest(
   private val cronetRequest: CronetUrlRequest,
-  private val byteBuffer: ByteBuffer
+  private val byteBuffer: ByteBuffer,
+  private val nativeBuffer: NativeTextStreamBuffer? = null
 ) : HybridUrlRequestSpec() {
 
   override fun start() {
@@ -19,6 +20,8 @@ class HybridUrlRequest(
   }
 
   override fun read() {
+    // Native mode reads on its own (HybridUrlRequestBuilder), like URLSession on iOS.
+    if (nativeBuffer != null) return
     // Prepare buffer for writing (position=0, limit=capacity)
     byteBuffer.clear()
     // Pass to Cronet to fill
@@ -33,6 +36,5 @@ class HybridUrlRequest(
     return cronetRequest.isDone
   }
 
-  // Native TSB1 buffers are iOS-only for now.
-  override fun getNativeBuffer(): com.margelo.nitro.core.ArrayBuffer? = null
+  override fun getNativeBuffer(): com.margelo.nitro.core.ArrayBuffer? = nativeBuffer?.arrayBuffer
 }

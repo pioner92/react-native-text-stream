@@ -41,6 +41,9 @@ class HybridUrlRequestBuilder(
   private val requestHeaders: LinkedHashMap<String, String> = LinkedHashMap()
   private var uploadBodyString: String = ""
   private var uploadBodyLength: Long = 0L
+  private var nativeBufferCapacity: Int? = null
+  // Strong ref keeps the mapping alive while Cronet writes, even if JS drops its ArrayBuffer.
+  private var nativeBuffer: NativeTextStreamBuffer? = null
 
   init {
     // Allocate ONE reusable owning buffer for all reads (64KB)
@@ -81,6 +84,11 @@ class HybridUrlRequestBuilder(
           val nitroInfo = info.toNitro()
           callback(nitroInfo)
         }
+        // Native mode: reads run here, not from JS, so the body keeps flowing while JS is busy.
+        if (nativeBuffer != null) {
+          byteBuffer.clear()
+          request.read(byteBuffer)
+        }
       }
 
       override fun onReadCompleted(
@@ -100,6 +108,13 @@ class HybridUrlRequestBuilder(
             DevToolsReporter.storeResponseBodyIncremental(devToolsRequestId, String(arr, Charsets.UTF_8))
           }
         }
+        nativeBuffer?.let { buffer ->
+          // Native mode: the body never crosses into JS.
+          buffer.append(receivedBuffer, bytesRead)
+          receivedBuffer.clear()
+          request.read(receivedBuffer)
+          return
+        }
         onReadCompletedCallback?.let { callback ->
           val nitroInfo = info.toNitro()
           callback(nitroInfo, reusableBuffer, bytesRead.toDouble())
@@ -110,6 +125,8 @@ class HybridUrlRequestBuilder(
         request: CronetUrlRequest,
         info: CronetUrlResponseInfo
       ) {
+        // Published before the JS callbacks run, after the final committed store.
+        nativeBuffer?.setStatus(NativeTextStreamBuffer.STATUS_DONE)
         if (devToolsEnabled) {
           DevToolsReporter.reportResponseEnd(devToolsRequestId, devToolsBytes.toLong())
         }
@@ -124,6 +141,7 @@ class HybridUrlRequestBuilder(
         info: CronetUrlResponseInfo?,
         error: CronetNativeException
       ) {
+        nativeBuffer?.setStatus(NativeTextStreamBuffer.STATUS_ERROR)
         if (devToolsEnabled) {
           DevToolsReporter.reportRequestFailed(devToolsRequestId, false)
         }
@@ -138,6 +156,7 @@ class HybridUrlRequestBuilder(
         request: CronetUrlRequest,
         info: CronetUrlResponseInfo?
       ) {
+        nativeBuffer?.setStatus(NativeTextStreamBuffer.STATUS_CANCELLED)
         if (devToolsEnabled) {
           DevToolsReporter.reportRequestFailed(devToolsRequestId, true)
         }
@@ -213,7 +232,10 @@ class HybridUrlRequestBuilder(
   }
 
   override fun enableNativeBuffer(capacity: Double) {
-    throw UnsupportedOperationException("nativeBuffer is not implemented on Android yet")
+    if (!(capacity > 0 && capacity <= Int.MAX_VALUE)) {
+      throw IllegalArgumentException("Invalid native buffer capacity: $capacity")
+    }
+    nativeBufferCapacity = capacity.toInt()
   }
 
   override fun onSucceeded(callback: (info: UrlResponseInfo) -> Unit) {
@@ -241,6 +263,7 @@ class HybridUrlRequestBuilder(
   }
 
   override fun build(): HybridUrlRequestSpec {
+    nativeBuffer = nativeBufferCapacity?.let { NativeTextStreamBuffer.create(it) }
     val cronetRequest = builder.build()
     if (devToolsEnabled) {
       DevToolsReporter.reportRequestStart(
@@ -252,6 +275,6 @@ class HybridUrlRequestBuilder(
         uploadBodyLength
       )
     }
-    return HybridUrlRequest(cronetRequest, byteBuffer)
+    return HybridUrlRequest(cronetRequest, byteBuffer, nativeBuffer)
   }
 }
