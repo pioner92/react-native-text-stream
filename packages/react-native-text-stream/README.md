@@ -10,6 +10,7 @@ A native React Native text view that renders a streamed response as it arrives, 
 
 - React Native 0.86 or higher, with the New Architecture
 - iOS 15.1 or higher
+- Android 7.0 (API 24) or higher
 
 ## Installation
 

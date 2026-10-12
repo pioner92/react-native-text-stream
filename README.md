@@ -79,7 +79,10 @@ A 100 KB answer streaming into a chat bubble ([full benchmarks](#benchmarks)):
 - 🧩 **Producer-agnostic.** Any native module that writes the small [TSB1](#the-tsb1-buffer) layout can
   feed the view. A patched [nitro-fetch](https://github.com/margelo/react-native-nitro-fetch) is the first
   producer.
-- ♿️ **Accessible.** The view exposes the latest text to VoiceOver without snapshotting megabytes of it.
+- ♿️ **Accessible.** VoiceOver and TalkBack read the text on screen line by line, without snapshotting
+  megabytes of it.
+- 🤖 **iOS and Android.** The same component, props and buffer on both, with the same frame loop and the
+  same O(new bytes) streaming.
 
 ### Is it a good fit?
 
@@ -102,6 +105,7 @@ A 100 KB answer streaming into a chat bubble ([full benchmarks](#benchmarks)):
 |---|---|
 | React Native | **0.86+** with the New Architecture |
 | iOS | 15.1+ |
+| Android | 7.0+ (API 24); drawing only the lines near the screen needs 10+ (API 29) |
 | [`react-native-nitro-modules`](https://nitro.margelo.com) | used by the patched nitro-fetch (and the example app's benchmark helpers), not by the package |
 
 `StreamText` itself is a plain Fabric component and doesn't go through Nitro.
@@ -282,14 +286,15 @@ the view shows the final state.
 
 ```mermaid
 flowchart LR
-    P["Producer<br/><sub>URLSession delegate queue</sub>"] -- "memcpy + store-release" --> B[("TSB1 buffer<br/><sub>native-owned ArrayBuffer</sub>")]
-    B -- "load-acquire, as soon as bytes land" --> R["StreamText<br/><sub>main thread · TextKit 1</sub>"]
+    P["Producer<br/><sub>URLSession queue · Cronet callbacks</sub>"] -- "memcpy + store-release" --> B[("TSB1 buffer<br/><sub>native-owned ArrayBuffer</sub>")]
+    B -- "load-acquire, as soon as bytes land" --> R["StreamText<br/><sub>main thread · TextKit 1 / Android Layout</sub>"]
     R -- "new height, per line" --> S["Fabric shadow node<br/><sub>layout, no JS</sub>"]
     J["JavaScript"] -. "hands the buffer over once" .-> R
 ```
 
-1. **Producer.** nitro-fetch appends every received chunk to the buffer on URLSession's queue and publishes
-   it with a release store of `committed`. When the request finishes it sets `status`.
+1. **Producer.** nitro-fetch appends every received chunk to the buffer, on URLSession's queue on iOS and in
+   Cronet's read callbacks on Android, and publishes it with a release store of `committed`. When the
+   request finishes it sets `status`.
 2. **Handoff.** JavaScript passes `res.nativeBuffer` to the view once: as the `source` prop, read straight
    from the JS value by the component's props parser, or through `ref.attach()`. Fabric view commands
    can't carry an `ArrayBuffer`, so `attach()` first puts it in a small C++ TurboModule
@@ -318,6 +323,29 @@ flowchart LR
   text views are reused from a small pool.
 - **Accessibility.** Only the last 2000 characters are exposed, in the component's visible frame, so an
   accessibility snapshot of a long stream stays cheap.
+
+</details>
+
+<details>
+<summary><b>On Android</b></summary>
+
+The C++ shadow node, the props and the buffer are shared; the view is Kotlin.
+
+- **Handoff.** Android props reach Kotlin as `folly::dynamic` and lose the `ArrayBuffer`, so the `source`
+  travels through the shadow node's state and JNI.
+- **Text.** A `DynamicLayout` over the streamed text, appended in O(new bytes): line height spans in
+  segments of 1 KB (one span over the whole text made every append re-wrap all of it), and past 96 lines
+  of one paragraph the lines above the last two are frozen as they stand, since greedy wrapping never
+  moves them again. Lines match `<Text>` to the pixel: the same line height rounding, font padding and
+  fallback line spacing.
+- **Finished messages.** As on iOS, the shadow node lays a finished `source` out in measure (a
+  `StaticLayout` built through JNI, on two background threads when React renders the message), and the
+  view draws it as is.
+- **Drawing.** The text is drawn in blocks of 32 lines, each its own `RenderNode`, recorded only within
+  512 dp of the screen; an append re-records only the blocks it touched.
+- **Selection.** A long press lays a selectable `TextView` with the same lines over the view, which brings
+  the system's handles, magnifier and toolbar.
+- **TalkBack** moves through the lines on screen by character, word, line or paragraph.
 
 </details>
 
@@ -363,7 +391,8 @@ may only be touched on the JS thread.
 
 The same answer, streamed five ways. Release build on an iPhone 17 Pro Max **simulator**; each streaming
 number is the median of 2 runs, each mounting number the median of 3 cold runs. Mounting on a real
-**iPhone 16 Pro** (120 Hz): [device results](bench-results/iphone16pro-2026-10-11.md).
+**iPhone 16 Pro** (120 Hz): [device results](bench-results/iphone16pro-2026-10-11.md). Android, streaming
+and mounting on a **Pixel 8a**: [device results](bench-results/pixel8a-2026-10-12.md).
 
 ### TL;DR
 
@@ -524,6 +553,14 @@ bun run start                      # Metro on :8081
 bun run ios
 ```
 
+On Android, forward Metro and the server to the device first, so the example's `localhost` URLs reach
+the Mac:
+
+```sh
+adb reverse tcp:8081 tcp:8081 && adb reverse tcp:9877 tcp:9877
+bun run android
+```
+
 **🏠 Demo.** The same response streams into two cards at once:
 
 - **StreamText**, the native path.
@@ -538,7 +575,7 @@ padding and a background, handed its buffer through the ref. Press **Freeze 5s**
 bubble keeps growing and pushes the list down, while the JS tick counter stops.
 
 **📊 Benchmarks ›** opens the benchmark screen. Build **Release** (`-configuration Release`, no Metro
-needed), start the stream server and tap **Run all**. Results land in `bench-results/`. `FOCUS` in
+needed; on Android `./gradlew assembleRelease`), start the stream server and tap **Run all**. Results land in `bench-results/`. `FOCUS` in
 `example/src/bench/config.ts` narrows a run.
 
 > [!WARNING]
@@ -611,7 +648,7 @@ npm is on the [roadmap](#roadmap).
 
 | Path | What's inside |
 |---|---|
-| [`packages/react-native-text-stream`](packages/react-native-text-stream) | `StreamText`: a hand-written Fabric component (C++ shadow node and props in `cpp/`, iOS view and renderer in `ios/fabric/`), the `StreamTextBuffers` TurboModule and the TSB1 header |
+| [`packages/react-native-text-stream`](packages/react-native-text-stream) | `StreamText`: a hand-written Fabric component (C++ shadow node and props in `cpp/`, iOS view and renderer in `ios/fabric/`, Android view in `android/`), the `StreamTextBuffers` TurboModule and the TSB1 header |
 | [`packages/react-native-nitro-fetch`](packages/react-native-nitro-fetch) | nitro-fetch 1.8.0 (`aad957e`) plus the `nativeBuffer` patch, also kept as [`patches/react-native-nitro-fetch+native-buffer.patch`](patches/react-native-nitro-fetch+native-buffer.patch) |
 | [`patches/`](patches) | applied on `postinstall`: upstream nitro-fetch's nitrogen fix and the Metro patch for worklets Bundle Mode |
 | [`example/`](example) | demo and benchmark app; [`example/modules/text-stream-testing`](example/modules/text-stream-testing) holds its benchmark and test helpers (`FrameMonitor`, `StreamTextTesting`, a Nitro module) |
@@ -619,11 +656,13 @@ npm is on the [roadmap](#roadmap).
 
 ## Roadmap
 
-- [ ] Android: a `StreamText` renderer and the `nativeBuffer` writer for Cronet
+- [x] Android: a `StreamText` renderer and the `nativeBuffer` writer for Cronet
 - [ ] Upstream the `nativeBuffer` option to react-native-nitro-fetch
 - [ ] Publish to npm
 - [x] Mounting benchmarks on a physical device ([iPhone 16 Pro](bench-results/iphone16pro-2026-10-11.md))
-- [ ] Streaming benchmarks on physical devices (needs a clock shared with the server)
+- [x] Streaming benchmarks on a physical device ([Pixel 8a](bench-results/pixel8a-2026-10-12.md): the clock offset
+  to the server is measured per run)
+- [ ] Streaming benchmarks on a physical iPhone
 - [ ] Shrink-to-fit width for short messages (today the view fills the width it is given)
 - [ ] Markdown rendering on the native side
 
@@ -633,7 +672,8 @@ Issues and pull requests are welcome. For larger changes, please open an issue f
 
 ```sh
 bun run test           # unit and contract tests
-bun run test:harness   # in-app tests in the example app (react-native-harness)
+bun run test:harness   # in-app tests in the example app (react-native-harness), iOS
+cd example && bun run test:harness:android   # the same on an Android device
 ```
 
 ## License
