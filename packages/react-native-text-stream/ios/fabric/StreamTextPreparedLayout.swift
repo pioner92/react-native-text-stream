@@ -11,6 +11,7 @@ import UIKit
 /// every line has the same height and its breaks are TextKit's; TextKit 1 for everything else.
 @objc(StreamTextPreparedLayout)
 public final class StreamTextPreparedLayout: NSObject {
+  #if STREAMTEXT_TESTING
   private static let flagsLock = NSLock()
   private static var flags = (enabled: true, coreText: true, generation: 0)
   /// Benchmarks: off = every mount lays out on the main thread, as before. Any thread.
@@ -35,6 +36,11 @@ public final class StreamTextPreparedLayout: NSObject {
   /// Tests: layouts made on the main thread (a rotation, a resize) and the longest (s). Main thread.
   @objc public static var mainLayouts = 0
   @objc public static var mainLongest: Double = 0
+  #else
+  @objc public static var enabled: Bool { true }
+  @objc public static var coreText: Bool { true }
+  @objc public static var generation: Int { 0 }
+  #endif
   /// Larger finished texts keep the text view path: they fill over several frames anyway.
   @objc public static let maxBytes: UInt64 = StreamTextLayout.instantFillBytes
 
@@ -131,6 +137,7 @@ public final class StreamTextPreparedLayout: NSObject {
     }
   }
 
+  #if STREAMTEXT_TESTING
   /// Tests: how far CoreText's lines are from TextKit's for `text` (line ranges, baselines, glyph
   /// x positions, heights). `coreText` is 0 when CoreText doesn't take this text.
   @_spi(Testing) public static func compareEngines(text: String, style: StreamTextStyle, width: CGFloat) -> [String: Double] {
@@ -163,6 +170,7 @@ public final class StreamTextPreparedLayout: NSObject {
     out["comparedGlyphs"] = Double(compared)
     return out
   }
+  #endif
 }
 
 /// Line geometry, for comparing the engines.
@@ -577,9 +585,12 @@ final class StreamTextCanvas: UIView {
   var visibleBounds: (() -> CGRect)?
 
   private var tiles: [Int: CALayer] = [:]
-  /// Tests: bytes of every canvas's tiles, and the canvases alive. Main thread.
-  static var tileBytes = 0
+  /// The canvases alive, trimmed on a memory warning. Main thread.
   static let all = NSHashTable<StreamTextCanvas>.weakObjects()
+  #if STREAMTEXT_TESTING
+  /// Tests: bytes of every canvas's tiles. Main thread.
+  static var tileBytes = 0
+  #endif
   /// Tiles being drawn in the background; a redraw or leaving the window cancels them.
   private var pending = Set<Int>()
   private lazy var drawToken = DrawToken(self)
@@ -625,9 +636,11 @@ final class StreamTextCanvas: UIView {
   @available(*, unavailable)
   required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
 
+  #if STREAMTEXT_TESTING
   deinit {
     MainActor.assumeIsolated { for row in Array(tiles.keys) { drop(row) } }
   }
+  #endif
 
   /// A new layout of the same text (another width or style): redraws what is on screen at once.
   func replace(_ layout: StreamTextPreparedLayout) {
@@ -760,20 +773,26 @@ final class StreamTextCanvas: UIView {
     tile.contents = image
     layer.addSublayer(tile)
     tiles[row] = tile
+    #if STREAMTEXT_TESTING
     Self.tileBytes += Self.bytes(of: tile)
+    #endif
   }
 
   private func drop(_ row: Int) {
     guard let tile = tiles.removeValue(forKey: row) else { return }
     tile.removeFromSuperlayer()
+    #if STREAMTEXT_TESTING
     Self.tileBytes -= Self.bytes(of: tile)
+    #endif
   }
 
+  #if STREAMTEXT_TESTING
   private static func bytes(of tile: CALayer) -> Int {
     guard let contents = tile.contents else { return 0 }
     let image = contents as! CGImage
     return image.bytesPerRow * image.height
   }
+  #endif
 
   /// Any thread.
   private static func render(_ rect: CGRect, layout: StreamTextPreparedLayout, color: UIColor,

@@ -16,7 +16,13 @@
 using namespace facebook;
 using namespace facebook::react;
 
-// Benchmarks: times a phase when StreamTextRenderStats is enabled.
+// Benchmarks: times a phase when StreamTextRenderStats is enabled (only with STREAMTEXT_TESTING).
+#ifndef STREAMTEXT_TESTING
+#define STREAMTEXT_PHASE(name, body) \
+  do {                               \
+    body;                            \
+  } while (0)
+#else
 #define STREAMTEXT_PHASE(name, body)                                                       \
   do {                                                                                     \
     if (StreamTextRenderStats.enabled) {                                                   \
@@ -27,6 +33,7 @@ using namespace facebook::react;
       body;                                                                                \
     }                                                                                      \
   } while (0)
+#endif
 
 static NSString *_Nullable StreamTextNSString(const std::string &value) {
   return value.empty() ? nil : RCTNSStringFromString(value);
@@ -112,9 +119,11 @@ static NSString *_Nullable StreamTextNSString(const std::string &value) {
   if (next.selectionColor != previous.selectionColor) {
     _renderer.selectionColor = RCTUIColorFromSharedColor(next.selectionColor);
   }
+#ifdef STREAMTEXT_TESTING
   if (next.recordDisplayLog != previous.recordDisplayLog || next.nativeId != previous.nativeId) {
     _renderer.displayLogKey = next.recordDisplayLog ? StreamTextNSString(next.nativeId) : nil;
   }
+#endif
   // Compared with the previous props, not with what is attached: an `attach` command may have
   // replaced the buffer since, and an unrelated prop change must not undo it.
   if (next.source != previous.source) {

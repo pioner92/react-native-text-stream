@@ -59,34 +59,13 @@ public final class StreamTextRenderer: UIView {
   /// Benchmarks only: when set, records when bytes reach the screen under this key.
   @objc public var displayLogKey: String? {
     didSet {
+      #if STREAMTEXT_TESTING
       if let oldValue, Self.debugViews.object(forKey: oldValue as NSString) === self {
         Self.debugViews.removeObject(forKey: oldValue as NSString)
       }
       if let displayLogKey { Self.debugViews.setObject(self, forKey: displayLogKey as NSString) }
+      #endif
     }
-  }
-
-  /// Benchmarks and tests: renderers that have a displayLogKey, by key. Main thread.
-  private static let debugViews = NSMapTable<NSString, StreamTextRenderer>.strongToWeakObjects()
-
-  @_spi(Testing) public static func debugView(_ key: String) -> StreamTextRenderer? {
-    debugViews.object(forKey: key as NSString)
-  }
-
-  /// What the view shows, for tests. Main thread.
-  @_spi(Testing) public func debugState() -> (text: String, height: CGFloat, status: String, hasTextView: Bool, fontSize: CGFloat,
-                        color: String, selectable: Bool, accessibilityValue: String) {
-    let storage = textView?.textStorage
-      ?? canvas.map { NSTextStorage(attributedString: NSAttributedString(string: $0.layout.text.string, attributes: textAttributes)) }
-    let attributes = storage.flatMap { $0.length > 0 ? $0.attributes(at: 0, effectiveRange: nil) : nil }
-      ?? textView?.typingAttributes ?? textAttributes
-    let font = attributes[.font] as? UIFont
-    var (r, g, b, a): (CGFloat, CGFloat, CGFloat, CGFloat) = (0, 0, 0, 0)
-    (attributes[.foregroundColor] as? UIColor)?.resolvedColor(with: traitCollection).getRed(&r, green: &g, blue: &b, alpha: &a)
-    let color = "#" + [r, g, b, a].map { String(format: "%02X", Int(($0 * 255).rounded())) }.joined()
-    return (storage?.string ?? "", reportedHeight, reportedStatus ?? "", textView != nil, font?.pointSize ?? 0,
-            color, textView?.isSelectable ?? selectable,
-            textView?.accessibilityValue ?? canvas?.accessibilityValue ?? "")
   }
 
   /// The component view sets it, then calls `applyTextStyle()` once.
@@ -171,7 +150,9 @@ public final class StreamTextRenderer: UIView {
     base = nil
     // The shadow node has this height already: no commit.
     reportedHeight = prepared.height
+    #if STREAMTEXT_TESTING
     if let displayLogKey { StreamTextDisplayLogs.shared.append(displayLogKey, bytes: offset) }
+    #endif
     reportStatus(terminalStatus(status), bytes: prepared.bytes)
   }
 
@@ -199,86 +180,6 @@ public final class StreamTextRenderer: UIView {
     canvas?.updateTiles()
   }
 
-  /// Tests: selects the word at `point` as the selection gestures would, copies and returns it.
-  @_spi(Testing) public func debugSelectWord(at point: CGPoint) -> String {
-    let input: UITextInput & UIResponder
-    if let canvas { input = canvas } else if let textView { input = textView } else { return "" }
-    guard let position = input.closestPosition(to: point),
-          let word = input.tokenizer.rangeEnclosingPosition(position, with: .word, inDirection: .storage(.forward))
-    else { return "" }
-    input.selectedTextRange = word
-    _ = input.becomeFirstResponder()
-    input.copy(nil)
-    return input.text(in: word) ?? ""
-  }
-
-  /// Tests: the selection geometry UIKit's selection UI reads for a range (rects with their direction
-  /// and ends, the carets at both ends), from the canvas or the text view, as JSON.
-  @_spi(Testing) public func debugSelectionGeometry(location: Int, length: Int) -> String {
-    let input: UITextInput
-    if let canvas { input = canvas } else if let textView { input = textView } else { return "{}" }
-    guard let start = input.position(from: input.beginningOfDocument, offset: location),
-          let end = input.position(from: start, offset: length),
-          let range = input.textRange(from: start, to: end) else { return "{}" }
-    func caret(_ position: UITextPosition) -> [String: CGFloat] {
-      let rect = input.caretRect(for: position)
-      return ["x": rect.minX, "y": rect.minY, "h": rect.height]
-    }
-    func back(_ position: UITextPosition) -> Int {
-      let rect = input.caretRect(for: position)
-      guard let found = input.closestPosition(to: CGPoint(x: rect.minX, y: rect.midY)) else { return -1 }
-      return input.offset(from: input.beginningOfDocument, to: found)
-    }
-    let rects = input.selectionRects(for: range).filter { !$0.rect.isEmpty }.map { rect -> [String: Any] in
-      ["x": rect.rect.minX, "y": rect.rect.minY, "w": rect.rect.width, "h": rect.rect.height,
-       "rtl": rect.writingDirection == .rightToLeft, "start": rect.containsStart, "end": rect.containsEnd]
-    }
-    let geometry: [String: Any] = [
-      "rects": rects, "startCaret": caret(start), "endCaret": caret(end),
-      "rtl": input.baseWritingDirection(for: start, in: .forward) == .rightToLeft,
-      // The selection UI places a caret, then asks for the position at it: it must come back.
-      "startBack": back(start), "endBack": back(end),
-      "selected": input.selectedTextRange.map { input.offset(from: $0.start, to: $0.end) } ?? -1,
-    ]
-    guard let data = try? JSONSerialization.data(withJSONObject: geometry) else { return "{}" }
-    return String(decoding: data, as: UTF8.self)
-  }
-
-  /// Tests: what VoiceOver reads from the canvas (JSON): its value, the page, the line count, and for
-  /// each of `lines` its text and the line number found at the middle of its frame.
-  @_spi(Testing) public func debugAccessibility(lines: [Int]) -> String {
-    guard let canvas else { return "{}" }
-    let reading: UIAccessibilityReadingContent = canvas
-    let picked = lines.map { line -> [String: Any] in
-      let frame = reading.accessibilityFrame(forLineNumber: line)
-      return ["line": line, "text": reading.accessibilityContent(forLineNumber: line) ?? NSNull(),
-              "back": reading.accessibilityLineNumber(for: CGPoint(x: frame.midX, y: frame.midY))]
-    }
-    let out: [String: Any] = [
-      "value": canvas.accessibilityValue ?? "", "page": reading.accessibilityPageContent() ?? "",
-      "count": canvas.layout.lineBoxes.count, "lines": picked,
-      // The line at the top of the element's frame (the part on screen).
-      "firstLine": reading.accessibilityLineNumber(
-        for: CGPoint(x: canvas.accessibilityFrame.midX, y: canvas.accessibilityFrame.minY + 1)),
-    ]
-    guard let data = try? JSONSerialization.data(withJSONObject: out) else { return "{}" }
-    return String(decoding: data, as: UTF8.self)
-  }
-
-  /// Tests: the tiles of every canvas: bytes, how many, canvases alive and those out of a window
-  /// that still hold tiles. Main thread.
-  @_spi(Testing) public static var debugTiles: (bytes: Int, tiles: Int, canvases: Int, offWindow: Int) {
-    let canvases = StreamTextCanvas.all.allObjects
-    return (StreamTextCanvas.tileBytes, canvases.reduce(0) { $0 + $1.tileCount }, canvases.count,
-            canvases.filter { $0.window == nil && $0.tileCount > 0 }.count)
-  }
-
-  /// Tests: "canvas", "textView" or "" (nothing shown yet), and the canvas's engine.
-  @_spi(Testing) public var debugMode: (mode: String, engine: String, tiles: Int) {
-    if let canvas { return ("canvas", canvas.layout.isCoreText ? "coreText" : "textKit", canvas.tileCount) }
-    return (textView != nil ? "textView" : "", "", 0)
-  }
-
   @available(*, unavailable)
   required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
 
@@ -297,11 +198,6 @@ public final class StreamTextRenderer: UIView {
   private static let poolDrain: NSObjectProtocol = NotificationCenter.default.addObserver(
     forName: UIApplication.didReceiveMemoryWarningNotification, object: nil, queue: .main
   ) { _ in textViewPool.removeAll() }
-
-  /// Benchmarks: a cold start for the next mounts. Main thread.
-  @_spi(Testing) public static func drainTextViewPool() {
-    textViewPool.removeAll()
-  }
 
   private static func recycle(_ textView: StreamTextView) {
     let started = CACurrentMediaTime()
@@ -345,10 +241,12 @@ public final class StreamTextRenderer: UIView {
     heldUTF8 = 0
     finished = false
     unloggedShown = nil
+    #if STREAMTEXT_TESTING
     if let displayLogKey {
       StreamTextDisplayLogs.shared.clear(displayLogKey)
       StreamTextRenderStats.shared.clear(displayLogKey)
     }
+    #endif
     stats = StreamTextRenderStats.Sample()
     if let textView, textView.textStorage.length > 0 { textView.text = "" }
     canvas?.removeFromSuperview()
@@ -525,10 +423,12 @@ public final class StreamTextRenderer: UIView {
 
   fileprivate func tick(fillAll: Bool = false) {
     // Text appended last tick has been laid out and committed by now: log it as shown.
+    #if STREAMTEXT_TESTING
     if let bytes = unloggedShown, let displayLogKey {
       StreamTextDisplayLogs.shared.append(displayLogKey, bytes: bytes)
       unloggedShown = nil
     }
+    #endif
     guard let base, !finished else {
       setTicking(false)
       return
@@ -717,27 +617,6 @@ private func rendererUTF8CompletePrefixLength(_ p: UnsafePointer<UInt8>, _ n: In
   return n  // invalid trailing bytes: let the decoder replace them
 }
 
-/// Benchmark display logs, `[wallClockMs, bytesShown, ...]` per key; written on main, read from JS.
-@objc(StreamTextDisplayLogs)
-public final class StreamTextDisplayLogs: NSObject {
-  @objc public static let shared = StreamTextDisplayLogs()
-  private let lock = NSLock()
-  private var logs: [String: [Double]] = [:]
-
-  func append(_ key: String, bytes: UInt64) {
-    let now = Date().timeIntervalSince1970 * 1000
-    lock.withLock { logs[key, default: []].append(contentsOf: [now, Double(bytes)]) }
-  }
-
-  func clear(_ key: String) {
-    lock.withLock { logs[key] = nil }
-  }
-
-  @objc public func log(for key: String) -> [Double] {
-    lock.withLock { logs[key] ?? [] }
-  }
-}
-
 /// Benchmark render stats per key, written when a stream finishes; read from JS.
 @objc(StreamTextRenderStats)
 public final class StreamTextRenderStats: NSObject {
@@ -757,8 +636,16 @@ public final class StreamTextRenderStats: NSObject {
   private var samples: [String: Sample] = [:]
   private var totals = Totals()
 
-  /// Off until a benchmark asks for totals: views then pay nothing but a flag check.
+  /// Off until a benchmark asks for totals: views then pay nothing but a flag check. Always off
+  /// without STREAMTEXT_TESTING.
+  #if STREAMTEXT_TESTING
   @objc public static var enabled = false
+  #else
+  @objc public static var enabled: Bool {
+    get { false }
+    set {}
+  }
+  #endif
 
   private var phases: [String: (count: Double, time: Double)] = [:]
 
@@ -916,3 +803,137 @@ private final class RendererLinkProxy: NSObject {
   init(_ target: StreamTextRenderer) { self.target = target }
   @objc func tick() { target?.tick() }
 }
+
+#if STREAMTEXT_TESTING
+// Tests and benchmarks only: the example app builds the library with STREAMTEXT_TESTING.
+extension StreamTextRenderer {
+  /// Benchmarks and tests: renderers that have a displayLogKey, by key. Main thread.
+  private static let debugViews = NSMapTable<NSString, StreamTextRenderer>.strongToWeakObjects()
+
+  @_spi(Testing) public static func debugView(_ key: String) -> StreamTextRenderer? {
+    debugViews.object(forKey: key as NSString)
+  }
+
+  /// What the view shows, for tests. Main thread.
+  @_spi(Testing) public func debugState() -> (text: String, height: CGFloat, status: String, hasTextView: Bool, fontSize: CGFloat,
+                        color: String, selectable: Bool, accessibilityValue: String) {
+    let storage = textView?.textStorage
+      ?? canvas.map { NSTextStorage(attributedString: NSAttributedString(string: $0.layout.text.string, attributes: textAttributes)) }
+    let attributes = storage.flatMap { $0.length > 0 ? $0.attributes(at: 0, effectiveRange: nil) : nil }
+      ?? textView?.typingAttributes ?? textAttributes
+    let font = attributes[.font] as? UIFont
+    var (r, g, b, a): (CGFloat, CGFloat, CGFloat, CGFloat) = (0, 0, 0, 0)
+    (attributes[.foregroundColor] as? UIColor)?.resolvedColor(with: traitCollection).getRed(&r, green: &g, blue: &b, alpha: &a)
+    let color = "#" + [r, g, b, a].map { String(format: "%02X", Int(($0 * 255).rounded())) }.joined()
+    return (storage?.string ?? "", reportedHeight, reportedStatus ?? "", textView != nil, font?.pointSize ?? 0,
+            color, textView?.isSelectable ?? selectable,
+            textView?.accessibilityValue ?? canvas?.accessibilityValue ?? "")
+  }
+
+  /// Tests: selects the word at `point` as the selection gestures would, copies and returns it.
+  @_spi(Testing) public func debugSelectWord(at point: CGPoint) -> String {
+    let input: UITextInput & UIResponder
+    if let canvas { input = canvas } else if let textView { input = textView } else { return "" }
+    guard let position = input.closestPosition(to: point),
+          let word = input.tokenizer.rangeEnclosingPosition(position, with: .word, inDirection: .storage(.forward))
+    else { return "" }
+    input.selectedTextRange = word
+    _ = input.becomeFirstResponder()
+    input.copy(nil)
+    return input.text(in: word) ?? ""
+  }
+
+  /// Tests: the selection geometry UIKit's selection UI reads for a range (rects with their direction
+  /// and ends, the carets at both ends), from the canvas or the text view, as JSON.
+  @_spi(Testing) public func debugSelectionGeometry(location: Int, length: Int) -> String {
+    let input: UITextInput
+    if let canvas { input = canvas } else if let textView { input = textView } else { return "{}" }
+    guard let start = input.position(from: input.beginningOfDocument, offset: location),
+          let end = input.position(from: start, offset: length),
+          let range = input.textRange(from: start, to: end) else { return "{}" }
+    func caret(_ position: UITextPosition) -> [String: CGFloat] {
+      let rect = input.caretRect(for: position)
+      return ["x": rect.minX, "y": rect.minY, "h": rect.height]
+    }
+    func back(_ position: UITextPosition) -> Int {
+      let rect = input.caretRect(for: position)
+      guard let found = input.closestPosition(to: CGPoint(x: rect.minX, y: rect.midY)) else { return -1 }
+      return input.offset(from: input.beginningOfDocument, to: found)
+    }
+    let rects = input.selectionRects(for: range).filter { !$0.rect.isEmpty }.map { rect -> [String: Any] in
+      ["x": rect.rect.minX, "y": rect.rect.minY, "w": rect.rect.width, "h": rect.rect.height,
+       "rtl": rect.writingDirection == .rightToLeft, "start": rect.containsStart, "end": rect.containsEnd]
+    }
+    let geometry: [String: Any] = [
+      "rects": rects, "startCaret": caret(start), "endCaret": caret(end),
+      "rtl": input.baseWritingDirection(for: start, in: .forward) == .rightToLeft,
+      // The selection UI places a caret, then asks for the position at it: it must come back.
+      "startBack": back(start), "endBack": back(end),
+      "selected": input.selectedTextRange.map { input.offset(from: $0.start, to: $0.end) } ?? -1,
+    ]
+    guard let data = try? JSONSerialization.data(withJSONObject: geometry) else { return "{}" }
+    return String(decoding: data, as: UTF8.self)
+  }
+
+  /// Tests: what VoiceOver reads from the canvas (JSON): its value, the page, the line count, and for
+  /// each of `lines` its text and the line number found at the middle of its frame.
+  @_spi(Testing) public func debugAccessibility(lines: [Int]) -> String {
+    guard let canvas else { return "{}" }
+    let reading: UIAccessibilityReadingContent = canvas
+    let picked = lines.map { line -> [String: Any] in
+      let frame = reading.accessibilityFrame(forLineNumber: line)
+      return ["line": line, "text": reading.accessibilityContent(forLineNumber: line) ?? NSNull(),
+              "back": reading.accessibilityLineNumber(for: CGPoint(x: frame.midX, y: frame.midY))]
+    }
+    let out: [String: Any] = [
+      "value": canvas.accessibilityValue ?? "", "page": reading.accessibilityPageContent() ?? "",
+      "count": canvas.layout.lineBoxes.count, "lines": picked,
+      // The line at the top of the element's frame (the part on screen).
+      "firstLine": reading.accessibilityLineNumber(
+        for: CGPoint(x: canvas.accessibilityFrame.midX, y: canvas.accessibilityFrame.minY + 1)),
+    ]
+    guard let data = try? JSONSerialization.data(withJSONObject: out) else { return "{}" }
+    return String(decoding: data, as: UTF8.self)
+  }
+
+  /// Tests: the tiles of every canvas: bytes, how many, canvases alive and those out of a window
+  /// that still hold tiles. Main thread.
+  @_spi(Testing) public static var debugTiles: (bytes: Int, tiles: Int, canvases: Int, offWindow: Int) {
+    let canvases = StreamTextCanvas.all.allObjects
+    return (StreamTextCanvas.tileBytes, canvases.reduce(0) { $0 + $1.tileCount }, canvases.count,
+            canvases.filter { $0.window == nil && $0.tileCount > 0 }.count)
+  }
+
+  /// Tests: "canvas", "textView" or "" (nothing shown yet), and the canvas's engine.
+  @_spi(Testing) public var debugMode: (mode: String, engine: String, tiles: Int) {
+    if let canvas { return ("canvas", canvas.layout.isCoreText ? "coreText" : "textKit", canvas.tileCount) }
+    return (textView != nil ? "textView" : "", "", 0)
+  }
+
+  /// Benchmarks: a cold start for the next mounts. Main thread.
+  @_spi(Testing) public static func drainTextViewPool() {
+    textViewPool.removeAll()
+  }
+}
+
+/// Benchmark display logs, `[wallClockMs, bytesShown, ...]` per key; written on main, read from JS.
+@objc(StreamTextDisplayLogs)
+public final class StreamTextDisplayLogs: NSObject {
+  @objc public static let shared = StreamTextDisplayLogs()
+  private let lock = NSLock()
+  private var logs: [String: [Double]] = [:]
+
+  func append(_ key: String, bytes: UInt64) {
+    let now = Date().timeIntervalSince1970 * 1000
+    lock.withLock { logs[key, default: []].append(contentsOf: [now, Double(bytes)]) }
+  }
+
+  func clear(_ key: String) {
+    lock.withLock { logs[key] = nil }
+  }
+
+  @objc public func log(for key: String) -> [Double] {
+    lock.withLock { logs[key] ?? [] }
+  }
+}
+#endif

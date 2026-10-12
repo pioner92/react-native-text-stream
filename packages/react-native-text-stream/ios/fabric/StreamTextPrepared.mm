@@ -209,7 +209,9 @@ std::shared_ptr<std::promise<StreamTextPreparedRef>> startLocked(const Job &job)
  */
 StreamTextPreparedRef run(Job job, std::shared_ptr<std::promise<StreamTextPreparedRef>> promise, bool main) {
   StreamTextPreparedRef entry;
+#ifdef STREAMTEXT_TESTING
   CFTimeInterval started = CACurrentMediaTime();
+#endif
   StreamTextPreparedLayout *layout;
   @autoreleasepool {
     layout = [[StreamTextPreparedLayout alloc]
@@ -219,10 +221,12 @@ StreamTextPreparedRef run(Job job, std::shared_ptr<std::promise<StreamTextPrepar
                style:job.textStyle
                width:job.width];
   }
+#ifdef STREAMTEXT_TESTING
   if (main) {
     StreamTextPreparedLayout.mainLayouts += 1;
     StreamTextPreparedLayout.mainLongest = std::max(StreamTextPreparedLayout.mainLongest, CACurrentMediaTime() - started);
   }
+#endif
   if (layout) {
     entry = std::make_shared<const StreamTextPreparedHandle>(
         StreamTextPreparedHandle{job.source, job.hash, job.style, layout, StreamTextPreparedLayout.generation});
@@ -383,6 +387,7 @@ NSInteger StreamTextPreparedCacheCount() {
   return live;
 }
 
+#ifdef STREAMTEXT_TESTING
 __attribute__((constructor)) static void StreamTextPreparedExposeCache() {
   StreamTextPreparedLayout.cacheCount = ^NSInteger {
     return StreamTextPreparedCacheCount();
@@ -402,3 +407,4 @@ __attribute__((constructor)) static void StreamTextPreparedExposeCache() {
     StreamTextPreparedCacheClear();
   };
 }
+#endif

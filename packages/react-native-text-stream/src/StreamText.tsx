@@ -95,7 +95,10 @@ export interface StreamTextProps extends ViewProps {
   selectionColor?: ColorValue
   /** Fires when a stream starts, and with its final status once all of its text is on screen. */
   onStatusChange?: (status: StreamTextStatus, bytes: number) => void
-  /** Benchmarks only: records when bytes reach the screen, under `nativeID`. */
+  /**
+   * Tests and benchmarks only: records when bytes reach the screen, under `nativeID`. No effect
+   * unless the native library is built with STREAMTEXT_TESTING (the example app is).
+   */
   recordDisplayLog?: boolean
 }
 

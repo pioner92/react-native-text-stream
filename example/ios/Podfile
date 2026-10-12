@@ -30,5 +30,19 @@ target 'TextStreamExample' do
       :mac_catalyst_enabled => false,
       # :ccache_enabled => true
     )
+    # The tests and benchmarks read StreamText's instrumentation, which apps don't get.
+    # STREAMTEXT_TESTING=0 pod install builds without it and without the testing module, as an app
+    # would: a build check only (the example's JS imports text-stream-testing).
+    installer.pods_project.targets.each do |target|
+      next unless target.name == 'TextStream' && ENV['STREAMTEXT_TESTING'] != '0'
+      target.build_configurations.each do |build|
+        {
+          'SWIFT_ACTIVE_COMPILATION_CONDITIONS' => 'STREAMTEXT_TESTING',
+          'GCC_PREPROCESSOR_DEFINITIONS' => 'STREAMTEXT_TESTING=1',
+        }.each do |key, flag|
+          build.build_settings[key] = "#{build.build_settings[key] || '$(inherited)'} #{flag}"
+        end
+      end
+    end
   end
 end
