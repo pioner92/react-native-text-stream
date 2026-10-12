@@ -146,6 +146,18 @@ class HybridStreamTextTesting: HybridStreamTextTestingSpec {
     return promise
   }
 
+  func accessibility(key: String, lines: [Double]) throws -> Promise<String> {
+    let promise = Promise<String>()
+    DispatchQueue.main.async {
+      guard let renderer = StreamTextRenderer.debugView(key) else {
+        promise.reject(withError: RuntimeError.error(withMessage: "No StreamTextView with nativeID \(key) and recordDisplayLog"))
+        return
+      }
+      promise.resolve(withResult: renderer.debugAccessibility(lines: lines.map { Int($0) }))
+    }
+    return promise
+  }
+
   func snapshot(key: String) throws -> Promise<StreamTextSnapshot> {
     let promise = Promise<StreamTextSnapshot>()
     DispatchQueue.main.async {

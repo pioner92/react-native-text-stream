@@ -244,6 +244,27 @@ public final class StreamTextRenderer: UIView {
     return String(decoding: data, as: UTF8.self)
   }
 
+  /// Tests: what VoiceOver reads from the canvas (JSON): its value, the page, the line count, and for
+  /// each of `lines` its text and the line number found at the middle of its frame.
+  @_spi(Testing) public func debugAccessibility(lines: [Int]) -> String {
+    guard let canvas else { return "{}" }
+    let reading: UIAccessibilityReadingContent = canvas
+    let picked = lines.map { line -> [String: Any] in
+      let frame = reading.accessibilityFrame(forLineNumber: line)
+      return ["line": line, "text": reading.accessibilityContent(forLineNumber: line) ?? NSNull(),
+              "back": reading.accessibilityLineNumber(for: CGPoint(x: frame.midX, y: frame.midY))]
+    }
+    let out: [String: Any] = [
+      "value": canvas.accessibilityValue ?? "", "page": reading.accessibilityPageContent() ?? "",
+      "count": canvas.layout.lineBoxes.count, "lines": picked,
+      // The line at the top of the element's frame (the part on screen).
+      "firstLine": reading.accessibilityLineNumber(
+        for: CGPoint(x: canvas.accessibilityFrame.midX, y: canvas.accessibilityFrame.minY + 1)),
+    ]
+    guard let data = try? JSONSerialization.data(withJSONObject: out) else { return "{}" }
+    return String(decoding: data, as: UTF8.self)
+  }
+
   /// Tests: "canvas", "textView" or "" (nothing shown yet), and the canvas's engine.
   @_spi(Testing) public var debugMode: (mode: String, engine: String, tiles: Int) {
     if let canvas { return ("canvas", canvas.layout.isCoreText ? "coreText" : "textKit", canvas.tileCount) }

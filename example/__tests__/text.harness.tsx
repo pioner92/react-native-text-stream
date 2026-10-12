@@ -163,7 +163,7 @@ describe('StreamText: text and height', () => {
     expect(s.status).toBe('done');
   });
 
-  it('exposes only the tail of a long text to accessibility', async () => {
+  it('exposes what the screen shows of a long finished text to accessibility, not all of it', async () => {
     const key = newKey();
     const long = 'x'.repeat(5000) + 'THE END';
     await render(
@@ -172,6 +172,25 @@ describe('StreamText: text and height', () => {
       </Column>,
     );
     const s = await waitForText(key, long);
+    expect(s.mode).toBe('canvas');
+    // Whole lines from the top of the screen; the rest is read line by line (see prepared.harness).
+    expect(long.startsWith(s.accessibilityValue)).toBe(true);
+    expect(s.accessibilityValue.length).toBeGreaterThan(0);
+    expect(s.accessibilityValue.length).toBeLessThan(long.length);
+  });
+
+  it('a streaming text view exposes only the tail of a long text to accessibility', async () => {
+    const key = newKey();
+    const long = 'x'.repeat(5000) + 'THE END';
+    const tsb = buffer();
+    await render(
+      <Column>
+        <StreamText source={tsb} nativeID={key} recordDisplayLog {...TEXT_STYLE} />
+      </Column>,
+    );
+    write(tsb, long); // still streaming: the text view shows it
+    const s = await waitForText(key, long);
+    expect(s.mode).toBe('textView');
     expect(s.accessibilityValue.startsWith('…')).toBe(true);
     expect(s.accessibilityValue.endsWith('THE END')).toBe(true);
     expect(s.accessibilityValue.length).toBeLessThanOrEqual(2001);

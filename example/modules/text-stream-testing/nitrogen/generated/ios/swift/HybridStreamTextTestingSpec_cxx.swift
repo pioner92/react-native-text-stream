@@ -341,6 +341,34 @@ open class HybridStreamTextTestingSpec_cxx {
   }
   
   @inline(__always)
+  public final func accessibility(key: std.string, lines: bridge.std__vector_double_) -> bridge.Result_std__shared_ptr_Promise_std__string___ {
+    do {
+      let __result = try self.__implementation.accessibility(key: String(key), lines: { () -> [Double] in
+                    var __array = [Double]()
+                    let __count = lines.size()
+                    __array.reserveCapacity(Int(__count))
+                    for __i in 0..<__count {
+                      let __item = bridge.get_std__vector_double_(lines, __i)
+                      __array.append(__item)
+                    }
+                    return __array
+                  }())
+      let __resultCpp = { () -> bridge.std__shared_ptr_Promise_std__string__ in
+        let __promise = bridge.create_std__shared_ptr_Promise_std__string__()
+        let __promiseHolder = bridge.wrap_std__shared_ptr_Promise_std__string__(__promise)
+        __result
+          .then({ __result in __promiseHolder.resolve(std.string(__result)) })
+          .catch({ __error in __promiseHolder.reject(__error.toCpp()) })
+        return __promise
+      }()
+      return bridge.create_Result_std__shared_ptr_Promise_std__string___(__resultCpp)
+    } catch (let __error) {
+      let __exceptionPtr = __error.toCpp()
+      return bridge.create_Result_std__shared_ptr_Promise_std__string___(__exceptionPtr)
+    }
+  }
+  
+  @inline(__always)
   public final func snapshot(key: std.string) -> bridge.Result_std__shared_ptr_Promise_StreamTextSnapshot___ {
     do {
       let __result = try self.__implementation.snapshot(key: String(key))

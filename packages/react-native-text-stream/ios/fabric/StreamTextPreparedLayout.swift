@@ -107,6 +107,14 @@ public final class StreamTextPreparedLayout: NSObject {
     }
   }
 
+  /// Each line's characters and box, made when accessibility first reads them. Main thread.
+  private(set) lazy var lineBoxes: [(range: NSRange, frame: CGRect)] = {
+    switch engine {
+    case .textKit(let lines): return lines.lineBoxes()
+    case .coreText(let lines): return lines.lineBoxes()
+    }
+  }()
+
   /// Whether the paragraph around `index` runs right to left.
   func isRightToLeft(at index: Int) -> Bool {
     if case .textKit(let lines) = engine { return lines.isRightToLeft(at: index, length: length) }
@@ -270,6 +278,17 @@ private final class TextKitLines {
         let glyph = layoutManager.glyphIndex(for: CGPoint(x: rect.midX, y: rect.midY), in: container)
         return (rect, bidiLevel(of: glyph) & 1 == 1)
       }
+    }
+  }
+
+  /// Each line's characters and box.
+  func lineBoxes() -> [(range: NSRange, frame: CGRect)] {
+    lock.withLock {
+      var boxes: [(range: NSRange, frame: CGRect)] = []
+      layoutManager.enumerateLineFragments(forGlyphRange: layoutManager.glyphRange(for: container)) { _, used, _, glyphs, _ in
+        boxes.append((self.layoutManager.characterRange(forGlyphRange: glyphs, actualGlyphRange: nil), used))
+      }
+      return boxes
     }
   }
 
@@ -437,6 +456,15 @@ private final class CoreTextLines {
       CTLineDraw(lines[index], context)
     }
     context.restoreGState()
+  }
+
+  /// Each line's characters and box.
+  func lineBoxes() -> [(range: NSRange, frame: CGRect)] {
+    lines.indices.map { line in
+      let width = CGFloat(CTLineGetTypographicBounds(lines[line], nil, nil, nil))
+      return (ranges[line], CGRect(x: penOffsets[line], y: CGFloat(line) * lineHeight, width: max(width, 1),
+                                   height: lineHeight))
+    }
   }
 
   /// The line holding `index`; past the last character, the last line.
@@ -738,7 +766,8 @@ final class StreamTextCanvas: UIView {
     return nil
   }
 
-  // Accessibility as in StreamTextView: one static text, its tail, framed by the visible part.
+  // Accessibility: one static text whose value is what the screen shows of it (a snapshot never holds
+  // the whole of a long text), and the whole text line by line through UIAccessibilityReadingContent.
 
   override var isAccessibilityElement: Bool {
     get { true }
@@ -752,6 +781,8 @@ final class StreamTextCanvas: UIView {
 
   override var accessibilityValue: String? {
     get {
+      if let visible = visibleText() { return visible }
+      // Off screen: the end, as before.
       let text = layout.text.string as NSString
       let length = text.length
       guard length > Self.accessibleTailCharacters else { return text as String }
@@ -763,9 +794,47 @@ final class StreamTextCanvas: UIView {
 
   override var accessibilityFrame: CGRect {
     get {
-      guard let superview, let visible = visibleBounds?() else { return super.accessibilityFrame }
-      return UIAccessibility.convertToScreenCoordinates(visible, in: superview)
+      let visible = visibleRect()
+      if !visible.isNull { return UIAccessibility.convertToScreenCoordinates(visible, in: self) }
+      guard let superview, let bounds = visibleBounds?() else { return super.accessibilityFrame }
+      return UIAccessibility.convertToScreenCoordinates(bounds, in: superview)
     }
     set {}
   }
+
+  /// The lines the screen shows, whole.
+  fileprivate func visibleText() -> String? {
+    let visible = visibleRect()
+    let lines = layout.lineBoxes
+    guard !visible.isNull,
+          let first = lines.firstIndex(where: { $0.frame.maxY > visible.minY }),
+          let last = lines.lastIndex(where: { $0.frame.minY < visible.maxY }), first <= last else { return nil }
+    let start = lines[first].range.location
+    return (layout.text.string as NSString).substring(with: NSRange(location: start, length: NSMaxRange(lines[last].range) - start))
+  }
+}
+
+extension StreamTextCanvas: UIAccessibilityReadingContent {
+  /// `point` is in screen coordinates, as the frames below.
+  func accessibilityLineNumber(for point: CGPoint) -> Int {
+    let lines = layout.lineBoxes
+    guard !lines.isEmpty, let screen = window?.screen else { return NSNotFound }
+    let y = convert(point, from: screen.coordinateSpace).y
+    return lines.firstIndex { $0.frame.maxY > y } ?? lines.count - 1
+  }
+
+  func accessibilityContent(forLineNumber lineNumber: Int) -> String? {
+    let lines = layout.lineBoxes
+    guard lines.indices.contains(lineNumber) else { return nil }
+    return (layout.text.string as NSString).substring(with: lines[lineNumber].range)
+      .trimmingCharacters(in: .newlines)
+  }
+
+  func accessibilityFrame(forLineNumber lineNumber: Int) -> CGRect {
+    let lines = layout.lineBoxes
+    guard lines.indices.contains(lineNumber) else { return .zero }
+    return UIAccessibility.convertToScreenCoordinates(lines[lineNumber].frame, in: self)
+  }
+
+  func accessibilityPageContent() -> String? { visibleText() }
 }

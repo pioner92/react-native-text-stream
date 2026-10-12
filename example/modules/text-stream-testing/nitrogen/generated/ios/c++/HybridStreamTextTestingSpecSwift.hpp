@@ -26,6 +26,7 @@ namespace margelo::nitro::textstreamtesting { struct StreamTextSnapshot; }
 #include "StreamTextTestStyle.hpp"
 #include <optional>
 #include <NitroModules/Promise.hpp>
+#include <vector>
 #include "StreamTextSnapshot.hpp"
 
 #include "TextStreamTesting-Swift-Cxx-Umbrella.hpp"
@@ -182,6 +183,14 @@ namespace margelo::nitro::textstreamtesting {
     }
     inline std::shared_ptr<Promise<std::string>> selectionGeometry(const std::string& key, double location, double length) override {
       auto __result = _swiftPart.selectionGeometry(key, std::forward<decltype(location)>(location), std::forward<decltype(length)>(length));
+      if (__result.hasError()) [[unlikely]] {
+        std::rethrow_exception(__result.error());
+      }
+      auto __value = std::move(__result.value());
+      return __value;
+    }
+    inline std::shared_ptr<Promise<std::string>> accessibility(const std::string& key, const std::vector<double>& lines) override {
+      auto __result = _swiftPart.accessibility(key, lines);
       if (__result.hasError()) [[unlikely]] {
         std::rethrow_exception(__result.error());
       }

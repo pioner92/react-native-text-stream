@@ -23,6 +23,7 @@ namespace margelo::nitro::textstreamtesting { struct StreamTextSnapshot; }
 #include <unordered_map>
 #include "StreamTextTestStyle.hpp"
 #include <NitroModules/Promise.hpp>
+#include <vector>
 #include "StreamTextSnapshot.hpp"
 
 namespace margelo::nitro::textstreamtesting {
@@ -72,6 +73,7 @@ namespace margelo::nitro::textstreamtesting {
       virtual std::shared_ptr<Promise<std::unordered_map<std::string, double>>> measureMount(const std::string& text, double width) = 0;
       virtual std::shared_ptr<Promise<std::string>> selectWordAt(const std::string& key, double x, double y) = 0;
       virtual std::shared_ptr<Promise<std::string>> selectionGeometry(const std::string& key, double location, double length) = 0;
+      virtual std::shared_ptr<Promise<std::string>> accessibility(const std::string& key, const std::vector<double>& lines) = 0;
       virtual std::shared_ptr<Promise<StreamTextSnapshot>> snapshot(const std::string& key) = 0;
 
     protected:

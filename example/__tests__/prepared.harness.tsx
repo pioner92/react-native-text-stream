@@ -265,6 +265,43 @@ describe('StreamText: prepared layouts', () => {
     expect(middle.tiles).toBeLessThanOrEqual(10);
   });
 
+  it('VoiceOver reads the lines on screen, and every line by number', async () => {
+    const key = newKey();
+    let scroll: ScrollView | null = null;
+    await render(
+      <View style={{ height: 400 }}>
+        <ScrollView ref={(r) => { scroll = r; }}>
+          <Column>
+            <StreamText source={buffer(LONG, TSB.done)} nativeID={key} recordDisplayLog {...TEXT_STYLE} />
+          </Column>
+        </ScrollView>
+      </View>,
+    );
+    const top = await waitForText(key, LONG);
+    const read = async (lines: number[]) => JSON.parse(await testing.accessibility(key, lines));
+    const atTop = await read([0, 10, 50]);
+    // The value is what the screen shows, whole lines from the start: not the whole text, not its end.
+    expect(LONG.startsWith(atTop.value)).toBe(true);
+    expect(atTop.value.length).toBeGreaterThan(100);
+    expect(atTop.value.length).toBeLessThan(LONG.length / 4);
+    expect(atTop.page).toBe(atTop.value);
+    // Every line, by number, with its text and a frame that maps back to it.
+    expect(Math.abs(atTop.count - top.height / TEXT_STYLE.lineHeight)).toBeLessThanOrEqual(1);
+    for (const line of atTop.lines) {
+      expect(line.back).toBe(line.line);
+      expect(LONG).toContain(line.text);
+    }
+    expect(atTop.lines[0].text.length).toBeGreaterThan(0);
+    expect(LONG.startsWith(atTop.lines[0].text)).toBe(true);
+
+    scroll!.scrollTo({ y: top.height / 2, animated: false });
+    await sleep(300);
+    const middle = await read([]);
+    // Halfway down, the value starts halfway through the lines.
+    expect(atTop.firstLine).toBe(0);
+    expect(Math.abs(middle.firstLine - atTop.count / 2)).toBeLessThanOrEqual(2);
+  });
+
   it('after attach() or clear(), the view decides the height, not the source prop', async () => {
     const key = newKey();
     let ref: { attach(b: ArrayBuffer): void; clear(): void } | null = null;

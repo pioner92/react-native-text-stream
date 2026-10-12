@@ -88,6 +88,11 @@ export interface StreamTextTesting extends HybridObject<{ ios: 'swift' }> {
    * JSON `{ rects: [{ x, y, w, h, rtl, start, end }], startCaret, endCaret: { x, y, h }, rtl }`.
    */
   selectionGeometry(key: string, location: number, length: number): Promise<string>
+  /**
+   * What VoiceOver reads from a canvas, as JSON: `{ value, page, count, lines: [{ line, text, back }] }`
+   * (`back`: the line number found at the middle of the line's frame).
+   */
+  accessibility(key: string, lines: number[]): Promise<string>
   /** The view whose `nativeID` is `key` and that has `recordDisplayLog`; rejects if there is none. */
   snapshot(key: string): Promise<StreamTextSnapshot>
 }
