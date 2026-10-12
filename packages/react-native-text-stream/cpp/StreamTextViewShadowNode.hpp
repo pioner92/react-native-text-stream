@@ -128,6 +128,24 @@ struct StreamTextViewState {
    */
   const void *propSource{nullptr};
   StreamTextPreparedRef prepared;
+#ifdef RN_SERIALIZABLE_STATE
+  /**
+   * Android: the `source` prop and its generation. Props reach the Java view as folly::dynamic,
+   * which loses the buffer, so the view reads them from here (android/src/main/jni).
+   */
+  std::shared_ptr<jsi::MutableBuffer> source;
+  int sourceGeneration{0};
+
+  StreamTextViewState() = default;
+  StreamTextViewState(Float height, int revision, const void *propSource, StreamTextPreparedRef prepared)
+      : height(height), revision(revision), propSource(propSource), prepared(std::move(prepared)) {}
+  /** Java never writes this state: the view updates it through JNI. */
+  StreamTextViewState(const StreamTextViewState &previous, const folly::dynamic & /*data*/)
+      : StreamTextViewState(previous) {}
+  folly::dynamic getDynamic() const {
+    return folly::dynamic::object("height", height)("revision", revision);
+  }
+#endif
 };
 
 /**
@@ -207,9 +225,22 @@ class StreamTextViewShadowNode final : public ConcreteViewShadowNode<
         prepared = streamTextPrepare(props, width, nullptr);
       }
     }
+    auto next = state;
+    bool changed = false;
     if (prepared != state.prepared || (prepared && state.height != streamTextPreparedHeight(prepared))) {
-      setStateData(StreamTextViewState{
-          prepared ? streamTextPreparedHeight(prepared) : state.height, state.revision, state.propSource, prepared});
+      next.height = prepared ? streamTextPreparedHeight(prepared) : state.height;
+      next.prepared = prepared;
+      changed = true;
+    }
+#ifdef RN_SERIALIZABLE_STATE
+    if (state.source != props.source || state.sourceGeneration != props.sourceGeneration) {
+      next.source = props.source;
+      next.sourceGeneration = props.sourceGeneration;
+      changed = true;
+    }
+#endif
+    if (changed) {
+      setStateData(std::move(next));
     }
   }
 

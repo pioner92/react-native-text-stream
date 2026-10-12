@@ -13,7 +13,7 @@ const read = (file: string) => fs.readFileSync(path.join(root, file), 'utf8')
 const all = (source: string, pattern: RegExp) => [...source.matchAll(pattern)].map((m) => m[1]!)
 
 const shadowNode = read('cpp/StreamTextViewShadowNode.hpp')
-const buffersModule = read('cpp/StreamTextBuffers.hpp')
+const buffersModule = read('cpp/StreamTextBuffers.hpp') + read('cpp/StreamTextBuffers.cpp')
 const componentView = read('ios/fabric/StreamTextComponentView.mm')
 const renderer = read('ios/fabric/StreamTextRenderer.swift')
 const provider = read('ios/fabric/StreamTextBuffersProvider.mm')
@@ -99,11 +99,26 @@ describe('JS commands ↔ native component view', () => {
 describe('JS ↔ StreamTextBuffers TurboModule', () => {
   it('asks for the module C++ registers, under the name the provider maps', () => {
     expect(requested).toContain('StreamTextBuffers')
-    expect(buffersModule).toContain('TurboModule("StreamTextBuffers"')
+    expect(buffersModule).toContain('static constexpr auto kModuleName = "StreamTextBuffers";')
+    expect(buffersModule).toContain('TurboModule(kModuleName,')
     const pkg = JSON.parse(read('package.json'))
     expect(pkg.codegenConfig.ios.modulesProvider).toEqual({ StreamTextBuffers: 'StreamTextBuffersProvider' })
     expect(provider).toContain('@interface StreamTextBuffersProvider : NSObject <RCTModuleProvider>')
     expect(provider).toContain('std::make_shared<facebook::react::StreamTextBuffersModule>')
+  })
+
+  it('is what Android autolinking includes and registers by name', () => {
+    const android = require(path.join(root, 'react-native.config.js')).dependency.platforms.android
+    // Autolinking emits `#include <X.h>` and `std::make_shared<X>(jsInvoker)` for cxxModuleHeaderName X.
+    expect(buffersModule).toContain(`class ${android.cxxModuleHeaderName} : public TurboModule`)
+    expect(read(`android/src/main/jni/${android.cxxModuleHeaderName}.h`)).toContain('#include "StreamTextBuffers.hpp"')
+    // ...and `#include <react/renderer/components/<libraryName>/ComponentDescriptors.h>`.
+    const descriptors = read(`android/src/main/jni/react/renderer/components/${android.libraryName}/ComponentDescriptors.h`)
+    expect(descriptors).toContain('#include "StreamTextViewShadowNode.hpp"')
+    expect(android.componentDescriptors).toEqual(['StreamTextViewComponentDescriptor'])
+    expect(shadowNode).toContain('using StreamTextViewComponentDescriptor =')
+    expect(read('android/src/main/jni/CMakeLists.txt')).toContain(`react_codegen_${android.libraryName}`)
+    expect(read('android/src/main/jni/textstream.h')).toContain(`${android.libraryName}_ModuleProvider`)
   })
 
   it('exposes put with one argument, returning 0 for a buffer it cannot keep', () => {

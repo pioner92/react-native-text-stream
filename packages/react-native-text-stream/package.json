@@ -28,6 +28,7 @@
     "android/gradle.properties",
     "android/CMakeLists.txt",
     "android/src",
+    "!android/src/test",
     "ios/**/*.h",
     "ios/**/*.m",
     "ios/**/*.mm",
