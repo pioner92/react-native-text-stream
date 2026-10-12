@@ -36,14 +36,12 @@ travels through JavaScript: a callback, a UTF-8 decode, a `setState`, a re-rende
 `<Text>`. That is fine at a few tokens per second. It falls apart for long answers, fast streams, or a
 busy JS thread.
 
-**react-native-text-stream** takes JavaScript off that path. The network layer writes the response body
-into a shared native buffer, and the `StreamText` view picks up new bytes as soon as they land, on the UI
-thread. JavaScript hands the buffer over **once** and steps aside.
+**react-native-text-stream** takes JavaScript off that path. The view makes the request itself: the
+response body is written into a native buffer on the network thread, and every write wakes the view,
+which shows the new bytes in the next frame. JavaScript describes the request **once** and steps aside.
 
 ```tsx
-const res = await fetch(url, { stream: true, nativeBuffer: true });
-
-<StreamText source={res.nativeBuffer} />
+<StreamText request={{ url, method: 'POST', headers, body }} />
 ```
 
 > [!TIP]
@@ -74,11 +72,14 @@ A 100 KB answer streaming into a chat bubble ([full benchmarks](#benchmarks)):
   smoothly as a 1 KB one.
 - 🎯 **Smooth under bursts.** An adaptive per-frame budget spreads a burst over frames instead of dropping
   them.
-- 🔋 **Idle-aware.** Without new bytes the main thread sleeps; a background watcher wakes it the moment text
-  lands, and backs off while the model is thinking.
+- 🔋 **Idle-aware.** Without new bytes nothing runs: the request wakes the view on every write, so a model
+  that thinks for a minute costs no wakeups.
+- 🌐 **Its own request, no extra library.** `<StreamText request>` or `streamFetch()` stream over
+  URLSession on iOS and React Native's own OkHttp on Android (the app's cookies and settings apply).
+- 🧭 **Declarative or imperative.** A `request` prop; a `streamId` the request and the view share, in any
+  order, for lists and stores; or a stream object through `source` or `ref.attach()`.
 - 🧩 **Producer-agnostic.** Any native module that writes the small [TSB1](#the-tsb1-buffer) layout can
-  feed the view. A patched [nitro-fetch](https://github.com/margelo/react-native-nitro-fetch) is the first
-  producer.
+  feed the view too, e.g. a patched [nitro-fetch](https://github.com/margelo/react-native-nitro-fetch).
 - ♿️ **Accessible.** VoiceOver and TalkBack read the text on screen line by line, without snapshotting
   megabytes of it.
 - 🤖 **iOS and Android.** The same component, props and buffer on both, with the same frame loop and the
@@ -96,8 +97,7 @@ A 100 KB answer streaming into a chat bubble ([full benchmarks](#benchmarks)):
 ## Quick start
 
 > [!NOTE]
-> This is an **experimental prototype**, not yet published to npm. The `nativeBuffer` option
-> comes from a patched `react-native-nitro-fetch` vendored in this repo. See the [roadmap](#roadmap).
+> This is an **experimental prototype**, not yet published to npm. See the [roadmap](#roadmap).
 
 ### Requirements
 
@@ -106,9 +106,9 @@ A 100 KB answer streaming into a chat bubble ([full benchmarks](#benchmarks)):
 | React Native | **0.86+** with the New Architecture |
 | iOS | 15.1+ |
 | Android | 7.0+ (API 24); drawing only the lines near the screen needs 10+ (API 29) |
-| [`react-native-nitro-modules`](https://nitro.margelo.com) | used by the patched nitro-fetch (and the example app's benchmark helpers), not by the package |
+| [`react-native-nitro-modules`](https://nitro.margelo.com) | only for the optional nitro-fetch integration and the example app's helpers |
 
-`StreamText` itself is a plain Fabric component and doesn't go through Nitro.
+`StreamText` is a plain Fabric component with a small C++ TurboModule; it needs no other library.
 
 ### Install
 
@@ -122,57 +122,77 @@ bun install                  # also applies the patches in patches/
 
 ## Usage
 
-There are two ways to hand a stream to the view. Both work together: whichever was set last, the `source`
-prop or `attach()`, wins.
+From the most declarative to the most hands-on; pick one per view.
 
-### Option 1: the `source` prop
+### Option 1: the view makes the request
 
 ```tsx
-import { useState } from 'react';
-import { Button, ScrollView } from 'react-native';
-import { fetch } from 'react-native-nitro-fetch';
 import { StreamText } from 'react-native-text-stream';
 
-export function Chat() {
-  const [buffer, setBuffer] = useState<ArrayBuffer>();
-
-  const ask = async () => {
-    // The body is written natively into `nativeBuffer` as it arrives.
-    const res = await fetch('https://example.com/stream', { stream: true, nativeBuffer: true });
-    setBuffer(res.nativeBuffer); // the only time JS touches the stream
-  };
-
+export function Answer({ prompt }: { prompt: string }) {
   return (
-    <ScrollView>
-      <Button title="Ask" onPress={ask} />
-      <StreamText
-        source={buffer}
-        fontSize={16}
-        lineHeight={22}
-        style={{ padding: 12, borderRadius: 16, backgroundColor: '#eee' }}
-      />
-    </ScrollView>
+    <StreamText
+      request={{
+        url: 'https://example.com/stream',
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ prompt }),
+      }}
+      fontSize={16}
+      lineHeight={22}
+      style={{ padding: 12, borderRadius: 16, backgroundColor: '#eee' }}
+    />
   );
 }
 ```
 
-### Option 2: a ref, with no re-render at all
+The request starts on mount and again when it changes (compared by value, so an object written inline is
+fine), and is aborted on unmount.
+
+### Option 2: a `streamId`, for lists and stores
+
+The request and the view find each other natively by an id you choose, in any order, with nothing passed
+between them: no state, no ref, no object.
 
 ```tsx
-import { fetch } from 'react-native-nitro-fetch';
-import { StreamText, useStreamTextRef } from 'react-native-text-stream';
+// In a chat list: the bubble can be scrolled away and back; the stream stays.
+<StreamText streamId={message.id} request={{ url, method: 'POST', body: message.prompt }} />
+
+// Or start it anywhere (a store, a handler) and show it anywhere:
+streamFetch(url, { streamId: message.id, method: 'POST', body });
+<StreamText streamId={message.id} />
+```
+
+With a `streamId` the request outlives the view and is sent again only when it changes; a new request
+under the same id replaces the one before it (regenerate). `abortStream(id)` stops it, `releaseStream(id)`
+forgets it. Finished streams no view shows are kept for a remount, the last 64.
+
+### Option 3: a stream object, through the ref or state
+
+```tsx
+import { StreamText, streamFetch, useStreamTextRef } from 'react-native-text-stream';
 
 export function Chat() {
   const streamRef = useStreamTextRef();
 
-  const ask = async () => {
-    const res = await fetch('https://example.com/stream', { stream: true, nativeBuffer: true });
-    streamRef.attach(res.nativeBuffer); // no setState, no re-render
+  const ask = () => {
+    const stream = streamFetch('https://example.com/stream', { method: 'POST', body });
+    streamRef.attach(stream); // no setState, no re-render
+    // stream.response: status and headers; stream.done: the end; stream.abort()
   };
 
   return <StreamText ref={streamRef} fontSize={16} style={{ padding: 12 }} />;
 }
 ```
+
+`<StreamText source={stream} />` with the stream in state works too (one render when it starts).
+
+### Option 4: a buffer from a native producer
+
+`source` and `attach()` also take a [TSB1](#the-tsb1-buffer) buffer that another native module writes,
+e.g. the patched nitro-fetch vendored here: `fetch(url, { stream: true, nativeBuffer: true })`, then
+`<StreamText source={res.nativeBuffer} />`. Such a buffer is watched by polling its header (every
+8–50 ms) rather than woken on each write.
 
 ### Recipes
 
@@ -186,7 +206,7 @@ text is on screen:
 const FINAL = ['done', 'error', 'cancelled', 'truncated'];
 
 <StreamText
-  source={buffer}
+  request={{ url }}
   onStatusChange={(status, bytes) => {
     if (FINAL.includes(status)) console.log(`${status} after ${bytes} bytes`);
   }}
@@ -225,7 +245,9 @@ card does this:
 
 | Prop | Type | Default | Description |
 |---|---|---|---|
-| `source` | `ArrayBuffer \| null` | — | A TSB1 buffer, e.g. `res.nativeBuffer`. `null`/`undefined` detaches and clears the view. |
+| `request` | `{ url, method?, headers?, body?, signal?, capacity?, timeout? }` | — | The view makes this request and shows its body ([Option 1](#option-1-the-view-makes-the-request)). |
+| `streamId` | `string` | — | Shows what streams under this id ([Option 2](#option-2-a-streamid-for-lists-and-stores)); with `request`, the request outlives the view. |
+| `source` | `TextStream \| ArrayBuffer \| null` | — | A stream from `streamFetch()`, or a TSB1 buffer. `null`/`undefined` detaches and clears the view. |
 | `fontSize` | `number` | `15` | Font size in points. |
 | `fontFamily` | `string` | system font | A family or PostScript name, e.g. `"Menlo"`. |
 | `fontWeight` | `'normal' \| 'bold' \| '100'…'900'` | `'normal'` | |
@@ -244,12 +266,12 @@ Returns a ref for `<StreamText ref={streamRef} />` that you can call directly. I
 
 | Method | Description |
 |---|---|
-| `attach(buffer)` | Starts rendering `buffer` without a React render. Called before the view mounts, it applies on mount. |
+| `attach(stream)` | Starts rendering a stream from `streamFetch()` (or a TSB1 buffer) without a React render. Called before the view mounts, it applies on mount. |
 | `clear()` | Detaches and clears the view. |
 | `getStatus()` | `{ status, bytes }`, read synchronously from the buffer's header and the last status event. |
 | `getText()` | The text received so far, decoded from the buffer. |
 
-A plain `useRef<StreamTextHandle>(null)` works too; call `ref.current?.attach(buffer)`.
+A plain `useRef<StreamTextHandle>(null)` works too; call `ref.current?.attach(stream)`.
 
 ### Stream statuses
 
@@ -266,43 +288,73 @@ only its final status.
 | `'cancelled'` | The request was cancelled. |
 | `'truncated'` | The buffer filled up; the rest of the response was dropped. |
 
-### `fetch(url, { stream: true, nativeBuffer })`
+### `streamFetch(url, init?)`
 
-From the patched nitro-fetch:
+Starts an HTTP request whose body goes straight into a native buffer, on the network thread, and returns
+at once:
+
+| Option | Type | Default | Description |
+|---|---|---|---|
+| `method` | `string` | `GET`, or `POST` with a body | |
+| `headers` | `Record<string, string> \| [string, string][] \| Headers` | — | Header values must be ASCII. |
+| `body` | `string` | — | |
+| `signal` | `AbortSignal` | — | Aborts the request. |
+| `streamId` | `string` | — | Streams under this id too ([Option 2](#option-2-a-streamid-for-lists-and-stores)). |
+| `capacity` | `number` | 16 MB | Most bytes kept; past them the request stops as `truncated`. Address space only: pages are committed as they are written. |
+| `timeout` | `number` | 5 minutes | Longest wait for the next bytes, in ms. |
+
+It returns a `TextStream`:
+
+| Member | Description |
+|---|---|
+| `response` | `Promise<{ status, ok, headers, url }>`, once the response starts; rejects if the request fails before it. |
+| `done` | `Promise<{ status: 'done' \| 'error' \| 'cancelled' \| 'truncated', error? }>`; never rejects. |
+| `abort()` | Stops the request; the body so far stays. |
+| `text()` | The body received so far. |
+| `buffer` | The TSB1 buffer the body is written to. |
+
+An HTTP error status still streams its body; check `response.ok`. On iOS, URLSession holds back up to 512
+bytes of a `text/plain` body to sniff its type unless the server sends `X-Content-Type-Options: nosniff`;
+`text/event-stream`, `application/x-ndjson` and `application/json` bodies arrive at once.
+
+`abortStream(streamId)` and `releaseStream(streamId)` act on a stream by its id.
+
+### `fetch(url, { stream: true, nativeBuffer })` (optional)
+
+From the patched nitro-fetch vendored here ([Option 4](#option-4-a-buffer-from-a-native-producer)):
 
 | Option | Type | Description |
 |---|---|---|
 | `nativeBuffer` | `true \| { capacity?: number }` | Writes the body into a TSB1 buffer exposed as `res.nativeBuffer` instead of `res.body`. `true` reserves 16 MB of address space; pages are committed only as they're written. |
 
-The body never crosses into JS. When the stream ends, fails or is cancelled, the buffer's status changes and
-the view shows the final state.
-
 ### Exported types
 
-`StreamTextProps`, `StreamTextHandle`, `StreamTextRef`, `StreamTextStatus`, `StreamTextState`,
-`StreamTextAlign`, `StreamTextFontWeight`.
+`StreamTextProps`, `StreamTextHandle`, `StreamTextRef`, `StreamTextRequest`, `StreamTextStatus`,
+`StreamTextState`, `StreamTextAlign`, `StreamTextFontWeight`, `TextStream`, `StreamFetchInit`,
+`StreamFetchResponse`, `StreamFetchResult`.
 
 ## How it works
 
 ```mermaid
 flowchart LR
-    P["Producer<br/><sub>URLSession queue · Cronet callbacks</sub>"] -- "memcpy + store-release" --> B[("TSB1 buffer<br/><sub>native-owned ArrayBuffer</sub>")]
-    B -- "load-acquire, as soon as bytes land" --> R["StreamText<br/><sub>main thread · TextKit 1 / Android Layout</sub>"]
+    J["JavaScript"] -. "the request, once" .-> P["streamFetch<br/><sub>URLSession · OkHttp, network thread</sub>"]
+    P -- "write + store-release" --> B[("TSB1 buffer<br/><sub>native memory</sub>")]
+    P -- "wake (one per frame)" --> R["StreamText<br/><sub>main thread · TextKit 1 / Android Layout</sub>"]
+    B -- "load-acquire" --> R
     R -- "new height, per line" --> S["Fabric shadow node<br/><sub>layout, no JS</sub>"]
-    J["JavaScript"] -. "hands the buffer over once" .-> R
 ```
 
-1. **Producer.** nitro-fetch appends every received chunk to the buffer, on URLSession's queue on iOS and in
-   Cronet's read callbacks on Android, and publishes it with a release store of `committed`. When the
-   request finishes it sets `status`.
-2. **Handoff.** JavaScript passes `res.nativeBuffer` to the view once: as the `source` prop, read straight
-   from the JS value by the component's props parser, or through `ref.attach()`. Fabric view commands
-   can't carry an `ArrayBuffer`, so `attach()` first puts it in a small C++ TurboModule
-   (`StreamTextBuffers`) and sends the view the buffer's id.
-3. **Renderer.** A background watcher reads `status`, then `committed`, with acquire loads every few
-   milliseconds, and wakes the main thread as soon as new bytes land. The renderer decodes only the new
-   slice (a UTF-8 sequence split across chunks is carried over) and appends it to a TextKit 1 text view, so
-   the text is on screen in the next frame.
+1. **Request.** `streamFetch` (or the `request` prop) starts the request in the `StreamTextBuffers` C++
+   TurboModule, on URLSession on iOS and React Native's OkHttp client on Android. Each piece of the body is
+   appended to the buffer on the network thread and published with a release store of `committed`; when
+   the request ends, `status` is set.
+2. **Handoff.** The view gets the buffer once: by its `streamId` from a native registry (the request and
+   the view meet there in any order), as the `source` prop, or through `ref.attach()`. Nothing passes
+   through JS per chunk.
+3. **Renderer.** Every write wakes the view (coalesced to one main-thread hop per batch). The renderer
+   reads `status`, then `committed`, with acquire loads, decodes only the new slice (a UTF-8 sequence
+   split across chunks is carried over) and appends it to a TextKit 1 text view, so the text is on screen
+   in the next frame. A buffer from another producer is polled instead (see below).
 4. **Layout.** When the text gains a line, the view reports its new height through the Fabric shadow node's
    state. The update is applied on the main thread, so the bubble grows and the list re-lays out while the
    JS thread is busy.
@@ -316,9 +368,9 @@ flowchart LR
 - **Incremental layout.** Contiguous TextKit 1 layout: appending lays out only the new tail, and the height
   comes from the used rect. The text view keeps a fixed, very tall frame and is clipped to the component,
   because a text view whose frame grows re-lays out all of its text.
-- **Idle.** Without new bytes the main thread sleeps. The watcher checks the header every 8 ms while data
-  flows, every 16 ms after a second of quiet, and every 50 ms after 5 s (a model "thinking"); it stops at the
-  final status.
+- **Idle.** Without new bytes the main thread sleeps. A stream from `streamFetch` wakes it on every write;
+  a buffer from another producer is watched instead, every 8 ms while data flows, every 16 ms after a
+  second of quiet and every 50 ms after 5 s (a model "thinking"), stopping at the final status.
 - **Cheap to mount.** The text view is created on the first text, so an empty bubble is a plain view, and
   text views are reused from a small pool.
 - **Accessibility.** Only the last 2000 characters are exposed, in the component's visible frame, so an
@@ -332,7 +384,7 @@ flowchart LR
 The C++ shadow node, the props and the buffer are shared; the view is Kotlin.
 
 - **Handoff.** Android props reach Kotlin as `folly::dynamic` and lose the `ArrayBuffer`, so the `source`
-  travels through the shadow node's state and JNI.
+  travels through the shadow node's state and JNI; a `streamId` is a plain string prop.
 - **Text.** A `DynamicLayout` over the streamed text, appended in O(new bytes): line height spans in
   segments of 1 KB (one span over the whole text made every append re-wrap all of it), and past 96 lines
   of one paragraph the lines above the last two are frozen as they stand, since greedy wrapping never
@@ -351,7 +403,8 @@ The C++ shadow node, the props and the buffer are shared; the view is Kotlin.
 
 ### The TSB1 buffer
 
-A single-writer, multi-reader, append-only byte log in one block of memory. Any native producer can write it.
+A single-writer, multi-reader, append-only byte log in one block of memory. `streamFetch` writes it; any
+other native producer can too.
 The full contract is in [`TextStreamBuffer.h`](packages/react-native-text-stream/ios/TextStreamBuffer.h).
 
 | Offset | Field | Type | Notes |
@@ -389,7 +442,9 @@ may only be touched on the JS thread.
 
 ## Benchmarks
 
-The same answer, streamed five ways. Release build on an iPhone 17 Pro Max **simulator**; each streaming
+The same answer, streamed five ways. In the tables below StreamText (C) is fed by the patched
+nitro-fetch and polls its buffer; the library's own `streamFetch`, which wakes the view on every write,
+is faster still ([below](#streamfetch-and-push)). Release build on an iPhone 17 Pro Max **simulator**; each streaming
 number is the median of 2 runs, each mounting number the median of 3 cold runs. Mounting on a real
 **iPhone 16 Pro** (120 Hz): [device results](bench-results/iphone16pro-2026-10-11.md). Android, streaming
 and mounting on a **Pixel 8a**: [device results](bench-results/pixel8a-2026-10-12.md).
@@ -411,6 +466,22 @@ and mounting on a **Pixel 8a**: [device results](bench-results/pixel8a-2026-10-1
   - A 1 MB burst: StreamText spreads it over frames on purpose (no long frame, but all of it is on screen
     after ~1.7 s).
 
+### streamFetch and push
+
+The library's own request (D, `<StreamText request>`) against C, in a chat bubble, Release, 3 runs each:
+delay p50 / p95, ms.
+
+| Scenario | iOS simulator C | iOS simulator **D** | Pixel 8a C | Pixel 8a **D** |
+|---|---|---|---|---|
+| Short answer at LLM pace (5 KB) | 7 / 17 | **4 / 11** | 13 / 22 | **7 / 16** |
+| Long answer (100 KB) | 7 / 13 | **4 / 9** | 15 / 22 | **11 / 17** |
+| A few bytes every 400 ms | 8 / 18 | **3 / 11** | 17 / 25 | **12 / 16** |
+| Long answer, one 100 KB paragraph | 7 / 14 | **3 / 8** | 11 / 18 | 12 / **16** |
+
+On the Pixel the first text is on screen 6–15 ms after the request starts instead of 24–45. Raw data:
+[iOS](bench-results/bench-bubble-push-2026-10-12T19-16-36-154Z.json),
+[Pixel](bench-results/bench-bubble-push-2026-10-12T19-24-23-243Z.json).
+
 ### Contenders
 
 | | Contender | How the text gets on screen |
@@ -419,7 +490,8 @@ and mounting on a **Pixel 8a**: [device results](bench-results/pixel8a-2026-10-1
 | **A2** | `setState` per frame | the same, batched to one `setState` per frame |
 | **B1** | Reanimated | JS writes a shared value, a `TextInput` shows it from the UI thread |
 | **B2** | react-native-streamdown | `setState` per frame, Markdown parsed on a worklet |
-| **C** | **StreamText** | the native buffer goes straight to the view; no JS per chunk |
+| **C** | **StreamText** | the patched nitro-fetch's native buffer goes straight to the view; no JS per chunk |
+| **D** | **StreamText, `request`** | the view's own request (`streamFetch`), waking the view on every write |
 
 **How to read the tables**
 
@@ -606,9 +678,9 @@ The server listens on loopback only, which the iOS simulator shares with the hos
 <details>
 <summary><b>Can I stream an OpenAI-style SSE response into it?</b></summary>
 
-Not directly. The view renders the raw response body as UTF-8 text, so SSE or NDJSON framing
-(`data: {...}`) would show up as-is. Stream plain text from your endpoint, or write a native
-[producer](#the-tsb1-buffer) that extracts the text and appends only that to the buffer.
+Not directly yet. The view renders the raw response body as UTF-8 text, so SSE or NDJSON framing
+(`data: {...}`) would show up as-is. Stream plain text from your endpoint for now; parsing SSE and NDJSON
+natively, keeping only the text, is on the [roadmap](#roadmap).
 
 </details>
 
@@ -621,10 +693,12 @@ Not yet: `StreamText` renders plain text. Markdown rendering on the native side 
 </details>
 
 <details>
-<summary><b>Do I have to use nitro-fetch?</b></summary>
+<summary><b>Do I need nitro-fetch, or another fetch library?</b></summary>
 
-No. Any native module that writes the [TSB1 layout](#the-tsb1-buffer) can feed the view; the patched
-nitro-fetch is just the first producer. The buffer must be native-owned: an `ArrayBuffer` created in
+No. The view makes the request itself (`request`, `streamFetch`). Fetch libraries (expo/fetch, nitro-fetch,
+SDKs) hand their chunks to JavaScript, which is what this library avoids; feeding the view from JS chunks
+is on the [roadmap](#roadmap). A native module can also write the [TSB1 layout](#the-tsb1-buffer) itself,
+like the patched nitro-fetch vendored here. The buffer must be native-owned: an `ArrayBuffer` created in
 JavaScript is ignored.
 
 </details>
@@ -648,8 +722,8 @@ npm is on the [roadmap](#roadmap).
 
 | Path | What's inside |
 |---|---|
-| [`packages/react-native-text-stream`](packages/react-native-text-stream) | `StreamText`: a hand-written Fabric component (C++ shadow node and props in `cpp/`, iOS view and renderer in `ios/fabric/`, Android view in `android/`), the `StreamTextBuffers` TurboModule and the TSB1 header |
-| [`packages/react-native-nitro-fetch`](packages/react-native-nitro-fetch) | nitro-fetch 1.8.0 (`aad957e`) plus the `nativeBuffer` patch, also kept as [`patches/react-native-nitro-fetch+native-buffer.patch`](patches/react-native-nitro-fetch+native-buffer.patch) |
+| [`packages/react-native-text-stream`](packages/react-native-text-stream) | `StreamText`: a hand-written Fabric component (C++ shadow node and props in `cpp/`, iOS view and renderer in `ios/fabric/`, Android view in `android/`), the `StreamTextBuffers` TurboModule with `streamFetch` (`cpp/StreamTextFetch.*`, `StreamTextStreams.*`; URLSession in `ios/fabric/StreamTextFetch.mm`, OkHttp in `android/…/StreamTextFetch.kt`) and the TSB1 header |
+| [`packages/react-native-nitro-fetch`](packages/react-native-nitro-fetch) | optional: nitro-fetch 1.8.0 (`aad957e`) plus the `nativeBuffer` patch, also kept as [`patches/react-native-nitro-fetch+native-buffer.patch`](patches/react-native-nitro-fetch+native-buffer.patch) |
 | [`patches/`](patches) | applied on `postinstall`: upstream nitro-fetch's nitrogen fix and the Metro patch for worklets Bundle Mode |
 | [`example/`](example) | demo and benchmark app; [`example/modules/text-stream-testing`](example/modules/text-stream-testing) holds its benchmark and test helpers (`FrameMonitor`, `StreamTextTesting`, a Nitro module) |
 | [`server/`](server) | local streaming server |
@@ -657,7 +731,11 @@ npm is on the [roadmap](#roadmap).
 ## Roadmap
 
 - [x] Android: a `StreamText` renderer and the `nativeBuffer` writer for Cronet
-- [ ] Upstream the `nativeBuffer` option to react-native-nitro-fetch
+- [x] The library's own request (`streamFetch`, `request`, `streamId`), waking the view on every write
+- [ ] SSE and NDJSON parsed natively, only the text in the buffer (OpenAI, Anthropic, Ollama presets)
+- [ ] Feeding the view from chunks in JS (other fetch libraries, WebSocket, on-device models)
+- [ ] A fallback text for a stream forgotten before its view remounts
+- [ ] Offer nitro-fetch a generic native body sink (an optional integration)
 - [ ] Publish to npm
 - [x] Mounting benchmarks on a physical device ([iPhone 16 Pro](bench-results/iphone16pro-2026-10-11.md))
 - [x] Streaming benchmarks on a physical device ([Pixel 8a](bench-results/pixel8a-2026-10-12.md): the clock offset

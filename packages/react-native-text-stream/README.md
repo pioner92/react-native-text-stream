@@ -3,9 +3,12 @@
 A native React Native text view that renders a streamed response as it arrives, without JS per chunk.
 
 ```tsx
-const res = await fetch(url, { stream: true, nativeBuffer: true });
+// The view makes the request; each piece of the body is on screen in the next frame.
+<StreamText request={{ url, method: 'POST', headers, body }} />
 
-<StreamText source={res.nativeBuffer} />
+// Or by an id the request and the view share, in any order (lists, stores):
+streamFetch(url, { streamId: message.id, method: 'POST', body })
+<StreamText streamId={message.id} />
 ```
 
 ## Requirements
@@ -16,8 +19,7 @@ const res = await fetch(url, { stream: true, nativeBuffer: true });
 
 ## Status
 
-Experimental, not yet on npm. The `nativeBuffer` option comes from a patched `react-native-nitro-fetch`
-vendored in the repository.
+Experimental, not yet on npm.
 
 Usage, API, how it works and benchmarks: see the
 [repository README](https://github.com/alexshumihin/react-native-text-stream#readme).
