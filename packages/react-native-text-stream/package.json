@@ -24,9 +24,6 @@
     "lib",
     "cpp",
     "android/build.gradle",
-    "android/fix-prefab.gradle",
-    "android/gradle.properties",
-    "android/CMakeLists.txt",
     "android/src",
     "!android/src/test",
     "ios/**/*.h",
@@ -34,7 +31,6 @@
     "ios/**/*.mm",
     "ios/**/*.cpp",
     "ios/**/*.swift",
-    "app.plugin.js",
     "*.podspec",
     "README.md"
   ],

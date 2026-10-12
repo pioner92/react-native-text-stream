@@ -2,9 +2,11 @@
 
 A native React Native text view that renders a streamed response as it arrives, without JS per chunk.
 
-[![Version](https://img.shields.io/npm/v/react-native-text-stream.svg)](https://www.npmjs.com/package/react-native-text-stream)
-[![Downloads](https://img.shields.io/npm/dm/react-native-text-stream.svg)](https://www.npmjs.com/package/react-native-text-stream)
-[![License](https://img.shields.io/npm/l/react-native-text-stream.svg)](https://github.com/patrickkabwe/react-native-text-stream/LICENSE)
+```tsx
+const res = await fetch(url, { stream: true, nativeBuffer: true });
+
+<StreamText source={res.nativeBuffer} />
+```
 
 ## Requirements
 
@@ -12,16 +14,14 @@ A native React Native text view that renders a streamed response as it arrives, 
 - iOS 15.1 or higher
 - Android 7.0 (API 24) or higher
 
-## Installation
+## Status
 
-```bash
-npm install react-native-text-stream
-```
+Experimental, not yet on npm. The `nativeBuffer` option comes from a patched `react-native-nitro-fetch`
+vendored in the repository.
 
-## Credits
+Usage, API, how it works and benchmarks: see the
+[repository README](https://github.com/alexshumihin/react-native-text-stream#readme).
 
-Bootstrapped with [create-nitro-module](https://github.com/patrickkabwe/create-nitro-module).
+## License
 
-## Contributing
-
-Pull requests are welcome. For major changes, please open an issue first to discuss what you would like to change.
+MIT

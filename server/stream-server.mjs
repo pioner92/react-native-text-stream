@@ -25,7 +25,7 @@ const MAX_SEND_LOGS = 100;
 const PARAGRAPHS = [
   'Streaming text straight from the network into a native view ⚡️ Every token lands in a native buffer, and the view picks it up on the next frame.',
   'No bridge, no setState, no re-render. JavaScript hands the buffer over once and steps aside 🚀',
-  'Under the hood: URLSession appends bytes to an append-only log, and a CADisplayLink on the main thread decodes only the new UTF-8 slice ✨',
+  'Under the hood: the network layer appends bytes to an append-only log, and the view decodes only the new UTF-8 slice on the next frame ✨',
   'Freeze the JS thread and watch: the native card keeps flowing while the JS card stops dead 🧊',
   'Each frame costs O(delta), not O(n). A 100 KB answer streams as smoothly as a 1 KB one 📈',
 ];
