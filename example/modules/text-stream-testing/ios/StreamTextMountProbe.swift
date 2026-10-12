@@ -23,6 +23,33 @@ enum StreamTextMountProbe {
     let style = StreamTextStyle()
     style.fontSize = 14
     style.lineHeight = 21
+    // Before anything here lays this text out: CoreText on the prepare queue's QoS after an idle pause,
+    // to tell a CPU ramping up from a first layout of a new text. Unique tags make texts never seen.
+    let coreTextWasFirst = StreamTextPreparedLayout.coreText
+    StreamTextPreparedLayout.coreText = true
+    func backgroundCoreText(_ string: String) -> Double {
+      let bytes = Array(string.utf8)
+      var inside = 0.0
+      let done = DispatchSemaphore(value: 0)
+      DispatchQueue.global(qos: .userInitiated).async {
+        let begun = CACurrentMediaTime()
+        bytes.withUnsafeBufferPointer { buffer in
+          _ = StreamTextPreparedLayout(utf8: buffer.baseAddress!, count: buffer.count, bytes: UInt64(buffer.count),
+                                       style: style, width: width, textKit: true)
+        }
+        inside = (CACurrentMediaTime() - begun) * 1000
+        done.signal()
+      }
+      done.wait()
+      return inside
+    }
+    func tagged() -> String { text.replacingOccurrences(of: "\n\n", with: " \(UUID().uuidString.prefix(8))\n\n") }
+    Thread.sleep(forTimeInterval: 0.5)
+    let first = tagged()
+    times["start.idleNewText"] = backgroundCoreText(first)
+    times["start.warmSameText"] = backgroundCoreText(first)
+    times["start.warmNewText"] = backgroundCoreText(tagged())
+    StreamTextPreparedLayout.coreText = coreTextWasFirst
     let attributes = style.attributes()
     let height = StreamTextLayout.textViewHeight
     // A window-attached host, so views lay out and draw the way they would on screen.
@@ -283,6 +310,28 @@ enum StreamTextMountProbe {
           }
         }
       }
+    }
+    // The same CoreText layout (warm) off the main thread, as the prepare queue makes it while a caller
+    // waits on a semaphore, which, like a std::future, lends the work no priority.
+    StreamTextPreparedLayout.coreText = true
+    for (name, qos) in [("engine.coreText.bgUtility", DispatchQoS.QoSClass.utility),
+                        ("engine.coreText.bgUserInitiated", .userInitiated),
+                        ("engine.coreText.bgUserInteractive", .userInteractive)] {
+      var inside = 0.0
+      let done = DispatchSemaphore(value: 0)
+      let started = CACurrentMediaTime()
+      DispatchQueue.global(qos: qos).async {
+        let begun = CACurrentMediaTime()
+        bytes.withUnsafeBufferPointer { buffer in
+          _ = StreamTextPreparedLayout(utf8: buffer.baseAddress!, count: buffer.count, bytes: UInt64(buffer.count),
+                                       style: style, width: width, textKit: true)
+        }
+        inside = (CACurrentMediaTime() - begun) * 1000
+        done.signal()
+      }
+      done.wait()
+      times[name] = inside
+      times["\(name).wall"] = (CACurrentMediaTime() - started) * 1000
     }
     StreamTextPreparedLayout.coreText = coreTextWas
     // Kerning on long paragraphs: x of the last glyph of line 0, short vs long paragraph, both engines.
