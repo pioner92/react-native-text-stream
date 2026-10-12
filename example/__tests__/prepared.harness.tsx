@@ -8,6 +8,7 @@ import {
   buffer,
   Column,
   layouts,
+  linePitch,
   newKey,
   PARAGRAPHS,
   sleep,
@@ -274,7 +275,7 @@ describe('StreamText: prepared layouts', () => {
   });
 
   // Not on Android yet: reading line by line.
-  itIOS('VoiceOver reads the lines on screen, and every line by number', async () => {
+  it('VoiceOver and TalkBack read the lines on screen, and every line by number', async () => {
     const key = newKey();
     let scroll: ScrollView | null = null;
     await render(
@@ -288,20 +289,24 @@ describe('StreamText: prepared layouts', () => {
     );
     const top = await waitForText(key, LONG);
     const read = async (lines: number[]) => JSON.parse(await testing.accessibility(key, lines));
-    const atTop = await read([0, 10, 50]);
+    const atTop = await read([0, 1, 2, 10, 50]);
     // The value is what the screen shows, whole lines from the start: not the whole text, not its end.
     expect(LONG.startsWith(atTop.value)).toBe(true);
     expect(atTop.value.length).toBeGreaterThan(100);
     expect(atTop.value.length).toBeLessThan(LONG.length / 4);
     expect(atTop.page).toBe(atTop.value);
     // Every line, by number, with its text and a frame that maps back to it.
-    expect(Math.abs(atTop.count - top.height / TEXT_STYLE.lineHeight)).toBeLessThanOrEqual(1);
+    expect(Math.abs(atTop.count - top.height / linePitch(TEXT_STYLE.lineHeight))).toBeLessThanOrEqual(1);
     for (const line of atTop.lines) {
       expect(line.back).toBe(line.line);
       expect(LONG).toContain(line.text);
     }
     expect(atTop.lines[0].text.length).toBeGreaterThan(0);
     expect(LONG.startsWith(atTop.lines[0].text)).toBe(true);
+    if (Platform.OS === 'android') {
+      // TalkBack line by line from the top: the same lines.
+      expect(atTop.traversed).toEqual(atTop.lines.slice(0, 3).map((l: { text: string }) => l.text));
+    }
 
     scroll!.scrollTo({ y: top.height / 2, animated: false });
     await sleep(300);

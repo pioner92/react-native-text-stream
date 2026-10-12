@@ -142,7 +142,15 @@ class HybridStreamTextTesting : HybridStreamTextTestingSpec() {
 
   override fun selectionGeometry(key: String, location: Double, length: Double): Promise<String> = unsupported()
 
-  override fun accessibility(key: String, lines: DoubleArray): Promise<String> = unsupported()
+  override fun accessibility(key: String, lines: DoubleArray): Promise<String> {
+    val promise = Promise<String>()
+    main.post {
+      val json = StreamTextDebug.accessibility(key, IntArray(lines.size) { lines[it].toInt() })
+      if (json == null) promise.reject(IllegalStateException("No StreamTextView with nativeID $key and recordDisplayLog"))
+      else promise.resolve(json)
+    }
+    return promise
+  }
 
   private fun <T> unsupported(): Promise<T> = Promise.rejected(UnsupportedOperationException("Not on Android yet"))
 

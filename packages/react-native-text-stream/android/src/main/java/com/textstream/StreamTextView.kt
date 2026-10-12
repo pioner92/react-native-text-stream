@@ -8,6 +8,7 @@ import android.graphics.Paint
 import android.graphics.Matrix
 import android.graphics.RectF
 import android.os.Build
+import android.os.Bundle
 import android.text.Layout
 import android.text.TextPaint
 import android.util.Log
@@ -18,6 +19,8 @@ import android.view.HapticFeedbackConstants
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewTreeObserver
+import android.view.accessibility.AccessibilityEvent
+import android.view.accessibility.AccessibilityManager
 import android.view.accessibility.AccessibilityNodeInfo
 import android.widget.HorizontalScrollView
 import android.widget.ScrollView
@@ -28,6 +31,8 @@ import com.facebook.react.uimanager.StateWrapper
 import com.facebook.react.uimanager.UIManagerHelper
 import com.facebook.react.views.view.ReactViewGroup
 import java.nio.ByteBuffer
+import org.json.JSONArray
+import org.json.JSONObject
 import kotlin.math.max
 import kotlin.math.min
 
@@ -230,7 +235,7 @@ class StreamTextView(context: Context) : ReactViewGroup(context) {
         fontSize = fontSize,
         color = "#%02X%02X%02X%02X".format(Color.red(c), Color.green(c), Color.blue(c), Color.alpha(c)),
         selectable = selectable,
-        accessibilityValue = accessibilityText(),
+        accessibilityValue = reading().text,
         mode = if (canvas != null) "canvas" else if (hadText) "textView" else "",
         engine = if (canvas != null) "staticLayout" else "",
         tiles = if (canvas != null) blocks?.count ?: 0 else flow.blockCount,
@@ -687,7 +692,7 @@ class StreamTextView(context: Context) : ReactViewGroup(context) {
       }
       canvas.restore()
     }
-    if (prepared != null) drawSection(prepared.layout, prepared.layout.lineCount, 0, blocks) else flow.forEachSection(drawSection)
+    forEachShownSection(drawSection)
     canvas.restore()
     stats?.let {
       val time = System.nanoTime() - drawStarted
@@ -708,9 +713,14 @@ class StreamTextView(context: Context) : ReactViewGroup(context) {
         else near.first != sectionBlocks.drawnFirst || near.last != sectionBlocks.drawnLast
       }
     }
-    val prepared = canvas
-    if (prepared != null) check(prepared.layout, prepared.layout.lineCount, 0, blocks) else flow.forEachSection(check)
+    forEachShownSection(check)
     return redraw
+  }
+
+  /** The canvas, or the sections of the text laid out here: (layout, lines shown, y of its top, blocks). */
+  private fun forEachShownSection(action: (layout: Layout, lines: Int, y: Int, blocks: StreamTextBlocks?) -> Unit) {
+    val prepared = canvas
+    if (prepared != null) action(prepared.layout, prepared.layout.lineCount, 0, blocks) else flow.forEachSection(action)
   }
 
   /** The blocks of `layout`'s first `lines`, drawn `y` px below the text's top, within `margin` dp of the screen. */
@@ -743,16 +753,69 @@ class StreamTextView(context: Context) : ReactViewGroup(context) {
 
   // MARK: - Accessibility
 
-  /**
-   * A canvas exposes the lines on screen, whole, as iOS does; the text it lays out itself (a
-   * stream) only its end: a snapshot of megabytes of text would stall the main thread.
-   */
+  /** TalkBack's cursor in [readingText] (-1: none yet), as a View keeps one for its iterators. */
+  private var readingCursor = -1
+  private var readingText = ""
+  /** The segment the last move went over: for tests. */
+  private var lastTraversed: IntArray? = null
+
   override fun onInitializeAccessibilityNodeInfo(info: AccessibilityNodeInfo) {
     super.onInitializeAccessibilityNodeInfo(info)
-    info.text = accessibilityText()
+    val text = reading().text
+    info.text = text
+    if (text.isNotEmpty()) {
+      info.movementGranularities = StreamTextReading.GRANULARITIES
+      info.addAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_NEXT_AT_MOVEMENT_GRANULARITY)
+      info.addAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_PREVIOUS_AT_MOVEMENT_GRANULARITY)
+    }
   }
 
-  private fun accessibilityText(): String {
+  override fun performAccessibilityAction(action: Int, arguments: Bundle?): Boolean {
+    when (action) {
+      AccessibilityNodeInfo.ACTION_NEXT_AT_MOVEMENT_GRANULARITY,
+      AccessibilityNodeInfo.ACTION_PREVIOUS_AT_MOVEMENT_GRANULARITY -> {
+        val granularity = arguments?.getInt(AccessibilityNodeInfo.ACTION_ARGUMENT_MOVEMENT_GRANULARITY_INT) ?: return false
+        return traverse(granularity, action == AccessibilityNodeInfo.ACTION_NEXT_AT_MOVEMENT_GRANULARITY)
+      }
+      AccessibilityNodeInfo.ACTION_ACCESSIBILITY_FOCUS, AccessibilityNodeInfo.ACTION_CLEAR_ACCESSIBILITY_FOCUS -> readingCursor = -1
+    }
+    return super.performAccessibilityAction(action, arguments)
+  }
+
+  /** Moves TalkBack's cursor over the next or previous segment, as View.traverseAtGranularity. */
+  private fun traverse(granularity: Int, forward: Boolean): Boolean {
+    val reading = reading()
+    val text = reading.text
+    if (text != readingText) {
+      readingText = text
+      readingCursor = -1
+    }
+    if (text.isEmpty()) return false
+    val current = if (readingCursor >= 0) readingCursor else if (forward) 0 else text.length
+    val range = (if (forward) reading.following(granularity, current) else reading.preceding(granularity, current)) ?: return false
+    readingCursor = if (forward) range[1] else range[0]
+    lastTraversed = range
+    val manager = context.getSystemService(Context.ACCESSIBILITY_SERVICE) as? AccessibilityManager
+    if (manager?.isEnabled == true) {
+      @Suppress("DEPRECATION")
+      val event = AccessibilityEvent.obtain(AccessibilityEvent.TYPE_VIEW_TEXT_TRAVERSED_AT_MOVEMENT_GRANULARITY)
+      onInitializeAccessibilityEvent(event)
+      event.text.add(text)
+      event.fromIndex = range[0]
+      event.toIndex = range[1]
+      event.action = if (forward) AccessibilityNodeInfo.ACTION_NEXT_AT_MOVEMENT_GRANULARITY
+      else AccessibilityNodeInfo.ACTION_PREVIOUS_AT_MOVEMENT_GRANULARITY
+      event.movementGranularity = granularity
+      sendAccessibilityEventUnchecked(event)
+    }
+    return true
+  }
+
+  /**
+   * What accessibility reads: a canvas, the lines on screen, whole, as iOS does; the text laid out
+   * here (a stream), its end: a snapshot of megabytes of text would stall the main thread.
+   */
+  private fun reading(): StreamTextReading {
     val prepared = canvas
     if (prepared != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
       val layout = prepared.layout
@@ -760,19 +823,85 @@ class StreamTextView(context: Context) : ReactViewGroup(context) {
       if (viewport != null && layout.lineCount > 0) {
         val top = (viewport.top - paddingTop).toInt()
         val bottom = (viewport.bottom - paddingTop).toInt()
-        if (bottom < 0 || top > layout.height) return ""
+        if (bottom < 0 || top > layout.height) return StreamTextReading.EMPTY
         val first = layout.getLineForVertical(max(top, 0))
         val last = layout.getLineForVertical(min(bottom, layout.height))
-        return prepared.text.substring(layout.getLineStart(first), layout.getLineEnd(last))
+        val from = layout.getLineStart(first)
+        return StreamTextReading(
+            prepared.text.substring(from, layout.getLineEnd(last)), IntArray(last - first + 1) { layout.getLineStart(first + it) - from })
       }
     }
+    return tailReading()
+  }
+
+  /** The text's last [ACCESSIBLE_TAIL_CHARS] characters, after a "…" when there is more. */
+  private fun tailReading(): StreamTextReading {
     val shown = shownText()
     val length = shown.length
-    if (length <= ACCESSIBLE_TAIL_CHARS) return shown.toString()
+    var start = max(length - ACCESSIBLE_TAIL_CHARS, 0)
     // Not from the middle of a surrogate pair.
-    var start = length - ACCESSIBLE_TAIL_CHARS
-    if (Character.isLowSurrogate(shown[start])) start++
-    return "…" + shown.subSequence(start, length)
+    if (start > 0 && Character.isLowSurrogate(shown[start])) start++
+    val prefix = if (start > 0) "…" else ""
+    val starts = ArrayList<Int>()
+    var base = 0
+    forEachShownSection { layout, lines, _, _ ->
+      val end = base + layout.getLineStart(lines)
+      if (end > start) {
+        for (line in layout.getLineForOffset(max(start - base, 0)) until lines) {
+          starts.add(prefix.length + max(base + layout.getLineStart(line) - start, 0))
+        }
+      }
+      base = end
+    }
+    return StreamTextReading(prefix + shown.subSequence(start, length), starts.toIntArray())
+  }
+
+  /**
+   * Tests: what TalkBack reads of a canvas, as iOS's debugAccessibility: the node's text, the
+   * `lines` asked for with the line found at the middle of each, the line at the top of the screen,
+   * and the first lines TalkBack moves over line by line.
+   */
+  internal fun debugAccessibility(lines: IntArray): String {
+    val prepared = canvas ?: return "{}"
+    val layout = prepared.layout
+    val info = createAccessibilityNodeInfo()
+    val value = info.text?.toString() ?: ""
+    @Suppress("DEPRECATION")
+    info.recycle()
+    val picked = JSONArray()
+    for (line in lines) {
+      val item = JSONObject().put("line", line)
+      if (line in 0 until layout.lineCount) {
+        item.put("text", prepared.text.substring(layout.getLineStart(line), layout.getLineEnd(line)))
+        item.put("back", layout.getLineForVertical((layout.getLineTop(line) + layout.getLineBottom(line)) / 2))
+      } else {
+        item.put("text", JSONObject.NULL).put("back", JSONObject.NULL)
+      }
+      picked.put(item)
+    }
+    val top = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) viewport()?.let { (it.top - paddingTop).toInt() } ?: 0 else 0
+    val traversed = JSONArray()
+    val (cursor, text) = readingCursor to readingText
+    readingCursor = -1
+    val byLine = Bundle().apply {
+      putInt(AccessibilityNodeInfo.ACTION_ARGUMENT_MOVEMENT_GRANULARITY_INT, AccessibilityNodeInfo.MOVEMENT_GRANULARITY_LINE)
+    }
+    repeat(3) {
+      if (performAccessibilityAction(AccessibilityNodeInfo.ACTION_NEXT_AT_MOVEMENT_GRANULARITY, byLine)) {
+        val range = lastTraversed!!
+        traversed.put(readingText.substring(range[0], range[1]))
+      }
+    }
+    readingCursor = cursor
+    readingText = text
+    return JSONObject()
+        .put("value", value)
+        .put("page", value)
+        .put("count", layout.lineCount)
+        .put("lines", picked)
+        .put("firstLine", layout.getLineForVertical(max(top, 0)))
+        .put("traversed", traversed)
+        .toString()
   }
 
   private companion object {

@@ -84,6 +84,10 @@ export function Column({ width = 300, children }: { width?: number; children: Re
 
 export const TEXT_STYLE = { fontSize: 14, lineHeight: 21 } as const;
 
+/** Points from one line to the next at `lineHeight`: Android rounds it up to whole pixels (see below). */
+export const linePitch = (lineHeight: number) =>
+  Platform.OS === 'android' ? Math.ceil(lineHeight * PixelRatio.get()) / PixelRatio.get() : lineHeight;
+
 /**
  * The height of `lines` lines at `lineHeight`: Android lays lines out on whole pixels, rounding
  * the pitch up as <Text> does (CustomLineHeightSpan), so it is exact only in pixels there.

@@ -134,6 +134,9 @@ object StreamTextDebug {
   @JvmStatic
   fun preparedCacheDump(): String = if (enabled) StreamTextNative.preparedCacheDump() else ""
 
+  /** What TalkBack reads of the canvas of the view with this key, as JSON (see StreamTextView). Main thread. */
+  fun accessibility(key: String, lines: IntArray): String? = view(key)?.debugAccessibility(lines)
+
   /** `[wallClockMs, bytesShown, ...]` for the view with this key. Any thread. */
   @JvmStatic
   fun log(key: String): DoubleArray =

@@ -349,7 +349,7 @@ class PrepareQueue {
 
  private:
   PrepareQueue() {
-    // As on iOS. Four were twice as slow for 20 texts on a Pixel 8a: the layouts contend in Minikin.
+    // As on iOS. Four were twice as slow for 20 texts on a Pixel 8a.
     for (int i = 0; i < 2; i++) {
       std::thread([this] {
         // Named apart from the JS thread it would otherwise inherit its name from.
