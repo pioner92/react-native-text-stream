@@ -3,6 +3,8 @@
 // view grows without the JS thread.
 #pragma once
 
+#include "StreamTextStreams.hpp"
+
 #include <array>
 #include <cmath>
 #include <jsi/jsi.h>
@@ -71,12 +73,20 @@ class StreamTextViewProps final : public ViewProps {
         selectable(convertRawProp(context, rawProps, "selectable", sourceProps.selectable, true)),
         selectionColor(convertRawProp(context, rawProps, "selectionColor", sourceProps.selectionColor, SharedColor{})),
         recordDisplayLog(convertRawProp(context, rawProps, "recordDisplayLog", sourceProps.recordDisplayLog, false)),
-        sourceGeneration(convertRawProp(context, rawProps, "sourceGeneration", sourceProps.sourceGeneration, 0)) {
+        sourceGeneration(convertRawProp(context, rawProps, "sourceGeneration", sourceProps.sourceGeneration, 0)),
+        streamId(convertRawProp(context, rawProps, "streamId", sourceProps.streamId, {})) {
     // Always look the key up: the parser only forwards keys that the constructor asks for.
+    bool hasSource = false;
     if (const RawValue *rawSource = rawProps.at("source", nullptr, nullptr)) {
       if (auto parsed = streamTextSourceFromRawValue(*rawSource)) {
         source = std::move(*parsed);
+        hasSource = source != nullptr;
       }
+    }
+    // A stream by id: its buffer as of now, looked up only when the id changes (a later request
+    // under it reaches the view directly). A finished one is then laid out ahead, like a source.
+    if (!hasSource && streamId != sourceProps.streamId) {
+      source = streamId.empty() ? nullptr : StreamTextStreams::shared().find(streamId);
     }
     if (source && source != sourceProps.source) {
       streamTextPrepareEarly(*this);
@@ -97,6 +107,8 @@ class StreamTextViewProps final : public ViewProps {
   bool recordDisplayLog{false};
   /** Set by the JS wrapper with each new `source`; status events carry it back. */
   int sourceGeneration{0};
+  /** A stream from `streamFetch(url, { streamId })` (StreamTextStreams.hpp). */
+  std::string streamId;
 };
 
 class StreamTextViewEventEmitter final : public ViewEventEmitter {

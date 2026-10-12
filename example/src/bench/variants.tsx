@@ -1,9 +1,9 @@
-import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import Animated, { useAnimatedProps, useSharedValue } from 'react-native-reanimated';
 import { fetch } from 'react-native-nitro-fetch';
 import { TextDecoder } from 'react-native-nitro-text-decoder';
-import { StreamText, streamFetch, useStreamTextRef, type StreamTextHandle } from 'react-native-text-stream';
+import { StreamText, type StreamTextRequest, type StreamTextStatus } from 'react-native-text-stream';
 import { createFrameMonitor } from 'text-stream-testing';
 import { StreamdownText } from 'react-native-streamdown';
 import { pairs, type Point } from './stats';
@@ -252,23 +252,27 @@ function NativeStream({ url, onFinish }: VariantProps) {
   return <NativeStreamView buffer={buffer} url={url} onFinish={onFinish} />;
 }
 
-// D: the same view, the request made by the library itself (streamFetch) instead of nitro-fetch,
-// handed over through the ref: no setState, no re-render.
+// D: the same view, declaratively: <StreamText request> makes the request itself (streamFetch, no
+// nitro-fetch) and is woken by every write. No ref, no state; the end comes from onStatusChange.
 function OwnFetchStream({ url, onFinish }: VariantProps) {
-  const streamRef = useStreamTextRef();
   const logKey = url;
-
-  useEffect(() => {
-    const stream = streamFetch(url);
-    streamRef.attach(stream);
-    const stopWatching = watchCompletion(stream.buffer, logKey, onFinish);
-    return () => {
-      stopWatching();
-      stream.abort();
-    };
-  }, [url, onFinish, logKey, streamRef]);
-
-  return <NativeTextFrame streamRef={streamRef} logKey={logKey} />;
+  const request = useMemo(() => ({ url }), [url]);
+  const finished = useRef(false);
+  const onStatus = useCallback(
+    (status: string, bytes: number) => {
+      if (status === 'streaming' || status === 'idle' || finished.current) return;
+      finished.current = true;
+      // The last append's on-screen time is logged a frame after the final status.
+      const id = setInterval(() => {
+        const log = displayLogs.streamTextDisplayLog(logKey);
+        if ((log.length ? log[log.length - 1] : 0) < bytes) return;
+        clearInterval(id);
+        onFinish({ shown: pairs(log), jsChunks: 0, render: displayLogs.streamTextRenderStats(logKey) });
+      }, 20);
+    },
+    [logKey, onFinish],
+  );
+  return <NativeTextFrame request={request} onStatusChange={onStatus} logKey={logKey} />;
 }
 
 function NativeStreamView({
@@ -302,17 +306,20 @@ function watchCompletion(buffer: ArrayBuffer, logKey: string, onFinish: VariantP
 
 function NativeTextFrame({
   source,
-  streamRef,
+  request,
+  onStatusChange,
   logKey,
 }: {
   source?: ArrayBuffer;
-  streamRef?: React.Ref<StreamTextHandle>;
+  request?: StreamTextRequest;
+  onStatusChange?: (status: StreamTextStatus, bytes: number) => void;
   logKey: string;
 }) {
   const text = (
     <StreamText
-      ref={streamRef}
       source={source}
+      request={request}
+      onStatusChange={onStatusChange}
       fontSize={14}
       lineHeight={21}
       color={TEXT_COLOR}

@@ -134,6 +134,11 @@ class StreamTextView(context: Context) : ReactViewGroup(context) {
   private var stateWrapper: StateWrapper? = null
   private var propSourceAddress = 0L
   private var propGeneration = 0
+  /** The streamFetch() buffer last attached (0: another kind), kept once let go of: not attached twice. */
+  private var attachedSerial = 0L
+  /** The `streamId` prop, listened to: a request started (or replaced) under it later is shown too. */
+  private var streamId: String? = null
+  private var streamToken = 0L
   /** The JS wrapper's generation of the attached source, sent back with each status event. */
   private var generation = 0
   private var revision = 0
@@ -192,6 +197,30 @@ class StreamTextView(context: Context) : ReactViewGroup(context) {
   }
 
   /** The `attach` command: a buffer put in StreamTextBuffers. */
+  /** Shows whatever streams under `id` from now on; null stops. */
+  fun setStreamId(id: String?) {
+    if (id == streamId) return
+    streamId?.let { StreamTextNative.unlistenStream(it, streamToken) }
+    streamId = id
+    if (id == null) return
+    val wake = Runnable { post { streamPublished() } }
+    streamToken = StreamTextNative.listenStream(id, wake)
+    // Published between the props' lookup and now: not missed.
+    wake.run()
+  }
+
+  /** A request streams under `streamId` (a new one, or one that replaced it). Main thread. */
+  private fun streamPublished() {
+    val id = streamId ?: return
+    val source = StreamTextNative.streamSource(id) ?: return
+    // Already shown (the state's own lookup attached it): attaching again would restart it.
+    if (source.serial() == attachedSerial) {
+      source.release()
+      return
+    }
+    attach(source, propGeneration, null)
+  }
+
   fun attachCommand(bufferId: Int, generation: Int) {
     attach(if (bufferId > 0) StreamTextNative.takeBuffer(bufferId) else null, generation, null)
   }
@@ -202,6 +231,7 @@ class StreamTextView(context: Context) : ReactViewGroup(context) {
 
   /** The view is gone: stop reading the buffer and let go of it. */
   fun dispose() {
+    setStreamId(null)
     stopTicking()
     watcher.stop()
     // A finished `source` prop it laid out itself (it streamed it): lay it out in the background
@@ -270,6 +300,7 @@ class StreamTextView(context: Context) : ReactViewGroup(context) {
     releaseFinishedProp()
     selection.dismiss()
     sourceIsProp = fromProp
+    attachedSerial = 0
     // A new source starts its own status sequence (a finished one reports only its final status).
     reportedStatus = null
     this.generation = generation
@@ -298,6 +329,7 @@ class StreamTextView(context: Context) : ReactViewGroup(context) {
         return
       }
       val address = newSource.address()
+      attachedSerial = newSource.serial()
       if (!StreamTextNative.isValid(address, size)) {
         Log.w(TAG, "source is not a valid TSB1 buffer")
         newSource.release()

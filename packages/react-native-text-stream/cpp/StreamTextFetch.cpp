@@ -1,9 +1,11 @@
 #include "StreamTextFetch.hpp"
 #include "StreamTextBuffers.hpp"
+#include "StreamTextStreams.hpp"
 #include "../ios/TextStreamBuffer.h"
 
 #include <react/bridging/Function.h>
 #include <sys/mman.h>
+#include <atomic>
 #include <cmath>
 
 namespace facebook::react {
@@ -16,6 +18,11 @@ std::shared_ptr<StreamTextMappedBuffer> StreamTextMappedBuffer::create(uint64_t 
   }
   tsb_init(base, capacity);
   return std::make_shared<StreamTextMappedBuffer>(static_cast<uint8_t *>(base), size);
+}
+
+StreamTextMappedBuffer::StreamTextMappedBuffer(uint8_t *base, size_t size) : base_(base), size_(size) {
+  static std::atomic<uint64_t> lastSerial{0};
+  serial_ = ++lastSerial;
 }
 
 StreamTextMappedBuffer::~StreamTextMappedBuffer() {
@@ -70,6 +77,29 @@ class StreamTextFetchTasks {
     std::lock_guard lock(mutex_);
     tasks_.erase(id);
   }
+  /** The request now streaming under `streamId`; the one before it, if still running, is returned. */
+  std::shared_ptr<StreamTextFetchTask> claimStream(const std::string &streamId, int id) {
+    std::lock_guard lock(mutex_);
+    auto previous = streams_.find(streamId);
+    std::shared_ptr<StreamTextFetchTask> replaced;
+    if (previous != streams_.end()) {
+      auto it = tasks_.find(previous->second);
+      if (it != tasks_.end()) {
+        replaced = it->second;
+      }
+    }
+    streams_[streamId] = id;
+    return replaced;
+  }
+  std::shared_ptr<StreamTextFetchTask> findStream(const std::string &streamId) {
+    std::lock_guard lock(mutex_);
+    auto previous = streams_.find(streamId);
+    if (previous == streams_.end()) {
+      return nullptr;
+    }
+    auto it = tasks_.find(previous->second);
+    return it == tasks_.end() ? nullptr : it->second;
+  }
   std::shared_ptr<StreamTextFetchTask> find(int id) {
     std::lock_guard lock(mutex_);
     auto it = tasks_.find(id);
@@ -92,6 +122,8 @@ class StreamTextFetchTasks {
   std::mutex mutex_;
   int lastId_{0};
   std::unordered_map<int, std::shared_ptr<StreamTextFetchTask>> tasks_;
+  /** Which request streams under each streamId (it may have ended). */
+  std::unordered_map<std::string, int> streams_;
 };
 
 namespace {
@@ -147,11 +179,14 @@ StreamTextBuffersModule::StreamTextBuffersModule(std::shared_ptr<CallInvoker> js
   methodMap_["put"] = MethodMetadata{1, put};
   methodMap_["fetch"] = MethodMetadata{3, fetch};
   methodMap_["cancel"] = MethodMetadata{1, cancel};
+  methodMap_["abortStream"] = MethodMetadata{1, abortStream};
+  methodMap_["releaseStream"] = MethodMetadata{1, releaseStream};
 }
 
 StreamTextBuffersModule::~StreamTextBuffersModule() {
   // The runtime is going away (a reload): nothing may write for it any more.
   fetches_->cancelAll();
+  StreamTextStreams::shared().clear();
 }
 
 jsi::Value StreamTextBuffersModule::fetch(
@@ -195,8 +230,17 @@ jsi::Value StreamTextBuffersModule::fetch(
     throw jsi::JSError(rt, "StreamTextBuffers.fetch: could not map the buffer");
   }
 
+  std::string streamId = stringProperty(rt, init, "streamId", "");
   auto &tasks = module.fetches_;
   int id = tasks->reserve();
+  if (!streamId.empty()) {
+    // A new request under the same id replaces the one before it (e.g. regenerating an answer).
+    if (auto replaced = tasks->claimStream(streamId, id)) {
+      replaced->cancel();
+    }
+    // Views showing this id switch to the new buffer.
+    StreamTextStreams::shared().publish(streamId, buffer);
+  }
   auto listener = std::make_shared<JSFetchListener>(
       AsyncCallback<>(rt, args[2].getObject(rt).getFunction(rt), module.jsInvoker_), tasks, id);
   tasks->set(id, streamTextStartFetch(std::move(request), buffer, std::move(listener)));
@@ -205,6 +249,31 @@ jsi::Value StreamTextBuffersModule::fetch(
   result.setProperty(rt, "id", id);
   result.setProperty(rt, "buffer", jsi::ArrayBuffer(rt, buffer));
   return result;
+}
+
+jsi::Value StreamTextBuffersModule::abortStream(
+    jsi::Runtime &rt,
+    TurboModule &turboModule,
+    const jsi::Value *args,
+    size_t count) {
+  auto &module = static_cast<StreamTextBuffersModule &>(turboModule);
+  if (count >= 1 && args[0].isString()) {
+    if (auto task = module.fetches_->findStream(args[0].getString(rt).utf8(rt))) {
+      task->cancel();
+    }
+  }
+  return jsi::Value::undefined();
+}
+
+jsi::Value StreamTextBuffersModule::releaseStream(
+    jsi::Runtime &rt,
+    TurboModule & /*module*/,
+    const jsi::Value *args,
+    size_t count) {
+  if (count >= 1 && args[0].isString()) {
+    StreamTextStreams::shared().release(args[0].getString(rt).utf8(rt));
+  }
+  return jsi::Value::undefined();
 }
 
 jsi::Value StreamTextBuffersModule::cancel(

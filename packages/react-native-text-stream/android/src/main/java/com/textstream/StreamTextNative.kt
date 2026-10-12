@@ -14,6 +14,14 @@ internal object StreamTextNative {
   /** The buffer an `attach` command refers to (StreamTextBuffers), taken once. */
   @JvmStatic external fun takeBuffer(id: Int): StreamTextSource?
 
+  /** What streams under `streamId` now (streamFetch), or null. */
+  @JvmStatic external fun streamSource(streamId: String): StreamTextSource?
+
+  /** `wake` runs, on any thread, whenever a request starts streaming under `streamId`. */
+  @JvmStatic external fun listenStream(streamId: String, wake: Runnable): Long
+
+  @JvmStatic external fun unlistenStream(streamId: String, token: Long)
+
   /** The `source` prop as of this state (a StateWrapper), or null. */
   @JvmStatic external fun stateSource(stateWrapper: Any): StreamTextSource?
 
@@ -76,6 +84,9 @@ class StreamTextSource @DoNotStrip private constructor(@field:DoNotStrip private
 
   /** Its writer (streamFetch) wakes the view on every write: nothing needs to poll it. */
   external fun isPushed(): Boolean
+
+  /** A streamFetch() buffer's unique number (an address may be reused once one is freed), or 0. */
+  external fun serial(): Long
 
   /** `wake` runs on the writer's thread after each write: post, don't work. 0 if not pushed. */
   external fun observe(wake: Runnable): Long

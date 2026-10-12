@@ -4,9 +4,12 @@ export {
   type StreamTextProps,
   type StreamTextHandle,
   type StreamTextRef,
+  type StreamTextRequest,
 } from './StreamText'
 
 export {
+  abortStream,
+  releaseStream,
   streamFetch,
   type StreamFetchInit,
   type StreamFetchResponse,

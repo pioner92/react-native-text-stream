@@ -40,6 +40,11 @@ class StreamTextViewManager : ReactViewManager() {
   }
 
   /** Tests and benchmarks only; no effect without STREAMTEXT_TESTING. */
+  @ReactProp(name = "streamId")
+  fun setStreamId(view: ReactViewGroup, value: String?) {
+    (view as StreamTextView).setStreamId(value?.ifEmpty { null })
+  }
+
   @ReactProp(name = "recordDisplayLog")
   fun setRecordDisplayLog(view: ReactViewGroup, value: Boolean) {
     (view as StreamTextView).recordDisplayLog = value

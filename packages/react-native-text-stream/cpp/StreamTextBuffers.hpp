@@ -34,7 +34,8 @@ class StreamTextFetchTasks;
 /**
  * - `put(buffer: ArrayBuffer): number`: keeps a natively-backed buffer for an `attach` command and
  *   returns its id, or 0 for a buffer created in JS (it may only be touched on the JS thread).
- * - `fetch(url, init, onEvent): { id, buffer }` and `cancel(id)`: streamFetch() (StreamTextFetch.hpp).
+ * - `fetch(url, init, onEvent): { id, buffer }` and `cancel(id)`: streamFetch() (StreamTextFetch.hpp);
+ *   `abortStream(streamId)` and `releaseStream(streamId)` for one under a streamId (StreamTextStreams.hpp).
  */
 class StreamTextBuffersModule : public TurboModule {
  public:
@@ -47,6 +48,8 @@ class StreamTextBuffersModule : public TurboModule {
   static jsi::Value put(jsi::Runtime &runtime, TurboModule &module, const jsi::Value *args, size_t count);
   static jsi::Value fetch(jsi::Runtime &runtime, TurboModule &module, const jsi::Value *args, size_t count);
   static jsi::Value cancel(jsi::Runtime &runtime, TurboModule &module, const jsi::Value *args, size_t count);
+  static jsi::Value abortStream(jsi::Runtime &runtime, TurboModule &module, const jsi::Value *args, size_t count);
+  static jsi::Value releaseStream(jsi::Runtime &runtime, TurboModule &module, const jsi::Value *args, size_t count);
 
   std::shared_ptr<StreamTextFetchTasks> fetches_;
 };

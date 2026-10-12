@@ -25,7 +25,13 @@ jest.mock('react-native/Libraries/Utilities/codegenNativeCommands', () => {
 
 jest.mock('react-native/Libraries/TurboModule/TurboModuleRegistry', () => {
   const actual = jest.requireActual('react-native/Libraries/TurboModule/TurboModuleRegistry')
-  const buffers = { put: jest.fn(), fetch: jest.fn(), cancel: jest.fn() }
+  const buffers = {
+    put: jest.fn(),
+    fetch: jest.fn(),
+    cancel: jest.fn(),
+    abortStream: jest.fn(),
+    releaseStream: jest.fn(),
+  }
   const requested = []
   return {
     ...actual,

@@ -46,9 +46,15 @@ class StreamTextMappedBuffer : public jsi::MutableBuffer {
   /** The writer: bytes were published, or the status is final. */
   void notify();
 
-  StreamTextMappedBuffer(uint8_t *base, size_t size) : base_(base), size_(size) {}
+  /** Unique for the process's life (an address may be reused once a buffer is freed). */
+  uint64_t serial() const {
+    return serial_;
+  }
+
+  StreamTextMappedBuffer(uint8_t *base, size_t size);
 
  private:
+  uint64_t serial_;
   uint8_t *base_;
   size_t size_;
   std::mutex mutex_;

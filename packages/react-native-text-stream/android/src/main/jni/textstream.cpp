@@ -5,6 +5,7 @@
 #include "../../../../ios/TextStreamBuffer.h"
 #include "StreamTextBuffers.hpp"
 #include "StreamTextFetch.hpp"
+#include "StreamTextStreams.hpp"
 #include "StreamTextFetchAndroid.h"
 #include "StreamTextPreparedAndroid.h"
 #include "StreamTextViewShadowNode.hpp"
@@ -45,6 +46,7 @@ class JStreamTextSource : public jni::HybridClass<JStreamTextSource> {
         makeNativeMethod("size", JStreamTextSource::size),
         makeNativeMethod("bytes", JStreamTextSource::bytes),
         makeNativeMethod("isPushed", JStreamTextSource::isPushed),
+        makeNativeMethod("serial", JStreamTextSource::serial),
         makeNativeMethod("observe", JStreamTextSource::observe),
         makeNativeMethod("unobserve", JStreamTextSource::unobserve),
     });
@@ -71,6 +73,12 @@ class JStreamTextSource : public jni::HybridClass<JStreamTextSource> {
   /** Its writer (streamFetch) wakes the view on every write: nothing needs to poll it. */
   jboolean isPushed() {
     return std::dynamic_pointer_cast<StreamTextMappedBuffer>(buffer_) != nullptr;
+  }
+
+  /** A streamFetch() buffer's unique number, or 0. */
+  jlong serial() {
+    auto mapped = std::dynamic_pointer_cast<StreamTextMappedBuffer>(buffer_);
+    return mapped ? static_cast<jlong>(mapped->serial()) : 0;
   }
 
   /** `wake` runs on the writer's thread after each write; 0 if the buffer is not pushed. */
@@ -112,6 +120,26 @@ struct JStreamTextNative : jni::JavaClass<JStreamTextNative> {
   static jni::local_ref<JStreamTextSource::javaobject> takeBuffer(jni::alias_ref<jclass>, jint id) {
     auto buffer = id > 0 ? StreamTextBufferRegistry::shared().take(id) : nullptr;
     return buffer ? JStreamTextSource::create(std::move(buffer)) : nullptr;
+  }
+
+  /** What streams under `streamId` now (streamFetch), or null. */
+  static jni::local_ref<JStreamTextSource::javaobject> streamSource(jni::alias_ref<jclass>, jni::alias_ref<jstring> streamId) {
+    std::shared_ptr<jsi::MutableBuffer> buffer = StreamTextStreams::shared().find(streamId->toStdString());
+    return buffer ? JStreamTextSource::create(std::move(buffer)) : nullptr;
+  }
+
+  /** `wake` runs, on any thread, whenever a request starts streaming under `streamId`. */
+  static jlong listenStream(jni::alias_ref<jclass>, jni::alias_ref<jstring> streamId, jni::alias_ref<jni::JRunnable> wake) {
+    auto runnable = std::make_shared<jni::global_ref<jni::JRunnable>>(jni::make_global(wake));
+    return static_cast<jlong>(StreamTextStreams::shared().listen(streamId->toStdString(), [runnable] {
+      jni::ThreadScope scope;
+      static const auto run = jni::JRunnable::javaClassStatic()->getMethod<void()>("run");
+      run(*runnable);
+    }));
+  }
+
+  static void unlistenStream(jni::alias_ref<jclass>, jni::alias_ref<jstring> streamId, jlong token) {
+    StreamTextStreams::shared().unlisten(streamId->toStdString(), static_cast<uint64_t>(token));
   }
 
   /** The `source` prop as of this state, or null. */
@@ -218,6 +246,9 @@ struct JStreamTextNative : jni::JavaClass<JStreamTextNative> {
   static void registerNatives() {
     javaClassStatic()->registerNatives({
         makeNativeMethod("takeBuffer", JStreamTextNative::takeBuffer),
+        makeNativeMethod("streamSource", JStreamTextNative::streamSource),
+        makeNativeMethod("listenStream", JStreamTextNative::listenStream),
+        makeNativeMethod("unlistenStream", JStreamTextNative::unlistenStream),
         makeNativeMethod("stateSource", JStreamTextNative::stateSource),
         makeNativeMethod("stateGeneration", JStreamTextNative::stateGeneration),
         makeNativeMethod("updateHeight", JStreamTextNative::updateHeight),

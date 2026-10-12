@@ -11,6 +11,7 @@
 #import "StreamTextPrepared.h"
 #include "../../cpp/StreamTextBuffers.hpp"
 #include "../../cpp/StreamTextFetch.hpp"
+#include "../../cpp/StreamTextStreams.hpp"
 #include <atomic>
 #include "../../cpp/StreamTextViewShadowNode.hpp"
 #include <utility>
@@ -67,12 +68,51 @@ static NSString *_Nullable StreamTextNSString(const std::string &value) {
   // A buffer from streamFetch() wakes the renderer on every write instead of being polled.
   std::shared_ptr<StreamTextMappedBuffer> _observed;
   uint64_t _observerToken;
+  // The `streamId` prop, listened to: a request started (or replaced) under it later is shown too.
+  std::string _streamId;
+  uint64_t _streamToken;
+  // Which streamFetch() buffer was attached last (0: another kind), kept once it is let go of.
+  uint64_t _attachedSerial;
 }
 
 - (void)dealloc {
+  [self listenToStream:""];
   [self stopObserving];
   // Before the ivars go, `_source` among them: the renderer's watcher reads that buffer.
   [_renderer invalidate];
+}
+
+/** Shows whatever streams under `streamId` from now on; "" stops. */
+- (void)listenToStream:(const std::string &)streamId {
+  if (!_streamId.empty()) {
+    StreamTextStreams::shared().unlisten(_streamId, _streamToken);
+  }
+  _streamId = streamId;
+  if (streamId.empty()) {
+    return;
+  }
+  __weak StreamTextComponentView *weakSelf = self;
+  auto wake = [weakSelf] {
+    dispatch_async(dispatch_get_main_queue(), ^{
+      [weakSelf streamPublished];
+    });
+  };
+  _streamToken = StreamTextStreams::shared().listen(streamId, wake);
+  // Published between the props' lookup and now: not missed.
+  wake();
+}
+
+/** A request streams under `streamId` (a new one, or one that replaced it). Main thread. */
+- (void)streamPublished {
+  if (_streamId.empty()) {
+    return;
+  }
+  auto buffer = StreamTextStreams::shared().find(_streamId);
+  // Already shown, or about to be (the props' own lookup found it): attaching again would restart it.
+  if (!buffer || buffer->serial() == _attachedSerial || (_hasPropSource && buffer == _propSource)) {
+    return;
+  }
+  [self attachSource:buffer prepared:nil generation:_propGeneration];
 }
 
 - (void)stopObserving {
@@ -166,6 +206,10 @@ static NSString *_Nullable StreamTextNSString(const std::string &value) {
     _propGeneration = next.sourceGeneration;
     _hasPropSource = YES;
   }
+  if (next.streamId != previous.streamId) {
+    _propGeneration = next.sourceGeneration;
+    [self listenToStream:next.streamId];
+  }
   [super updateProps:props oldProps:oldProps];
 }
 
@@ -207,6 +251,8 @@ static NSString *_Nullable StreamTextNSString(const std::string &value) {
             prepared:(StreamTextPreparedLayout *)prepared
           generation:(int)generation {
   _attachedData = source ? source->data() : nullptr;
+  auto mapped = std::dynamic_pointer_cast<StreamTextMappedBuffer>(source);
+  _attachedSerial = mapped ? mapped->serial() : 0;
   _generation = generation;
   // The old buffer is released only after the renderer moved off it; the new one may already be
   // released inside attach, when it is finished and shown in one go.

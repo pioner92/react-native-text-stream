@@ -21,6 +21,11 @@ export interface StreamFetchInit {
   capacity?: number
   /** The longest wait for the next bytes, in ms. Defaults to 5 minutes. */
   timeout?: number
+  /**
+   * Streams under this id too: `<StreamText streamId={id} />` shows it, wherever it is mounted and
+   * in either order. A later request under the same id replaces it (and cancels this one).
+   */
+  streamId?: string
 }
 
 export interface StreamFetchResponse {
@@ -55,10 +60,12 @@ export interface TextStream {
 interface StreamTextFetchModule extends TurboModule {
   fetch(
     url: string,
-    init: { method: string; headers: string[]; body?: string; capacity: number; timeout: number },
+    init: { method: string; headers: string[]; body?: string; capacity: number; timeout: number; streamId?: string },
     onEvent: (type: string, ...args: unknown[]) => void
   ): { id: number; buffer: ArrayBuffer }
   cancel(id: number): void
+  abortStream(streamId: string): void
+  releaseStream(streamId: string): void
 }
 
 const Native = TurboModuleRegistry.get<StreamTextFetchModule>('StreamTextBuffers')
@@ -103,6 +110,7 @@ export function streamFetch(url: string, init: StreamFetchInit = {}): TextStream
       body: init.body,
       capacity,
       timeout: init.timeout ?? DEFAULT_TIMEOUT_MS,
+      ...(init.streamId ? { streamId: init.streamId } : {}),
     },
     (type, ...args) => {
       if (type === 'response') {
@@ -137,6 +145,19 @@ export function streamFetch(url: string, init: StreamFetchInit = {}): TextStream
     abort,
     text: () => bufferText(native.buffer),
   }
+}
+
+/** Stops the request streaming under `streamId`; the text so far stays. */
+export function abortStream(streamId: string): void {
+  Native?.abortStream(streamId)
+}
+
+/**
+ * Forgets the stream under `streamId`: a view showing it keeps its text, a view mounted later
+ * shows nothing. Finished streams no view shows are forgotten anyway past the last 64.
+ */
+export function releaseStream(streamId: string): void {
+  Native?.releaseStream(streamId)
 }
 
 /** Whether a `source` is a stream from `streamFetch()` rather than a buffer. */

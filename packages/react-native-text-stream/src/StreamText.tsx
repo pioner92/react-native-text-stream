@@ -1,4 +1,4 @@
-import React, { forwardRef, useCallback, useImperativeHandle, useLayoutEffect, useMemo, useRef } from 'react'
+import React, { forwardRef, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef } from 'react'
 import {
   codegenNativeCommands,
   processColor,
@@ -16,7 +16,7 @@ import type {
   StreamTextStatus,
 } from './types'
 import { bufferText, committedBytes, TSB_HEADER_SIZE } from './buffer'
-import { isTextStream, type TextStream } from './fetch'
+import { isTextStream, releaseStream, streamFetch, type StreamFetchInit, type TextStream } from './fetch'
 
 // `generation`: which source the event is about (see `sourceGeneration`).
 type StatusEvent = NativeSyntheticEvent<{ status: StreamTextStatus; bytes: number; generation: number }>
@@ -24,6 +24,7 @@ type StatusEvent = NativeSyntheticEvent<{ status: StreamTextStatus; bytes: numbe
 type NativeProps = ViewProps & {
   source?: ArrayBuffer | null
   sourceGeneration?: number
+  streamId?: string
   fontSize?: number
   fontFamily?: string
   fontWeight?: string
@@ -44,6 +45,7 @@ const NativeStreamText = NativeComponentRegistry.get<NativeProps>('StreamTextVie
     // Two ArrayBuffers deep-compare as equal (no enumerable keys): compare by identity.
     source: { diff: (a: unknown, b: unknown) => a !== b },
     sourceGeneration: true,
+    streamId: true,
     fontSize: true,
     fontFamily: true,
     fontWeight: true,
@@ -83,6 +85,19 @@ export interface StreamTextProps extends ViewProps {
    * hand it over with `ref.attach()`.
    */
   source?: ArrayBuffer | TextStream | null
+  /**
+   * Shows what `streamFetch(url, { streamId })` streams under this id: the request and the view
+   * find each other natively, in any order, with no state or object passed between them. A later
+   * request under the same id replaces what is shown.
+   */
+  streamId?: string
+  /**
+   * Makes the request itself and shows its body as it streams: started on mount and whenever the
+   * request changes (compared by value), aborted on unmount. With a \`streamId\`, the request
+   * outlives the view instead (a list's bubble scrolled away and back shows the same stream) and is
+   * sent again only when the request changes.
+   */
+  request?: StreamTextRequest
   fontSize?: number
   /** A font family or PostScript name, e.g. "Menlo"; defaults to the system font. */
   fontFamily?: string
@@ -103,6 +118,15 @@ export interface StreamTextProps extends ViewProps {
    */
   recordDisplayLog?: boolean
 }
+
+/** `streamFetch(url, init)` as one value, for `<StreamText request={…} />`. */
+export interface StreamTextRequest extends StreamFetchInit {
+  url: string
+}
+
+/** The request last sent under each streamId by a view (`request` prop): not sent again on a remount. */
+const sentRequests = new Map<string, string>()
+let nextOwnStreamId = 1
 
 /** What `<StreamText ref={…} />` gives you. */
 export interface StreamTextHandle {
@@ -126,9 +150,14 @@ const IDLE: StreamTextState = { status: 'idle', bytes: 0 }
  * it keeps growing while the JS thread is busy.
  */
 export const StreamText = forwardRef<StreamTextHandle, StreamTextProps>(function StreamText(
-  { source: sourceProp, onStatusChange, ...props },
+  { source: sourceProp, request, streamId: streamIdProp, onStatusChange, ...props },
   ref
 ) {
+  // A view making its own request without a streamId streams under one of its own.
+  const ownStreamId = useRef<string | null>(null)
+  if (request && !streamIdProp && ownStreamId.current == null) ownStreamId.current = `stream-text-${nextOwnStreamId++}`
+  const streamId = streamIdProp ?? (request ? ownStreamId.current! : undefined)
+  useStreamRequest(request, streamId, streamIdProp == null)
   // The native view takes the buffer itself (its props parser reads a raw ArrayBuffer).
   const source = toBuffer(sourceProp)
   const native = useRef<HostInstance | null>(null)
@@ -137,20 +166,22 @@ export const StreamText = forwardRef<StreamTextHandle, StreamTextProps>(function
   const lastStatus = useRef<StreamTextStatus | null>(null)
   // A buffer attached before the native view mounted.
   const pending = useRef<{ buffer: ArrayBuffer | null; generation: number } | null>(null)
-  const sourceGeneration = useMemo(() => nextGeneration++, [source])
+  const sourceGeneration = useMemo(() => nextGeneration++, [source, streamId])
   // The generation of `current`: status events about any other source are late, and dropped.
   const generation = useRef(sourceGeneration)
 
   // Only a real change of the prop resets: a buffer attached before mount must survive the first run.
   // A layout effect, so a parent's layout effect after the same commit already reads the new source.
   const previousSource = useRef(source)
+  const previousStreamId = useRef(streamId)
   useLayoutEffect(() => {
-    if (previousSource.current === source) return
+    if (previousSource.current === source && previousStreamId.current === streamId) return
     previousSource.current = source
+    previousStreamId.current = streamId
     current.current = source ?? null
     generation.current = sourceGeneration
     lastStatus.current = null
-  }, [source, sourceGeneration])
+  }, [source, streamId, sourceGeneration])
 
   const send = useCallback((instance: HostInstance, buffer: ArrayBuffer | null, gen: number) => {
     if (!buffer) return Commands.clear(instance as never, gen)
@@ -215,6 +246,7 @@ export const StreamText = forwardRef<StreamTextHandle, StreamTextProps>(function
       {...props}
       ref={setNative as never}
       source={source}
+      streamId={streamId}
       sourceGeneration={sourceGeneration}
       // Always subscribed: getStatus() needs the final status even without an onStatusChange prop.
       onStatusChange={handleStatus}
@@ -265,4 +297,32 @@ export function useStreamTextRef(): StreamTextRef {
 
 function toBuffer(source: ArrayBuffer | TextStream | null | undefined): ArrayBuffer | null | undefined {
   return isTextStream(source) ? source.buffer : source
+}
+
+/**
+ * `<StreamText request>`: sends it under `streamId` when it changes. A view's own stream (`owned`)
+ * ends with the view; one under the app's streamId outlives it, and a remount with the same request
+ * doesn't send it again.
+ */
+function useStreamRequest(request: StreamTextRequest | undefined, streamId: string | undefined, owned: boolean) {
+  // By value: a request written inline is a new object on every render.
+  const key = request
+    ? JSON.stringify([request.url, request.method, request.headers, request.body, request.capacity, request.timeout])
+    : null
+  const latest = useRef(request)
+  latest.current = request
+  useEffect(() => {
+    const current = latest.current
+    if (!current || !streamId || key == null) return
+    if (!owned && sentRequests.get(streamId) === key) return
+    sentRequests.set(streamId, key)
+    const { url, ...init } = current
+    const stream = streamFetch(url, { ...init, streamId })
+    if (!owned) return
+    return () => {
+      stream.abort()
+      sentRequests.delete(streamId)
+      releaseStream(streamId)
+    }
+  }, [key, streamId, owned])
 }
