@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Animated,
   Easing,
+  Platform,
   Pressable,
   ScrollView,
   StatusBar,
@@ -93,7 +94,7 @@ function Demo({
     reset();
     const run = runId.current;
 
-    // Native: URLSession -> TSB1 buffer -> StreamText. JS only hands the buffer over.
+    // Native: URLSession / Cronet -> TSB1 buffer -> StreamText. JS only hands the buffer over.
     fetch(STREAM_URL, { stream: true, nativeBuffer: true })
       .then((res) => run === runId.current && streamRef.attach(res.nativeBuffer))
       .catch((e) => console.warn('native stream failed', e));
@@ -161,7 +162,7 @@ function Demo({
           badge="NATIVE"
           badgeColor={C.native}
           title="StreamText"
-          caption="URLSession → TSB1 buffer → UITextView · 0 JS callbacks"
+          caption={`${Platform.OS === 'ios' ? 'URLSession' : 'Cronet'} → TSB1 buffer → StreamText · 0 JS callbacks`}
         >
           {/* Inverted: offset 0 is the bottom, so the newest text stays in view without JS. */}
           <ScrollView
