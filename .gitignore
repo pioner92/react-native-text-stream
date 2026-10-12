@@ -81,6 +81,7 @@ lib/
 # Local notes and scratch files
 HANDOFF.md
 REVIEW.md
+STREAM_FETCH_REVIEW.md
 img.png
 logs/
 media/*-prompt.txt

@@ -17,6 +17,10 @@ namespace facebook::react {
 
 using StreamTextHeaders = std::vector<std::pair<std::string, std::string>>;
 
+// Both platforms and the Android view must be able to address the whole header + body.
+inline constexpr uint64_t kStreamTextMaxCapacity = 0x7fffffffULL - 64;
+inline constexpr double kStreamTextMaxTimeoutMs = 0x7fffffff;
+
 /**
  * A TSB1 buffer in its own anonymous mapping: pages are only committed once they are written.
  * Its writer (streamFetch) tells its observers about every write, so a view showing it is woken
@@ -45,6 +49,8 @@ class StreamTextMappedBuffer : public jsi::MutableBuffer {
   void unobserve(uint64_t token);
   /** The writer: bytes were published, or the status is final. */
   void notify();
+  /** Publishes a terminal status, wakes readers, and enforces the finished-stream cache limits. */
+  void finish(uint32_t status);
 
   /** Unique for the process's life (an address may be reused once a buffer is freed). */
   uint64_t serial() const {

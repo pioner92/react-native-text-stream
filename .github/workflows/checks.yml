@@ -41,5 +41,8 @@ jobs:
       - name: Package unit tests
         run: bun run test
 
+      - name: Native streamFetch invariants (ASan and UBSan)
+        run: bun run test:native
+
       - name: Example unit tests
         run: bun run --cwd example test

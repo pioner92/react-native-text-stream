@@ -56,6 +56,7 @@ static NSString *_Nullable StreamTextNSString(const std::string &value) {
   NSString *_pendingStatus;
   double _pendingBytes;
   int _pendingGeneration;
+  uint64_t _pendingSerial;
   // The JS wrapper's generation of the attached source, sent back with each status event.
   int _generation;
   int _propGeneration;
@@ -315,7 +316,7 @@ static NSString *_Nullable StreamTextNSString(const std::string &value) {
     _pendingStatus = nil;
     const auto emitter = std::static_pointer_cast<const StreamTextViewEventEmitter>(_eventEmitter);
     if (emitter) {
-      emitter->onStatusChange(RCTStringFromNSString(status), _pendingBytes, _pendingGeneration);
+      emitter->onStatusChange(RCTStringFromNSString(status), _pendingBytes, _pendingGeneration, double(_pendingSerial));
     }
   }
 }
@@ -329,10 +330,11 @@ static NSString *_Nullable StreamTextNSString(const std::string &value) {
     _pendingStatus = status;
     _pendingBytes = bytes;
     _pendingGeneration = _generation;
+    _pendingSerial = _attachedSerial;
     return;
   }
   // The renderer reports only about what it shows: the source attached last.
-  emitter->onStatusChange(RCTStringFromNSString(status), bytes, _generation);
+  emitter->onStatusChange(RCTStringFromNSString(status), bytes, _generation, double(_attachedSerial));
 }
 
 @end

@@ -7,7 +7,8 @@
     "release": "bun run --cwd packages/react-native-text-stream release",
     "postinstall": "sh scripts/apply-patches.sh",
     "test": "bun run --cwd packages/react-native-text-stream test",
-    "test:harness": "bun run --cwd example test:harness"
+    "test:harness": "bun run --cwd example test:harness",
+    "test:native": "sh scripts/test-stream-fetch-native.sh"
   },
   "workspaces": [
     "packages/*",

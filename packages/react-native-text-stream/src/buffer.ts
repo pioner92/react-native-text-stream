@@ -1,17 +1,21 @@
 // Reading a TSB1 buffer from JS (layout in ios/TextStreamBuffer.h).
 import type { StreamTextStatus } from './types'
+import { Native } from './native'
 
 export const TSB_HEADER_SIZE = 64
 
 /** TSB1 header: `committed` is a little-endian u64 at offset 8. */
 export function committedBytes(buffer: ArrayBuffer): number {
+  const snapshot = Native?.readBuffer(buffer)
+  if (snapshot) return snapshot.bytes
   const header = new DataView(buffer, 0, TSB_HEADER_SIZE)
   return header.getUint32(8, true) + header.getUint32(12, true) * 2 ** 32
 }
 
 /** TSB1 header: `status` is a little-endian u32 at offset 24. */
 export function headerStatus(buffer: ArrayBuffer): StreamTextStatus {
-  switch (new DataView(buffer, 0, TSB_HEADER_SIZE).getUint32(24, true)) {
+  const snapshot = Native?.readBuffer(buffer)
+  switch (snapshot?.status ?? new DataView(buffer, 0, TSB_HEADER_SIZE).getUint32(24, true)) {
     case 0:
       return 'streaming'
     case 1:
@@ -28,8 +32,14 @@ export function headerStatus(buffer: ArrayBuffer): StreamTextStatus {
 /** The text received so far: the committed bytes, decoded as UTF-8. */
 export function bufferText(buffer: ArrayBuffer): string {
   if (buffer.byteLength < TSB_HEADER_SIZE) return ''
+  // Committed is acquired natively on this thread; bytes below it are immutable, so no copy is needed.
   const bytes = Math.min(committedBytes(buffer), buffer.byteLength - TSB_HEADER_SIZE)
   return decodeUtf8(new Uint8Array(buffer, TSB_HEADER_SIZE, bytes))
+}
+
+/** Native stream identity, independent of a reusable streamId or a recycled address. */
+export function bufferSerial(buffer: ArrayBuffer | null | undefined): number {
+  return buffer ? (Native?.readBuffer(buffer)?.serial ?? 0) : 0
 }
 
 type Decoder = new (label: string) => { decode(bytes: Uint8Array): string }

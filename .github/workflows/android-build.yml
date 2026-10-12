@@ -18,6 +18,10 @@ on:
       - 'example/package.json'
       - 'example/react-native.config.js'
       - 'example/android/**'
+      - 'example/__tests__/**'
+      - 'example/*harness*'
+      - 'server/**'
+      - 'tests/native/**'
   pull_request:
     paths:
       - '.github/workflows/android-build.yml'
@@ -30,6 +34,10 @@ on:
       - 'example/package.json'
       - 'example/react-native.config.js'
       - 'example/android/**'
+      - 'example/__tests__/**'
+      - 'example/*harness*'
+      - 'server/**'
+      - 'tests/native/**'
   workflow_dispatch:
 
 concurrency:
@@ -68,8 +76,27 @@ jobs:
 
       - name: Run Gradle build
         working-directory: example/android
-        run: ./gradlew assembleDebug --no-daemon --build-cache
+        run: ./gradlew :react-native-text-stream:testDebugUnitTest assembleDebug --no-daemon --build-cache
+
+      - name: Enable emulator acceleration
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: streamFetch in-app regressions
+        uses: reactivecircus/android-emulator-runner@v2
+        env:
+          HARNESS_ANDROID_AVD: stream-fetch-ci
+          HARNESS_APP_PATH: ${{ github.workspace }}/example/android/app/build/outputs/apk/debug/app-debug.apk
+        with:
+          api-level: 35
+          arch: x86_64
+          avd-name: stream-fetch-ci
+          disable-animations: true
+          script: bash scripts/test-stream-fetch-harness.sh android
 
       - name: Stop Gradle daemon
+        if: always()
         working-directory: example/android
         run: ./gradlew --stop

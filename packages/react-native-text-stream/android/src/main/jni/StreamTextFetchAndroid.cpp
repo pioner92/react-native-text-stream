@@ -74,8 +74,7 @@ void JStreamTextFetch::nativePublish(jni::alias_ref<jclass>, jlong handle, jlong
 
 void JStreamTextFetch::nativeComplete(jni::alias_ref<jclass>, jlong handle, jint status, jni::alias_ref<jstring> error) {
   std::unique_ptr<FetchState> state(stateOf(handle));
-  tsb_set_status(state->buffer->data(), uint32_t(status));
-  state->buffer->notify();
+  state->buffer->finish(uint32_t(status));
   state->listener->onComplete(toStdString(error));
 }
 
@@ -101,9 +100,11 @@ std::shared_ptr<StreamTextFetchTask> streamTextStartFetch(
     headers->setElement(i * 2, jni::make_jstring(request.headers[i].first).get());
     headers->setElement(i * 2 + 1, jni::make_jstring(request.headers[i].second).get());
   }
-  jni::local_ref<jni::JString> body;
+  jni::local_ref<jni::JArrayByte> body;
   if (request.body) {
-    body = jni::make_jstring(*request.body);
+    // The body is already UTF-8. A JNI string conversion may truncate at an embedded NUL.
+    body = jni::JArrayByte::newArray(request.body->size());
+    body->setRegion(0, request.body->size(), reinterpret_cast<const jbyte *>(request.body->data()));
   }
   auto *state = new FetchState{buffer, listener};
   try {
@@ -113,7 +114,7 @@ std::shared_ptr<StreamTextFetchTask> streamTextStartFetch(
                                       jni::alias_ref<jstring>,
                                       jni::alias_ref<jstring>,
                                       jni::alias_ref<jni::JArrayClass<jstring>>,
-                                      jni::alias_ref<jstring>,
+                                      jni::alias_ref<jni::JArrayByte>,
                                       jlong,
                                       jni::alias_ref<jni::JByteBuffer>)>("start");
     auto fetch = start(
@@ -129,7 +130,7 @@ std::shared_ptr<StreamTextFetchTask> streamTextStartFetch(
   } catch (const std::exception &e) {
     // Kotlin never took the handle.
     delete state;
-    tsb_set_status(base, TSB_STATUS_ERROR);
+    buffer->finish(TSB_STATUS_ERROR);
     listener->onComplete(std::string("streamFetch: ") + e.what());
     return nullptr;
   }

@@ -63,7 +63,7 @@ describe('C++ event ↔ JS handler', () => {
   })
 
   it('carries the payload keys the JS handler reads', () => {
-    expect(all(shadowNode, /setProperty\(runtime, "(\w+)"/g).sort()).toEqual(['bytes', 'generation', 'status'])
+    expect(all(shadowNode, /setProperty\(runtime, "(\w+)"/g).sort()).toEqual(['bytes', 'generation', 'serial', 'status'])
   })
 
   it('every status the native view reports is a StreamTextStatus', () => {

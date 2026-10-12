@@ -21,6 +21,10 @@ on:
       - 'example/modules/**'
       - 'example/Gemfile'
       - 'example/Gemfile.lock'
+      - 'example/__tests__/**'
+      - 'example/*harness*'
+      - 'server/**'
+      - 'tests/native/**'
   pull_request:
     paths:
       - '.github/workflows/ios-build.yml'
@@ -36,6 +40,10 @@ on:
       - 'example/modules/**'
       - 'example/Gemfile'
       - 'example/Gemfile.lock'
+      - 'example/__tests__/**'
+      - 'example/*harness*'
+      - 'server/**'
+      - 'tests/native/**'
   workflow_dispatch:
 
 env:
@@ -61,6 +69,9 @@ jobs:
 
       - name: Install dependencies (bun)
         run: bun install --frozen-lockfile
+
+      - name: Native streamFetch invariants (ASan and UBSan)
+        run: bun run test:native
 
       - name: Setup Ruby (bundle)
         uses: ruby/setup-ruby@v1
@@ -99,3 +110,23 @@ jobs:
             -destination 'generic/platform=iOS Simulator' \
             build \
             CODE_SIGNING_ALLOWED=NO | xcpretty
+
+      - name: Select installed iPhone simulator
+        run: |
+          node --input-type=module <<'NODE'
+          import { execFileSync } from 'node:child_process';
+          import { appendFileSync } from 'node:fs';
+          const { devices } = JSON.parse(execFileSync('xcrun', ['simctl', 'list', 'devices', 'available', '-j']));
+          for (const [runtime, list] of Object.entries(devices)) {
+            const device = list.find((d) => d.name.startsWith('iPhone'));
+            if (!runtime.includes('.iOS-') || !device) continue;
+            appendFileSync(process.env.GITHUB_ENV, `HARNESS_IOS_DEVICE=${device.name}\nHARNESS_IOS_VERSION=${runtime.split('.iOS-')[1].replaceAll('-', '.')}\n`);
+            process.exit(0);
+          }
+          throw new Error('No available iPhone simulator');
+          NODE
+
+      - name: streamFetch in-app regressions
+        env:
+          HARNESS_APP_PATH: ${{ github.workspace }}/example/ios/build/Build/Products/Debug-iphonesimulator/TextStreamExample.app
+        run: bash scripts/test-stream-fetch-harness.sh ios

@@ -11,6 +11,7 @@ internal class StatusChangeEvent(
     private val status: String,
     private val bytes: Double,
     private val generation: Int,
+    private val serial: Double,
 ) : Event<StatusChangeEvent>(surfaceId, viewId) {
   override fun getEventName(): String = "topStatusChange"
 
@@ -22,5 +23,6 @@ internal class StatusChangeEvent(
         putString("status", status)
         putDouble("bytes", bytes)
         putInt("generation", generation)
+        putDouble("serial", serial)
       }
 }

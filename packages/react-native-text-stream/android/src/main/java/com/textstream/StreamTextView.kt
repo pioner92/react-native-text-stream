@@ -702,7 +702,7 @@ class StreamTextView(context: Context) : ReactViewGroup(context) {
     val reactContext = context as? ReactContext ?: return
     val dispatcher = UIManagerHelper.getEventDispatcherForReactTag(reactContext, id) ?: return
     dispatcher.dispatchEvent(
-        StatusChangeEvent(UIManagerHelper.getSurfaceId(this), id, status, bytes.toDouble(), generation))
+        StatusChangeEvent(UIManagerHelper.getSurfaceId(this), id, status, bytes.toDouble(), generation, attachedSerial.toDouble()))
   }
 
   // MARK: - Style

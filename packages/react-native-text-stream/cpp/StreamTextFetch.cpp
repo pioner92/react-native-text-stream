@@ -1,130 +1,17 @@
 #include "StreamTextFetch.hpp"
 #include "StreamTextBuffers.hpp"
 #include "StreamTextStreams.hpp"
+#include "StreamTextFetchTasks.hpp"
 #include "../ios/TextStreamBuffer.h"
 
 #include <react/bridging/Function.h>
-#include <sys/mman.h>
+#include <algorithm>
+#include <cstring>
 #include <atomic>
 #include <cmath>
 
 namespace facebook::react {
 
-std::shared_ptr<StreamTextMappedBuffer> StreamTextMappedBuffer::create(uint64_t capacity) {
-  size_t size = TSB_HEADER_SIZE + capacity;
-  void *base = mmap(nullptr, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON, -1, 0);
-  if (base == MAP_FAILED) {
-    return nullptr;
-  }
-  tsb_init(base, capacity);
-  return std::make_shared<StreamTextMappedBuffer>(static_cast<uint8_t *>(base), size);
-}
-
-StreamTextMappedBuffer::StreamTextMappedBuffer(uint8_t *base, size_t size) : base_(base), size_(size) {
-  static std::atomic<uint64_t> lastSerial{0};
-  serial_ = ++lastSerial;
-}
-
-StreamTextMappedBuffer::~StreamTextMappedBuffer() {
-  munmap(base_, size_);
-}
-
-uint64_t StreamTextMappedBuffer::observe(Observer observer) {
-  std::lock_guard lock(mutex_);
-  observers_.emplace_back(++lastToken_, std::make_shared<Observer>(std::move(observer)));
-  return lastToken_;
-}
-
-void StreamTextMappedBuffer::unobserve(uint64_t token) {
-  std::lock_guard lock(mutex_);
-  std::erase_if(observers_, [token](const auto &entry) { return entry.first == token; });
-}
-
-void StreamTextMappedBuffer::notify() {
-  // Called outside the lock: an observer may (un)observe from its callback.
-  std::vector<std::shared_ptr<Observer>> observers;
-  {
-    std::lock_guard lock(mutex_);
-    observers.reserve(observers_.size());
-    for (const auto &[token, observer] : observers_) {
-      observers.push_back(observer);
-    }
-  }
-  for (const auto &observer : observers) {
-    (*observer)();
-  }
-}
-
-/** Requests in flight, by id: `cancel(id)` finds them, and a module going away cancels them. */
-class StreamTextFetchTasks {
- public:
-  /** An id for a request about to start (no task yet). */
-  int reserve() {
-    std::lock_guard lock(mutex_);
-    int id = ++lastId_;
-    tasks_[id] = nullptr;
-    return id;
-  }
-  /** Unless the request already completed (and left). */
-  void set(int id, std::shared_ptr<StreamTextFetchTask> task) {
-    std::lock_guard lock(mutex_);
-    auto it = tasks_.find(id);
-    if (it != tasks_.end()) {
-      it->second = std::move(task);
-    }
-  }
-  void remove(int id) {
-    std::lock_guard lock(mutex_);
-    tasks_.erase(id);
-  }
-  /** The request now streaming under `streamId`; the one before it, if still running, is returned. */
-  std::shared_ptr<StreamTextFetchTask> claimStream(const std::string &streamId, int id) {
-    std::lock_guard lock(mutex_);
-    auto previous = streams_.find(streamId);
-    std::shared_ptr<StreamTextFetchTask> replaced;
-    if (previous != streams_.end()) {
-      auto it = tasks_.find(previous->second);
-      if (it != tasks_.end()) {
-        replaced = it->second;
-      }
-    }
-    streams_[streamId] = id;
-    return replaced;
-  }
-  std::shared_ptr<StreamTextFetchTask> findStream(const std::string &streamId) {
-    std::lock_guard lock(mutex_);
-    auto previous = streams_.find(streamId);
-    if (previous == streams_.end()) {
-      return nullptr;
-    }
-    auto it = tasks_.find(previous->second);
-    return it == tasks_.end() ? nullptr : it->second;
-  }
-  std::shared_ptr<StreamTextFetchTask> find(int id) {
-    std::lock_guard lock(mutex_);
-    auto it = tasks_.find(id);
-    return it == tasks_.end() ? nullptr : it->second;
-  }
-  void cancelAll() {
-    std::unordered_map<int, std::shared_ptr<StreamTextFetchTask>> tasks;
-    {
-      std::lock_guard lock(mutex_);
-      tasks.swap(tasks_);
-    }
-    for (auto &[id, task] : tasks) {
-      if (task) {
-        task->cancel();
-      }
-    }
-  }
-
- private:
-  std::mutex mutex_;
-  int lastId_{0};
-  std::unordered_map<int, std::shared_ptr<StreamTextFetchTask>> tasks_;
-  /** Which request streams under each streamId (it may have ended). */
-  std::unordered_map<std::string, int> streams_;
-};
 
 namespace {
 
@@ -176,17 +63,29 @@ double numberProperty(jsi::Runtime &rt, const jsi::Object &object, const char *n
 
 StreamTextBuffersModule::StreamTextBuffersModule(std::shared_ptr<CallInvoker> jsInvoker)
     : TurboModule(kModuleName, std::move(jsInvoker)), fetches_(std::make_shared<StreamTextFetchTasks>()) {
+  static std::atomic<uint64_t> owners{0};
+  owner_ = ++owners;
   methodMap_["put"] = MethodMetadata{1, put};
   methodMap_["fetch"] = MethodMetadata{3, fetch};
   methodMap_["cancel"] = MethodMetadata{1, cancel};
   methodMap_["abortStream"] = MethodMetadata{1, abortStream};
   methodMap_["releaseStream"] = MethodMetadata{1, releaseStream};
+  methodMap_["cancelledBuffer"] = MethodMetadata{1, cancelledBuffer};
+  methodMap_["readBuffer"] = MethodMetadata{1, readBuffer};
+  methodMap_["streamBuffer"] = MethodMetadata{1, streamBuffer};
+  methodMap_["hasStream"] = MethodMetadata{3, hasStream};
+  methodMap_["watchStream"] = MethodMetadata{2, watchStream};
+  methodMap_["unwatchStream"] = MethodMetadata{1, unwatchStream};
 }
 
 StreamTextBuffersModule::~StreamTextBuffersModule() {
   // The runtime is going away (a reload): nothing may write for it any more.
   fetches_->cancelAll();
-  StreamTextStreams::shared().clear();
+  for (auto &[token, watch] : watches_) {
+    watch.active->store(false);
+    StreamTextStreams::shared().unlisten(watch.id, token);
+  }
+  StreamTextStreams::shared().releaseOwner(owner_);
 }
 
 jsi::Value StreamTextBuffersModule::fetch(
@@ -203,7 +102,11 @@ jsi::Value StreamTextBuffersModule::fetch(
   StreamTextFetchRequest request;
   request.url = args[0].getString(rt).utf8(rt);
   request.method = stringProperty(rt, init, "method", "GET");
-  request.timeoutSeconds = numberProperty(rt, init, "timeout", 0) / 1000;
+  double timeoutMs = numberProperty(rt, init, "timeout", 300000);
+  if (!std::isfinite(timeoutMs) || timeoutMs < 1 || timeoutMs > kStreamTextMaxTimeoutMs || std::floor(timeoutMs) != timeoutMs) {
+    throw jsi::JSError(rt, "StreamTextBuffers.fetch: timeout must be an integer between 1 and 2147483647 ms");
+  }
+  request.timeoutSeconds = timeoutMs / 1000;
   auto body = init.getProperty(rt, "body");
   if (body.isString()) {
     request.body = body.getString(rt).utf8(rt);
@@ -222,7 +125,7 @@ jsi::Value StreamTextBuffersModule::fetch(
     }
   }
   double capacity = numberProperty(rt, init, "capacity", 0);
-  if (!(capacity >= 1 && capacity <= double(1ull << 40)) || std::floor(capacity) != capacity) {
+  if (!(capacity >= 1 && capacity <= double(kStreamTextMaxCapacity)) || std::floor(capacity) != capacity) {
     throw jsi::JSError(rt, "StreamTextBuffers.fetch: capacity must be a whole number of bytes");
   }
   auto buffer = StreamTextMappedBuffer::create(uint64_t(capacity));
@@ -239,11 +142,16 @@ jsi::Value StreamTextBuffersModule::fetch(
       replaced->cancel();
     }
     // Views showing this id switch to the new buffer.
-    StreamTextStreams::shared().publish(streamId, buffer);
+    StreamTextStreams::shared().publish(streamId, buffer, stringProperty(rt, init, "requestKey", ""), module.owner_);
   }
   auto listener = std::make_shared<JSFetchListener>(
       AsyncCallback<>(rt, args[2].getObject(rt).getFunction(rt), module.jsInvoker_), tasks, id);
-  tasks->set(id, streamTextStartFetch(std::move(request), buffer, std::move(listener)));
+  try {
+    tasks->set(id, streamTextStartFetch(std::move(request), buffer, listener));
+  } catch (const std::exception &error) {
+    buffer->finish(TSB_STATUS_ERROR);
+    listener->onComplete(error.what());
+  }
 
   jsi::Object result(rt);
   result.setProperty(rt, "id", id);
@@ -285,6 +193,84 @@ jsi::Value StreamTextBuffersModule::cancel(
   if (count >= 1 && args[0].isNumber()) {
     if (auto task = module.fetches_->find(int(args[0].getNumber()))) {
       task->cancel();
+    }
+  }
+  return jsi::Value::undefined();
+}
+
+jsi::Value StreamTextBuffersModule::cancelledBuffer(jsi::Runtime &rt, TurboModule &, const jsi::Value *args, size_t count) {
+  double capacity = count && args[0].isNumber() ? args[0].getNumber() : 0;
+  if (capacity < 1 || capacity > kStreamTextMaxCapacity || !std::isfinite(capacity) || std::floor(capacity) != capacity)
+    throw jsi::JSError(rt, "StreamTextBuffers.cancelledBuffer: invalid capacity");
+  auto buffer = StreamTextMappedBuffer::create(uint64_t(capacity));
+  if (!buffer) throw jsi::JSError(rt, "StreamTextBuffers: could not map the buffer");
+  buffer->finish(TSB_STATUS_CANCELLED);
+  return jsi::ArrayBuffer(rt, buffer);
+}
+
+jsi::Value StreamTextBuffersModule::readBuffer(jsi::Runtime &rt, TurboModule &, const jsi::Value *args, size_t count) {
+  if (count < 1 || !args[0].isObject()) return jsi::Value::null();
+  auto object = args[0].getObject(rt);
+  if (!object.isArrayBuffer(rt)) return jsi::Value::null();
+  auto buffer = object.getArrayBuffer(rt).tryGetMutableBuffer(rt);
+  // JS-owned buffers cannot be written by native code; JS may read those normally.
+  if (!buffer || buffer->size() < TSB_HEADER_SIZE) return jsi::Value::null();
+  auto *header = reinterpret_cast<const TSBHeader *>(buffer->data());
+  if (header->magic != TSB_MAGIC || header->version != TSB_VERSION || header->headerSize != TSB_HEADER_SIZE)
+    return jsi::Value::null();
+  // Status first: when terminal, the following acquire reads the final committed prefix.
+  uint32_t status = tsb_status(header);
+  size_t bytes = std::min<uint64_t>(tsb_committed(header), buffer->size() - TSB_HEADER_SIZE);
+  auto mapped = std::dynamic_pointer_cast<StreamTextMappedBuffer>(buffer);
+  jsi::Object result(rt);
+  result.setProperty(rt, "status", double(status));
+  result.setProperty(rt, "bytes", double(bytes));
+  result.setProperty(rt, "serial", mapped ? double(mapped->serial()) : 0);
+  return result;
+}
+
+jsi::Value StreamTextBuffersModule::streamBuffer(jsi::Runtime &rt, TurboModule &, const jsi::Value *args, size_t count) {
+  if (!count || !args[0].isString()) return jsi::Value::null();
+  auto buffer = StreamTextStreams::shared().find(args[0].getString(rt).utf8(rt));
+  return buffer ? jsi::Value(jsi::ArrayBuffer(rt, buffer)) : jsi::Value::null();
+}
+
+jsi::Value StreamTextBuffersModule::hasStream(jsi::Runtime &rt, TurboModule &, const jsi::Value *args, size_t count) {
+  bool includeEvicted = count >= 3 && args[2].isBool() && args[2].getBool();
+  return count >= 2 && args[0].isString() && args[1].isString() &&
+      StreamTextStreams::shared().matches(args[0].getString(rt).utf8(rt), args[1].getString(rt).utf8(rt), includeEvicted);
+}
+
+jsi::Value StreamTextBuffersModule::watchStream(jsi::Runtime &rt, TurboModule &turboModule, const jsi::Value *args, size_t count) {
+  if (count < 2 || !args[0].isString() || !args[1].isObject() || !args[1].getObject(rt).isFunction(rt))
+    throw jsi::JSError(rt, "StreamTextBuffers.watchStream: invalid arguments");
+  auto &module = static_cast<StreamTextBuffersModule &>(turboModule);
+  auto id = args[0].getString(rt).utf8(rt);
+  auto active = std::make_shared<std::atomic<bool>>(true);
+  auto callback = AsyncCallback<>(rt, args[1].getObject(rt).getFunction(rt), module.jsInvoker_);
+  auto token = StreamTextStreams::shared().listen(id, [id, active, callback] {
+    auto buffer = StreamTextStreams::shared().find(id);
+    if (!buffer) return;
+    callback.call([buffer, active](jsi::Runtime &rt, jsi::Function &fn) {
+      if (active->load()) fn.call(rt, jsi::ArrayBuffer(rt, buffer));
+    });
+  });
+  module.watches_.emplace(token, Watch{id, active});
+  auto buffer = StreamTextStreams::shared().find(id);
+  jsi::Object result(rt);
+  result.setProperty(rt, "token", double(token));
+  result.setProperty(rt, "buffer", buffer ? jsi::Value(jsi::ArrayBuffer(rt, buffer)) : jsi::Value::null());
+  return result;
+}
+
+jsi::Value StreamTextBuffersModule::unwatchStream(jsi::Runtime &, TurboModule &turboModule, const jsi::Value *args, size_t count) {
+  auto &module = static_cast<StreamTextBuffersModule &>(turboModule);
+  if (count && args[0].isNumber()) {
+    auto it = module.watches_.find(uint64_t(args[0].getNumber()));
+    if (it != module.watches_.end()) {
+      it->second.active->store(false);
+      StreamTextStreams::shared().unlisten(it->second.id, it->first);
+      module.watches_.erase(it);
     }
   }
   return jsi::Value::undefined();

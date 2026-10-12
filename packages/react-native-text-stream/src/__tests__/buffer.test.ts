@@ -2,6 +2,8 @@ import { TextDecoder as NodeTextDecoder } from 'node:util'
 import { bufferText, committedBytes, decodeUtf8, decodeUtf8Fallback, headerStatus, TSB_HEADER_SIZE } from '../buffer'
 import { TSB_STATUS, tsbBuffer } from './tsb'
 
+const mockBuffers = require('react-native/Libraries/TurboModule/TurboModuleRegistry').buffers
+
 const reference = (bytes: Uint8Array) => new NodeTextDecoder('utf-8').decode(bytes)
 const bytes = (...values: number[]) => new Uint8Array(values)
 
@@ -16,6 +18,18 @@ function prng(seed: number) {
 }
 
 describe('TSB1 header', () => {
+  it('reads native-owned state from an acquire snapshot, then only the committed bytes in place', () => {
+    const buffer = tsbBuffer('stale', { status: TSB_STATUS.open })
+    mockBuffers.readBuffer.mockReturnValue({ bytes: 4, status: TSB_STATUS.done, serial: 42 })
+    try {
+      expect(committedBytes(buffer)).toBe(4)
+      expect(headerStatus(buffer)).toBe('done')
+      expect(bufferText(buffer)).toBe('stal')
+      expect(mockBuffers.readBuffer).toHaveBeenLastCalledWith(buffer)
+    } finally {
+      mockBuffers.readBuffer.mockReset()
+    }
+  })
   it('reads committed as a 64-bit little-endian count', () => {
     const buffer = tsbBuffer('hello')
     expect(committedBytes(buffer)).toBe(5)

@@ -115,12 +115,13 @@ class StreamTextViewEventEmitter final : public ViewEventEmitter {
  public:
   using ViewEventEmitter::ViewEventEmitter;
 
-  void onStatusChange(std::string status, double bytes, int generation) const {
-    dispatchEvent("statusChange", [status = std::move(status), bytes, generation](jsi::Runtime &runtime) {
+  void onStatusChange(std::string status, double bytes, int generation, double serial) const {
+    dispatchEvent("statusChange", [status = std::move(status), bytes, generation, serial](jsi::Runtime &runtime) {
       auto payload = jsi::Object(runtime);
       payload.setProperty(runtime, "status", jsi::String::createFromUtf8(runtime, status));
       payload.setProperty(runtime, "bytes", bytes);
       payload.setProperty(runtime, "generation", generation);
+      payload.setProperty(runtime, "serial", serial);
       return payload;
     });
   }

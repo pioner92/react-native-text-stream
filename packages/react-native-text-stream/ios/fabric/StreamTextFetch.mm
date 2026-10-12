@@ -13,12 +13,17 @@ using namespace facebook::react;
 @interface StreamTextFetchDelegate : NSObject <NSURLSessionDataDelegate>
 - (instancetype)initWithBuffer:(std::shared_ptr<StreamTextMappedBuffer>)buffer
                       listener:(std::shared_ptr<StreamTextFetchListener>)listener;
+- (void)cancelTask:(NSURLSessionTask *)task;
+- (void)armDeadlineForTask:(NSURLSessionTask *)task seconds:(double)seconds;
 @end
 
 @implementation StreamTextFetchDelegate {
   std::shared_ptr<StreamTextMappedBuffer> _buffer;
   std::shared_ptr<StreamTextFetchListener> _listener;
   BOOL _overflowed;
+  BOOL _finished;
+  BOOL _responded;
+  dispatch_source_t _deadline;
 }
 
 - (instancetype)initWithBuffer:(std::shared_ptr<StreamTextMappedBuffer>)buffer
@@ -30,64 +35,106 @@ using namespace facebook::react;
   return self;
 }
 
+// All methods touching the buffer/listener run under the same lock, including cancellation.
+- (void)clearDeadline {
+  if (_deadline) {
+    dispatch_source_cancel(_deadline);
+    _deadline = nil;
+  }
+}
+
+- (void)dealloc {
+  [self clearDeadline];
+}
+
+- (void)finish:(uint32_t)status error:(std::string)error {
+  if (_finished) return;
+  _finished = YES;
+  [self clearDeadline];
+  auto buffer = std::move(_buffer);
+  auto listener = std::move(_listener);
+  buffer->finish(status);
+  listener->onComplete(std::move(error));
+}
+
+- (void)cancelTask:(NSURLSessionTask *)task {
+  @synchronized(self) { [self finish:TSB_STATUS_CANCELLED error:std::string()]; }
+  [task cancel];
+}
+
+- (void)armDeadlineForTask:(NSURLSessionTask *)task seconds:(double)seconds {
+  __weak StreamTextFetchDelegate *weakSelf = self;
+  __weak NSURLSessionTask *weakTask = task;
+  _deadline = dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER, 0, 0,
+                                    dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0));
+  dispatch_source_set_timer(_deadline, dispatch_time(DISPATCH_TIME_NOW, (int64_t)(seconds * NSEC_PER_SEC)),
+                            DISPATCH_TIME_FOREVER, 0);
+  dispatch_source_set_event_handler(_deadline, ^{
+    StreamTextFetchDelegate *delegate = weakSelf;
+    if (!delegate) return;
+    @synchronized(delegate) {
+      if (delegate->_finished || delegate->_responded) return;
+      [delegate finish:TSB_STATUS_ERROR error:std::string("streamFetch: response timeout")];
+    }
+    [weakTask cancel];
+  });
+  dispatch_resume(_deadline);
+}
+
 - (void)URLSession:(NSURLSession *)session
               dataTask:(NSURLSessionDataTask *)dataTask
     didReceiveResponse:(NSURLResponse *)response
      completionHandler:(void (^)(NSURLSessionResponseDisposition))completionHandler {
-  int status = 0;
-  __block StreamTextHeaders headers;
-  if ([response isKindOfClass:NSHTTPURLResponse.class]) {
-    auto http = (NSHTTPURLResponse *)response;
-    status = (int)http.statusCode;
-    [http.allHeaderFields enumerateKeysAndObjectsUsingBlock:^(id name, id value, BOOL *) {
-      if ([name isKindOfClass:NSString.class] && [value isKindOfClass:NSString.class]) {
-        headers.emplace_back(((NSString *)name).lowercaseString.UTF8String, ((NSString *)value).UTF8String);
-      }
-    }];
+  @synchronized(self) {
+    if (_finished) { completionHandler(NSURLSessionResponseCancel); return; }
+    _responded = YES;
+    [self clearDeadline];
+    int status = 0;
+    __block StreamTextHeaders headers;
+    if ([response isKindOfClass:NSHTTPURLResponse.class]) {
+      auto http = (NSHTTPURLResponse *)response;
+      status = (int)http.statusCode;
+      [http.allHeaderFields enumerateKeysAndObjectsUsingBlock:^(id name, id value, BOOL *) {
+        if ([name isKindOfClass:NSString.class] && [value isKindOfClass:NSString.class]) {
+          headers.emplace_back(((NSString *)name).lowercaseString.UTF8String, ((NSString *)value).UTF8String);
+        }
+      }];
+    }
+    _listener->onResponse(status, std::move(headers), response.URL.absoluteString.UTF8String ?: "");
+    completionHandler(NSURLSessionResponseAllow);
   }
-  _listener->onResponse(status, std::move(headers), response.URL.absoluteString.UTF8String ?: "");
-  completionHandler(NSURLSessionResponseAllow);
 }
 
 - (void)URLSession:(NSURLSession *)session dataTask:(NSURLSessionDataTask *)dataTask didReceiveData:(NSData *)data {
-  if (_overflowed) {
-    return;
-  }
-  void *base = _buffer->data();
-  auto *header = static_cast<TSBHeader *>(base);
-  // A body arrives in pieces that need not be contiguous: append each without joining them.
-  [data enumerateByteRangesUsingBlock:^(const void *bytes, NSRange range, BOOL *stop) {
-    uint64_t room = header->capacity - __atomic_load_n(&header->committed, __ATOMIC_RELAXED);
-    // Fill the buffer to the end, as on Android, then stop: the status says the rest is gone.
-    tsb_append(base, bytes, std::min<uint64_t>(range.length, room));
-    if (range.length > room) {
-      tsb_set_status(base, TSB_STATUS_OVERFLOW);
-      self->_overflowed = YES;
-      *stop = YES;
+  @synchronized(self) {
+    if (_finished) return;
+    void *base = _buffer->data();
+    auto *header = static_cast<TSBHeader *>(base);
+    [data enumerateByteRangesUsingBlock:^(const void *bytes, NSRange range, BOOL *stop) {
+      uint64_t room = header->capacity - tsb_committed(base);
+      tsb_append(base, bytes, std::min<uint64_t>(range.length, room));
+      if (range.length > room) {
+        self->_overflowed = YES;
+        *stop = YES;
+      }
+    }];
+    if (_overflowed) {
+      [self finish:TSB_STATUS_OVERFLOW error:std::string()];
+      [dataTask cancel];
+    } else {
+      _buffer->notify();
     }
-  }];
-  // Wakes the views showing it (no polling).
-  _buffer->notify();
-  if (_overflowed) {
-    [dataTask cancel];
   }
 }
 
 - (void)URLSession:(NSURLSession *)session task:(NSURLSessionTask *)task didCompleteWithError:(NSError *)error {
-  uint32_t status = TSB_STATUS_DONE;
-  if (error) {
+  @synchronized(self) {
+    if (_finished) return;
     BOOL cancelled = [error.domain isEqualToString:NSURLErrorDomain] && error.code == NSURLErrorCancelled;
-    status = cancelled ? TSB_STATUS_CANCELLED : TSB_STATUS_ERROR;
+    uint32_t status = !error ? TSB_STATUS_DONE : cancelled ? TSB_STATUS_CANCELLED : TSB_STATUS_ERROR;
+    std::string message = status == TSB_STATUS_ERROR ? (error.localizedDescription.UTF8String ?: "network error") : "";
+    [self finish:status error:std::move(message)];
   }
-  tsb_set_status(_buffer->data(), status);
-  _buffer->notify();
-  std::string message;
-  if (error && !_overflowed && status == TSB_STATUS_ERROR) {
-    message = error.localizedDescription.UTF8String ?: "network error";
-  }
-  _listener->onComplete(std::move(message));
-  _listener = nullptr;
-  _buffer = nullptr;
 }
 
 @end
@@ -113,13 +160,14 @@ NSURLSession *streamFetchSession() {
 
 class IOSFetchTask : public StreamTextFetchTask {
  public:
-  explicit IOSFetchTask(NSURLSessionDataTask *task) : task_(task) {}
+  IOSFetchTask(NSURLSessionDataTask *task, StreamTextFetchDelegate *delegate) : task_(task), delegate_(delegate) {}
   void cancel() override {
-    [task_ cancel];
+    [delegate_ cancelTask:task_];
   }
 
  private:
   NSURLSessionDataTask *task_;
+  StreamTextFetchDelegate *delegate_;
 };
 
 } // namespace
@@ -131,8 +179,8 @@ std::shared_ptr<StreamTextFetchTask> streamTextStartFetch(
     std::shared_ptr<StreamTextMappedBuffer> buffer,
     std::shared_ptr<StreamTextFetchListener> listener) {
   NSURL *url = [NSURL URLWithString:[NSString stringWithUTF8String:request.url.c_str()]];
-  if (url == nil || url.scheme == nil) {
-    tsb_set_status(buffer->data(), TSB_STATUS_ERROR);
+  if (url == nil || !([url.scheme.lowercaseString isEqualToString:@"http"] || [url.scheme.lowercaseString isEqualToString:@"https"]) || url.host.length == 0) {
+    buffer->finish(TSB_STATUS_ERROR);
     listener->onComplete("invalid URL: " + request.url);
     return nullptr;
   }
@@ -149,9 +197,11 @@ std::shared_ptr<StreamTextFetchTask> streamTextStartFetch(
     urlRequest.timeoutInterval = request.timeoutSeconds;
   }
   NSURLSessionDataTask *task = [streamFetchSession() dataTaskWithRequest:urlRequest];
-  task.delegate = [[StreamTextFetchDelegate alloc] initWithBuffer:std::move(buffer) listener:std::move(listener)];
+  auto delegate = [[StreamTextFetchDelegate alloc] initWithBuffer:std::move(buffer) listener:std::move(listener)];
+  task.delegate = delegate;
+  [delegate armDeadlineForTask:task seconds:request.timeoutSeconds];
   [task resume];
-  return std::make_shared<IOSFetchTask>(task);
+  return std::make_shared<IOSFetchTask>(task, delegate);
 }
 
 } // namespace facebook::react

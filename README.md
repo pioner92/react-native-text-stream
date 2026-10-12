@@ -163,9 +163,15 @@ streamFetch(url, { streamId: message.id, method: 'POST', body });
 <StreamText streamId={message.id} />
 ```
 
-With a `streamId` the request outlives the view and is sent again only when it changes; a new request
-under the same id replaces the one before it (regenerate). `abortStream(id)` stops it, `releaseStream(id)`
-forgets it. Finished streams no view shows are kept for a remount, the last 64.
+With a `streamId` the request outlives the view. A remount reuses the matching native stream while it is
+retained. After `releaseStream(id)`, mounting `request` sends it again. After cache eviction only a GET
+or HEAD is sent again; an evicted POST is not (it could cost a new, different generation), and the view
+stays empty until the request changes or you call `releaseStream(id)`. Changing the request or its signal
+also starts a new request, and the signal is compared by identity: create it once (e.g. in a ref or state),
+not inline in render. An invalid `request` (capacity, timeout, method, headers) throws during render. A new
+request under the same id cancels and replaces the previous one. `abortStream(id)` stops it;
+`releaseStream(id)` forgets it without cancelling the request or clearing already mounted views. Finished streams with no subscribers are retained up to
+64 entries or 64 MiB of committed body bytes and cached request keys, whichever limit is reached first.
 
 ### Option 3: a stream object, through the ref or state
 
@@ -296,12 +302,12 @@ at once:
 | Option | Type | Default | Description |
 |---|---|---|---|
 | `method` | `string` | `GET`, or `POST` with a body | |
-| `headers` | `Record<string, string> \| [string, string][] \| Headers` | — | Header values must be ASCII. |
-| `body` | `string` | — | |
-| `signal` | `AbortSignal` | — | Aborts the request. |
+| `headers` | `Record<string, string> \| [string, string][] \| Headers` | — | HTTP token names and ASCII values without CR/LF; names are sent in lower case, sorted by name. Explicit `Accept-Encoding` supports `identity` or `gzip`; other values throw. |
+| `body` | `string` | — | Always encoded as UTF-8, including embedded NUL, independent of Content-Type's charset. GET/HEAD cannot have a body. |
+| `signal` | `AbortSignal` | — | Aborts the request. A pre-aborted signal starts no network request and does not replace an existing streamId. |
 | `streamId` | `string` | — | Streams under this id too ([Option 2](#option-2-a-streamid-for-lists-and-stores)). |
-| `capacity` | `number` | 16 MB | Most bytes kept; past them the request stops as `truncated`. Address space only: pages are committed as they are written. |
-| `timeout` | `number` | 5 minutes | Longest wait for the next bytes, in ms. |
+| `capacity` | `number` | 16 MiB | Integer from 1 to 2,147,483,583. Limits decoded response bytes; extra bytes end the request as `truncated`. Exact capacity followed by EOF is `done`. Pages are committed as written. |
+| `timeout` | `number` | 5 minutes | Integer from 1 to 2,147,483,647 ms. Deadline until response headers, including queue/connect/upload; after headers, an idle read timeout. Not a total duration limit. |
 
 It returns a `TextStream`:
 
@@ -310,12 +316,20 @@ It returns a `TextStream`:
 | `response` | `Promise<{ status, ok, headers, url }>`, once the response starts; rejects if the request fails before it. |
 | `done` | `Promise<{ status: 'done' \| 'error' \| 'cancelled' \| 'truncated', error? }>`; never rejects. |
 | `abort()` | Stops the request; the body so far stays. |
-| `text()` | The body received so far. |
+| `text()` | The committed body (its length acquired natively), decoded as UTF-8 in place. A terminal incomplete sequence becomes U+FFFD. |
 | `buffer` | The TSB1 buffer the body is written to. |
 
 An HTTP error status still streams its body; check `response.ok`. On iOS, URLSession holds back up to 512
 bytes of a `text/plain` body to sniff its type unless the server sends `X-Content-Type-Options: nosniff`;
 `text/event-stream`, `application/x-ndjson` and `application/json` bodies arrive at once.
+
+Headers are reported in lower case; repeated response headers are combined by the platform. String bodies
+and decoded response bytes follow the same UTF-8 contract on both platforms. Cancellation settles even
+while a request is queued; after any terminal status the committed prefix stays immutable. Android shares
+the app's OkHttp cookies, interceptors and connection pool, with a separate streaming dispatcher.
+Compression validation follows the platform decoder: URLSession can accept a false gzip header or an
+invalid gzip CRC that OkHttp rejects. `done` means the platform completed the body; it does not certify
+the body's integrity. Validate structured responses or application checksums when that distinction matters.
 
 `abortStream(streamId)` and `releaseStream(streamId)` act on a stream by its id.
 
@@ -750,9 +764,16 @@ Issues and pull requests are welcome. For larger changes, please open an issue f
 
 ```sh
 bun run test           # unit and contract tests
+bun run test:native    # C++ invariants + iOS delegate on macOS, with ASan/UBSan
 bun run test:harness   # in-app tests in the example app (react-native-harness), iOS
 cd example && bun run test:harness:android   # the same on an Android device
 ```
+
+The fetch suites need both `node server/stream-server.mjs` (9877) and
+`node server/fetch-test-server.mjs` (9878); reverse both ports with adb for Android.
+`bash scripts/test-stream-fetch-harness.sh ios` (or `android`) owns these servers and runs the focused
+fetch/streamId suites against a built example app. Set `HARNESS_APP_PATH` for an uninstalled app.
+CI runs these suites on an iOS simulator and an Android emulator, plus the native and JVM regressions.
 
 ## License
 

@@ -2,24 +2,31 @@ import React, { forwardRef, useCallback, useEffect, useImperativeHandle, useLayo
 import {
   codegenNativeCommands,
   processColor,
-  TurboModuleRegistry,
   type ColorValue,
   type NativeSyntheticEvent,
-  type TurboModule,
   type ViewProps,
 } from 'react-native'
 import * as NativeComponentRegistry from 'react-native/Libraries/NativeComponent/NativeComponentRegistry'
-import type {
-  StreamTextAlign,
-  StreamTextFontWeight,
-  StreamTextState,
-  StreamTextStatus,
-} from './types'
-import { bufferText, committedBytes, TSB_HEADER_SIZE } from './buffer'
-import { isTextStream, releaseStream, streamFetch, type StreamFetchInit, type TextStream } from './fetch'
+import type { StreamTextAlign, StreamTextFontWeight, StreamTextState, StreamTextStatus } from './types'
+import { bufferText, bufferSerial, committedBytes, TSB_HEADER_SIZE } from './buffer'
+import {
+  isTextStream,
+  normalizeRequest,
+  requestKey,
+  releaseStream,
+  startFetch,
+  type StreamFetchInit,
+  type TextStream,
+} from './fetch'
+import { Native as Buffers } from './native'
 
 // `generation`: which source the event is about (see `sourceGeneration`).
-type StatusEvent = NativeSyntheticEvent<{ status: StreamTextStatus; bytes: number; generation: number }>
+type StatusEvent = NativeSyntheticEvent<{
+  status: StreamTextStatus
+  bytes: number
+  generation: number
+  serial?: number
+}>
 
 type NativeProps = ViewProps & {
   source?: ArrayBuffer | null
@@ -62,14 +69,6 @@ const NativeStreamText = NativeComponentRegistry.get<NativeProps>('StreamTextVie
   },
 }))
 
-// Fabric view commands carry only plain values, so an ArrayBuffer goes to the hand-written
-// StreamTextBuffers TurboModule (cpp/StreamTextBuffers.hpp) first; `attach` sends its id.
-interface StreamTextBuffers extends TurboModule {
-  /** Keeps a natively-backed buffer for one `attach` command; 0 for a buffer created in JS. */
-  put(buffer: ArrayBuffer): number
-}
-const Buffers = TurboModuleRegistry.get<StreamTextBuffers>('StreamTextBuffers')
-
 const Commands = codegenNativeCommands<{
   attach(view: never, bufferId: number, generation: number): void
   clear(view: never, generation: number): void
@@ -95,7 +94,7 @@ export interface StreamTextProps extends ViewProps {
    * Makes the request itself and shows its body as it streams: started on mount and whenever the
    * request changes (compared by value), aborted on unmount. With a \`streamId\`, the request
    * outlives the view instead (a list's bubble scrolled away and back shows the same stream) and is
-   * sent again only when the request changes.
+   * sent again when the request changes, after `releaseStream(id)`, or (GET/HEAD only) once evicted.
    */
   request?: StreamTextRequest
   fontSize?: number
@@ -124,8 +123,6 @@ export interface StreamTextRequest extends StreamFetchInit {
   url: string
 }
 
-/** The request last sent under each streamId by a view (`request` prop): not sent again on a remount. */
-const sentRequests = new Map<string, string>()
 let nextOwnStreamId = 1
 
 /** What `<StreamText ref={…} />` gives you. */
@@ -154,18 +151,25 @@ export const StreamText = forwardRef<StreamTextHandle, StreamTextProps>(function
   ref
 ) {
   // A view making its own request without a streamId streams under one of its own.
+  const sharedStreamId = streamIdProp || undefined
   const ownStreamId = useRef<string | null>(null)
-  if (request && !streamIdProp && ownStreamId.current == null) ownStreamId.current = `stream-text-${nextOwnStreamId++}`
-  const streamId = streamIdProp ?? (request ? ownStreamId.current! : undefined)
-  useStreamRequest(request, streamId, streamIdProp == null)
+  if (request && !sharedStreamId && ownStreamId.current == null) ownStreamId.current = `stream-text-${nextOwnStreamId++}`
+  const streamId = sharedStreamId ?? (request ? ownStreamId.current! : undefined)
+  useStreamRequest(request, streamId, sharedStreamId == null)
   // The native view takes the buffer itself (its props parser reads a raw ArrayBuffer).
   const source = toBuffer(sourceProp)
   const native = useRef<HostInstance | null>(null)
   // Whichever was set last, the `source` prop or `attach()`; read by getStatus/getText.
   const current = useRef<ArrayBuffer | null>(source ?? null)
+  const followsStream = useRef(source == null && !!streamId)
   const lastStatus = useRef<StreamTextStatus | null>(null)
   // A buffer attached before the native view mounted.
-  const pending = useRef<{ buffer: ArrayBuffer | null; generation: number } | null>(null)
+  const pending = useRef<{
+    buffer: ArrayBuffer | null
+    generation: number
+  } | null>(null)
+  // These inputs define the identity; the generated number does not otherwise read them.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   const sourceGeneration = useMemo(() => nextGeneration++, [source, streamId])
   // The generation of `current`: status events about any other source are late, and dropped.
   const generation = useRef(sourceGeneration)
@@ -179,9 +183,42 @@ export const StreamText = forwardRef<StreamTextHandle, StreamTextProps>(function
     previousSource.current = source
     previousStreamId.current = streamId
     current.current = source ?? null
+    followsStream.current = source == null && !!streamId
     generation.current = sourceGeneration
     lastStatus.current = null
   }, [source, streamId, sourceGeneration])
+
+  // Only one notification per publication/replacement, never per chunk. Retain the displayed
+  // buffer so refs still work after releaseStream(), exactly like the native view does.
+  const acceptStream = useCallback(
+    (buffer: ArrayBuffer) => {
+      if (bufferSerial(current.current) !== bufferSerial(buffer)) lastStatus.current = null
+      current.current = buffer
+      followsStream.current = true
+      generation.current = sourceGeneration
+    },
+    [sourceGeneration]
+  )
+  useLayoutEffect(() => {
+    if (source != null || !streamId || !Buffers) return
+    let active = true
+    const watch = Buffers.watchStream(streamId, (buffer) => {
+      if (active) acceptStream(buffer)
+    })
+    if (watch.buffer && generation.current === sourceGeneration) acceptStream(watch.buffer)
+    return () => {
+      active = false
+      Buffers?.unwatchStream(watch.token)
+    }
+  }, [source, streamId, sourceGeneration, acceptStream])
+
+  const readCurrent = useCallback(() => {
+    if (followsStream.current && streamId) {
+      const latest = Buffers?.streamBuffer(streamId)
+      if (latest) acceptStream(latest)
+    }
+    return current.current
+  }, [streamId, acceptStream])
 
   const send = useCallback((instance: HostInstance, buffer: ArrayBuffer | null, gen: number) => {
     if (!buffer) return Commands.clear(instance as never, gen)
@@ -208,38 +245,45 @@ export const StreamText = forwardRef<StreamTextHandle, StreamTextProps>(function
 
   const handleStatus = useCallback(
     (event: StatusEvent) => {
+      const buffer = readCurrent()
       if (event.nativeEvent.generation !== generation.current) return
+      // A user streamId may name many requests. Serial identifies the actual buffer, including
+      // events already queued for JS when a replacement was published.
+      if ((event.nativeEvent.serial ?? 0) !== bufferSerial(buffer)) return
       lastStatus.current = event.nativeEvent.status
       onStatusChange?.(event.nativeEvent.status, event.nativeEvent.bytes)
     },
-    [onStatusChange]
+    [onStatusChange, readCurrent]
   )
 
-  useImperativeHandle(
-    ref,
-    () => {
-      const attach = (input: ArrayBuffer | TextStream | undefined) => {
-        const buffer = toBuffer(input)
-        const gen = nextGeneration++
-        current.current = buffer ?? null
-        generation.current = gen
-        lastStatus.current = null
-        if (native.current) send(native.current, buffer ?? null, gen)
-        else pending.current = { buffer: buffer ?? null, generation: gen }
-      }
-      return {
-        attach,
-        clear: () => attach(undefined),
-        getStatus: () => {
-          const buffer = current.current
-          if (!buffer || buffer.byteLength < TSB_HEADER_SIZE) return IDLE
-          return { status: lastStatus.current ?? 'streaming', bytes: committedBytes(buffer) }
-        },
-        getText: async () => (current.current ? bufferText(current.current) : ''),
-      }
-    },
-    [send]
-  )
+  useImperativeHandle(ref, () => {
+    const attach = (input: ArrayBuffer | TextStream | undefined) => {
+      const buffer = toBuffer(input)
+      const gen = nextGeneration++
+      current.current = buffer ?? null
+      followsStream.current = false
+      generation.current = gen
+      lastStatus.current = null
+      if (native.current) send(native.current, buffer ?? null, gen)
+      else pending.current = { buffer: buffer ?? null, generation: gen }
+    }
+    return {
+      attach,
+      clear: () => attach(undefined),
+      getStatus: () => {
+        const buffer = readCurrent()
+        if (!buffer || buffer.byteLength < TSB_HEADER_SIZE) return IDLE
+        return {
+          status: lastStatus.current ?? 'streaming',
+          bytes: committedBytes(buffer),
+        }
+      },
+      getText: async () => {
+        const buffer = readCurrent()
+        return buffer ? bufferText(buffer) : ''
+      },
+    }
+  }, [send, readCurrent])
 
   return (
     <NativeStreamText
@@ -305,24 +349,30 @@ function toBuffer(source: ArrayBuffer | TextStream | null | undefined): ArrayBuf
  * doesn't send it again.
  */
 function useStreamRequest(request: StreamTextRequest | undefined, streamId: string | undefined, owned: boolean) {
-  // By value: a request written inline is a new object on every render.
-  const key = request
-    ? JSON.stringify([request.url, request.method, request.headers, request.body, request.capacity, request.timeout])
-    : null
-  const latest = useRef(request)
-  latest.current = request
+  // Compare actual outgoing header pairs, including Headers/Map/forEach implementations.
+  const normalized = request ? normalizeRequest(request) : null
+  const key = request && normalized ? requestKey(request.url, normalized) : null
+  const signal = request?.signal
+  const latest = useRef({ request, normalized })
+  latest.current = { request, normalized }
+  const previousSignal = useRef(signal)
   useEffect(() => {
-    const current = latest.current
-    if (!current || !streamId || key == null) return
-    if (!owned && sentRequests.get(streamId) === key) return
-    sentRequests.set(streamId, key)
-    const { url, ...init } = current
-    const stream = streamFetch(url, { ...init, streamId })
+    const changedSignal = previousSignal.current !== signal
+    previousSignal.current = signal
+    const { request: current, normalized: init } = latest.current
+    if (!current || !init || !streamId || key == null) return
+    // Only a safe method is sent again once its finished stream was evicted: a POST may cost a new generation.
+    const resend = init.method === 'GET' || init.method === 'HEAD'
+    if (!owned && !changedSignal && Buffers?.hasStream(streamId, key, !resend)) return
+    const stream = startFetch(current.url, current, {
+      ...init,
+      streamId,
+      requestKey: key,
+    })
     if (!owned) return
     return () => {
       stream.abort()
-      sentRequests.delete(streamId)
       releaseStream(streamId)
     }
-  }, [key, streamId, owned])
+  }, [key, signal, streamId, owned])
 }

@@ -8,6 +8,8 @@
 #include <memory>
 #include <mutex>
 #include <unordered_map>
+#include <atomic>
+#include <string>
 
 namespace facebook::react {
 
@@ -50,8 +52,17 @@ class StreamTextBuffersModule : public TurboModule {
   static jsi::Value cancel(jsi::Runtime &runtime, TurboModule &module, const jsi::Value *args, size_t count);
   static jsi::Value abortStream(jsi::Runtime &runtime, TurboModule &module, const jsi::Value *args, size_t count);
   static jsi::Value releaseStream(jsi::Runtime &runtime, TurboModule &module, const jsi::Value *args, size_t count);
+  static jsi::Value cancelledBuffer(jsi::Runtime &runtime, TurboModule &module, const jsi::Value *args, size_t count);
+  static jsi::Value readBuffer(jsi::Runtime &runtime, TurboModule &module, const jsi::Value *args, size_t count);
+  static jsi::Value streamBuffer(jsi::Runtime &runtime, TurboModule &module, const jsi::Value *args, size_t count);
+  static jsi::Value hasStream(jsi::Runtime &runtime, TurboModule &module, const jsi::Value *args, size_t count);
+  static jsi::Value watchStream(jsi::Runtime &runtime, TurboModule &module, const jsi::Value *args, size_t count);
+  static jsi::Value unwatchStream(jsi::Runtime &runtime, TurboModule &module, const jsi::Value *args, size_t count);
 
   std::shared_ptr<StreamTextFetchTasks> fetches_;
+  uint64_t owner_;
+  struct Watch { std::string id; std::shared_ptr<std::atomic<bool>> active; };
+  std::unordered_map<uint64_t, Watch> watches_;
 };
 
 } // namespace facebook::react

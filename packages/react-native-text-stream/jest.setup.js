@@ -31,6 +31,12 @@ jest.mock('react-native/Libraries/TurboModule/TurboModuleRegistry', () => {
     cancel: jest.fn(),
     abortStream: jest.fn(),
     releaseStream: jest.fn(),
+    cancelledBuffer: jest.fn(),
+    readBuffer: jest.fn(),
+    streamBuffer: jest.fn(),
+    hasStream: jest.fn(),
+    watchStream: jest.fn(() => ({ token: 0, buffer: null })),
+    unwatchStream: jest.fn(),
   }
   const requested = []
   return {
