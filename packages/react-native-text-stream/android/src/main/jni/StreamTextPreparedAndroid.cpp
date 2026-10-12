@@ -8,6 +8,7 @@
 #include "../../../../ios/TextStreamBuffer.h"
 
 #include <fbjni/ByteBuffer.h>
+#include <pthread.h>
 #include <unistd.h>
 #include <atomic>
 #include <cmath>
@@ -348,8 +349,13 @@ class PrepareQueue {
 
  private:
   PrepareQueue() {
+    // As on iOS. Four were twice as slow for 20 texts on a Pixel 8a: the layouts contend in Minikin.
     for (int i = 0; i < 2; i++) {
-      std::thread([this] { jni::ThreadScope::WithClassLoader([this] { loop(); }); }).detach();
+      std::thread([this] {
+        // Named apart from the JS thread it would otherwise inherit its name from.
+        pthread_setname_np(pthread_self(), "StreamTextPrep");
+        jni::ThreadScope::WithClassLoader([this] { loop(); });
+      }).detach();
     }
   }
 

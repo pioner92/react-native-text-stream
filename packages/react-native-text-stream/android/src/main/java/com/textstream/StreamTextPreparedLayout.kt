@@ -103,13 +103,29 @@ class StreamTextPreparedLayout private constructor(
       decoder.decode(utf8, 0, bytes, out)
       decoder.finish(out)
       val text = out.toString()
+      val decoded = if (started != 0L) System.nanoTime() else 0L
       val style = StreamTextStyle(
           fontSize, fontFamily?.ifEmpty { null }, fontWeight?.ifEmpty { null }, lineHeight, letterSpacing,
           textAlign?.ifEmpty { null })
       val widthPx = max(1, ceil(PixelUtil.toPixelFromDIP(widthDp) - 0.001f).toInt())
       val paint = style.paint(assets)
+      if (started != 0L) {
+        StreamTextDebug.addPhase("prepare.decode", decoded - started)
+        StreamTextDebug.addPhase("prepare.paint", System.nanoTime() - decoded)
+      }
       val prepared = StreamTextPreparedLayout(text, style.staticLayout(text, paint, widthPx), paint, style, widthPx, bytes.toLong())
-      if (started != 0L) StreamTextDebug.addPhase("prepare.staticLayout", System.nanoTime() - started)
+      if (started != 0L) {
+        val time = System.nanoTime() - started
+        StreamTextDebug.addPhase("prepare.staticLayout", time)
+        // Where it ran: in measure on the JS thread, the main thread, or ahead on a prepare thread.
+        val thread = Thread.currentThread()
+        val where = when {
+          thread === android.os.Looper.getMainLooper().thread -> "main"
+          thread.name == "StreamTextPrep" -> "prepareThread"
+          else -> "js"
+        }
+        StreamTextDebug.addPhase("prepare.on.$where", time)
+      }
       return prepared
     }
   }
