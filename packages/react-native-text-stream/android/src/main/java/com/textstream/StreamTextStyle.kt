@@ -50,7 +50,7 @@ data class StreamTextStyle(
       else -> Layout.Alignment.ALIGN_NORMAL
     }
 
-  /** Sets (or removes) the line height span over the whole text; it grows with appends. */
+  /** Sets (or removes) the line height span over the whole text, for a text laid out once. */
   fun applyLineHeight(text: Spannable) {
     for (span in text.getSpans(0, text.length, StreamTextLineHeightSpan::class.java)) text.removeSpan(span)
     if (lineHeight > 0) {
@@ -58,9 +58,40 @@ data class StreamTextStyle(
     }
   }
 
+  /**
+   * For a text that grows: the line height in spans of at most [SEGMENT] characters. A
+   * LineHeightSpan is a WrapTogetherSpan, so a DynamicLayout re-wraps all of one when an edit
+   * touches it: a span over the whole text made every append re-wrap everything. The span's
+   * height is idempotent (a second one on a line changes nothing), so where the spans start and
+   * end doesn't matter.
+   */
+  fun applySegmentedLineHeight(text: Spannable) {
+    for (span in text.getSpans(0, text.length, StreamTextLineHeightSpan::class.java)) text.removeSpan(span)
+    addLineHeight(text, 0, text.length)
+  }
+
+  /** `chars` to append to a text with [applySegmentedLineHeight]: their spans come along. */
+  fun withLineHeight(chars: CharSequence): CharSequence {
+    if (lineHeight <= 0 || chars.isEmpty()) return chars
+    val spannable = SpannableString(chars)
+    addLineHeight(spannable, 0, spannable.length)
+    return spannable
+  }
+
+  private fun addLineHeight(text: Spannable, from: Int, to: Int) {
+    if (lineHeight <= 0) return
+    val px = PixelUtil.toPixelFromDIP(lineHeight)
+    var start = from
+    while (start < to) {
+      val end = minOf(to, start + SEGMENT)
+      text.setSpan(StreamTextLineHeightSpan(px), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+      start = end
+    }
+  }
+
   /** The layout an append re-wraps only from the paragraph it touched. */
   fun dynamicLayout(text: Spannable, paint: TextPaint, width: Int): DynamicLayout {
-    applyLineHeight(text)
+    applySegmentedLineHeight(text)
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) {
       @Suppress("DEPRECATION")
       return DynamicLayout(text, paint, width, alignment, 1f, 0f, true)
@@ -96,6 +127,10 @@ data class StreamTextStyle(
         .setUseLineSpacingFromFallbacks(true)
         .setJustificationMode(justification)
         .build()
+  }
+
+  private companion object {
+    const val SEGMENT = 1024
   }
 
   private val justification: Int

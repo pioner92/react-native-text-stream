@@ -15,6 +15,9 @@ import android.text.TextPaint
 import android.util.Log
 import android.util.TypedValue
 import android.view.Choreographer
+import android.view.GestureDetector
+import android.view.HapticFeedbackConstants
+import android.view.MotionEvent
 import android.view.View
 import android.view.ViewTreeObserver
 import android.view.accessibility.AccessibilityNodeInfo
@@ -56,12 +59,33 @@ class StreamTextView(context: Context) : ReactViewGroup(context) {
   var letterSpacing = 0f
   var textAlign: String? = null
   var selectable = true
+    set(value) {
+      field = value
+      if (!value) selection.dismiss()
+    }
+  var selectionColor: Int? = null
+
+  private val selection = StreamTextSelection(this)
+  /** The rest of a long press goes to the selection overlay (dragging out of it). */
+  private var forwardingToSelection = false
+  private val gestures = GestureDetector(context, object : GestureDetector.SimpleOnGestureListener() {
+    override fun onDown(e: MotionEvent) = true
+
+    override fun onLongPress(e: MotionEvent) {
+      if (!selectable || shownText().isEmpty()) return
+      selection.start(e, shownText(), style, paint, selectionColor)
+      forwardingToSelection = true
+      performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+    }
+  })
 
   /** Tests and benchmarks (STREAMTEXT_TESTING): `nativeID` with `recordDisplayLog`. */
   var recordDisplayLog = false
   private var displayLogKey: String? = null
   /** Bytes appended and not yet drawn: logged when they are. */
   private var unloggedShown = -1L
+  /** Benchmarks (with a display log key): main-thread cost of the stream being shown. */
+  private var stats: StreamTextDebug.RenderSample? = null
   /** Text was laid out here at least once (the iOS text view exists). */
   private var hadText = false
 
@@ -232,6 +256,7 @@ class StreamTextView(context: Context) : ReactViewGroup(context) {
     stopTicking()
     watcher.stop()
     releaseFinishedProp()
+    selection.dismiss()
     sourceIsProp = fromProp
     // A new source starts its own status sequence (a finished one reports only its final status).
     reportedStatus = null
@@ -242,6 +267,7 @@ class StreamTextView(context: Context) : ReactViewGroup(context) {
     decoder.reset()
     unloggedShown = -1
     displayLogKey?.let { StreamTextDebug.clearLog(it) }
+    stats = if (displayLogKey != null) StreamTextDebug.RenderSample() else null
     canvasStale = false
     if (canvas != null) {
       canvas = null
@@ -249,7 +275,7 @@ class StreamTextView(context: Context) : ReactViewGroup(context) {
     }
     if (text.isNotEmpty()) {
       text.clear()
-      style.applyLineHeight(text)
+      style.applySegmentedLineHeight(text)
       markDirty(0)
     }
     var fromState = false
@@ -431,10 +457,20 @@ class StreamTextView(context: Context) : ReactViewGroup(context) {
         offset += count
       }
       appendText(decoded)
+      val appendTime = System.nanoTime() - started
       // Before the first layout there is no width: the text is laid out once the view gets one.
       val measured = textLayout != null
       val commitTime = if (fillAll) 0L else reportHeight()
       val tickTime = System.nanoTime() - started
+      stats?.let {
+        it.ticks++
+        it.appendNs += appendTime
+        it.commitNs += commitTime
+        it.layoutNs += tickTime - appendTime - commitTime
+        it.maxTickNs = max(it.maxTickNs, tickTime)
+        it.maxTickBytes = max(it.maxTickBytes, appended)
+        if (tickTime > 8_000_000) it.slowTicks++
+      }
       // Re-estimate from ticks that hit the budget and were laid out (small appends say little
       // about the cost per byte), without the commit, whose cost doesn't grow with the bytes. The
       // budget at most doubles per tick, so one cheap tick can't schedule a huge append.
@@ -456,6 +492,7 @@ class StreamTextView(context: Context) : ReactViewGroup(context) {
       // Everything is in the text now: let go of the buffer (the watcher first, as it reads it).
       watcher.stop()
       finishSource(committed)
+      displayLogKey?.let { key -> stats?.let { StreamTextDebug.setRenderStats(key, it) } }
       reportStatus(terminalStatus(status), committed)
       return
     }
@@ -474,16 +511,43 @@ class StreamTextView(context: Context) : ReactViewGroup(context) {
   private fun appendText(chars: CharSequence) {
     if (chars.isEmpty()) return
     val oldLength = text.length
-    text.append(chars)
+    // With its line height spans, so the re-wrap the append triggers already sees them.
+    val spanned = style.withLineHeight(chars)
+    text.append(spanned)
+    selection.append(spanned)
     hadText = true
     markDirty(oldLength)
     if (displayLogKey != null) unloggedShown = offset
+  }
+
+  // MARK: - Selection
+
+  @SuppressLint("ClickableViewAccessibility")
+  override fun onTouchEvent(event: MotionEvent): Boolean {
+    if (forwardingToSelection) {
+      selection.forward(event)
+      if (event.actionMasked == MotionEvent.ACTION_UP || event.actionMasked == MotionEvent.ACTION_CANCEL) {
+        forwardingToSelection = false
+      }
+      return true
+    }
+    if (!selectable || shownText().isEmpty()) return super.onTouchEvent(event)
+    gestures.onTouchEvent(event)
+    return true
+  }
+
+  /** Tests: selects the word at (`x`, `y`) dp as a long press would, and returns it. */
+  fun debugSelectWordAt(x: Float, y: Float): String {
+    if (shownText().isEmpty()) return ""
+    return selection.selectWordAt(
+        PixelUtil.toPixelFromDIP(x), PixelUtil.toPixelFromDIP(y), shownText(), style, paint, selectionColor)
   }
 
   // MARK: - Measuring
 
   override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
     super.onSizeChanged(w, h, oldw, oldh)
+    if (initialized) selection.layoutOverlay()
     updateLayoutWidth()
   }
 
@@ -528,6 +592,7 @@ class StreamTextView(context: Context) : ReactViewGroup(context) {
       return
     }
     heightPending = false
+    stats?.let { it.heightReports++ }
     revision++
     StreamTextNative.updateHeight(wrapper, reportedHeight, revision)
   }
@@ -552,6 +617,7 @@ class StreamTextView(context: Context) : ReactViewGroup(context) {
     }
     val next = StreamTextStyle(fontSize, fontFamily, fontWeight, lineHeight, letterSpacing, textAlign)
     if (styleApplied && next == style) return
+    if (styleApplied) selection.dismiss()
     styleApplied = true
     style = next
     paint = style.paint(context.assets).also { it.color = color }
@@ -605,6 +671,8 @@ class StreamTextView(context: Context) : ReactViewGroup(context) {
       displayLogKey?.let { StreamTextDebug.appendLog(it, unloggedShown) }
       unloggedShown = -1
     }
+    if (selection.overlay != null) return
+    val drawStarted = if (stats != null) System.nanoTime() else 0L
     val prepared = this.canvas
     val layout: Layout = prepared?.layout ?: textLayout ?: return
     if (shownText().isEmpty()) return
@@ -620,6 +688,12 @@ class StreamTextView(context: Context) : ReactViewGroup(context) {
       layout.draw(canvas)
     }
     canvas.restore()
+    stats?.let {
+      val time = System.nanoTime() - drawStarted
+      it.draws++
+      it.drawNs += time
+      it.maxDrawNs = max(it.maxDrawNs, time)
+    }
   }
 
   /** A scroll or a move brought other blocks near the screen than the ones drawn. */

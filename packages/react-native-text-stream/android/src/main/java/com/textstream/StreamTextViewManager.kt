@@ -45,6 +45,11 @@ class StreamTextViewManager : ReactViewManager() {
     (view as StreamTextView).recordDisplayLog = value
   }
 
+  @ReactProp(name = "selectionColor", customType = "Color")
+  fun setSelectionColor(view: ReactViewGroup, value: Int?) {
+    (view as StreamTextView).selectionColor = value
+  }
+
   @ReactProp(name = "selectable", defaultBoolean = true)
   fun setSelectable(view: ReactViewGroup, value: Boolean) {
     (view as StreamTextView).selectable = value

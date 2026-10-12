@@ -28,7 +28,7 @@ internal class StreamTextBlocks {
 
   /** Display lists held. */
   val count: Int
-    get() = recorded.count { it }
+    get() = nodes.indices.count { it < recorded.size && recorded[it] && nodes[it].hasDisplayList() }
 
   fun markDirty(block: Int) {
     dirtyFrom = min(dirtyFrom, max(block, 0))
@@ -70,7 +70,9 @@ internal class StreamTextBlocks {
     for (i in draw) {
       if (i !in 0 until count) continue
       val node = nodes[i]
-      if (!recorded[i]) {
+      // HWUI frees the display list of a node no frame drew (a block off the screen for a while,
+      // or a frame with the selection overlay up): record it again then.
+      if (!recorded[i] || !node.hasDisplayList()) {
         val first = i * LINES
         val top = layout.getLineTop(first)
         val bottom = layout.getLineTop(min(first + LINES, lineCount))

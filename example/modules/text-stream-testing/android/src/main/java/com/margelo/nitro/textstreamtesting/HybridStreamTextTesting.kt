@@ -127,7 +127,18 @@ class HybridStreamTextTesting : HybridStreamTextTestingSpec() {
 
   override fun measureMount(text: String, width: Double): Promise<Map<String, Double>> = unsupported()
 
-  override fun selectWordAt(key: String, x: Double, y: Double): Promise<String> = unsupported()
+  override fun selectWordAt(key: String, x: Double, y: Double): Promise<String> {
+    val promise = Promise<String>()
+    main.post {
+      val view = StreamTextDebug.view(key)
+      if (view == null) {
+        promise.reject(IllegalStateException("No StreamTextView with nativeID $key and recordDisplayLog"))
+      } else {
+        promise.resolve(view.debugSelectWordAt(x.toFloat(), y.toFloat()))
+      }
+    }
+    return promise
+  }
 
   override fun selectionGeometry(key: String, location: Double, length: Double): Promise<String> = unsupported()
 

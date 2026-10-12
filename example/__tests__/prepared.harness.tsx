@@ -379,8 +379,7 @@ describe('StreamText: prepared layouts', () => {
     });
   }
 
-  // Not on Android yet: selection.
-  itIOS('selects text on the canvas itself, no text view', async () => {
+  it('selects text on the canvas itself, no text view', async () => {
     const { key, s } = await mountFinished(PARAGRAPHS);
     expect(s.mode).toBe('canvas');
     // First line, a few points in: the first word.

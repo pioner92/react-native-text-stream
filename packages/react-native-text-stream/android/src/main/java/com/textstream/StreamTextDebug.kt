@@ -48,6 +48,41 @@ object StreamTextDebug {
     }
   }
 
+  /** A view's main-thread cost while it streamed, as iOS's StreamTextRenderStats.Sample (ns). */
+  internal class RenderSample {
+    var ticks = 0
+    var appendNs = 0L
+    var layoutNs = 0L
+    var commitNs = 0L
+    var maxTickNs = 0L
+    var heightReports = 0
+    var maxTickBytes = 0L
+    var slowTicks = 0
+    var draws = 0
+    var drawNs = 0L
+    var maxDrawNs = 0L
+  }
+
+  private val renderStats = HashMap<String, DoubleArray>()
+
+  /** The stream ended: its sample, read by benchmarks. */
+  internal fun setRenderStats(key: String, s: RenderSample) {
+    val ms = { ns: Long -> ns / 1e6 }
+    synchronized(renderStats) {
+      renderStats[key] = doubleArrayOf(
+          s.ticks.toDouble(), ms(s.appendNs), ms(s.layoutNs), ms(s.commitNs), ms(s.maxTickNs),
+          s.heightReports.toDouble(), s.maxTickBytes.toDouble(), s.slowTicks.toDouble(), 0.0,
+          s.draws.toDouble(), ms(s.drawNs), ms(s.maxDrawNs))
+    }
+  }
+
+  /**
+   * `[ticks, appendMs, layoutMs, commitMs, maxTickMs, heightReports, maxTickBytes, slowTicks, grows,
+   * draws, drawMs, maxDrawMs]` (iOS's, then Android's drawing), or empty until the stream finished.
+   */
+  @JvmStatic
+  fun renderStats(key: String): DoubleArray = synchronized(renderStats) { renderStats[key]?.copyOf() ?: DoubleArray(0) }
+
   /** Phases are timed once [phases] was asked for (benchmarks). */
   @Volatile private var timingPhases = false
   private val phases = HashMap<String, DoubleArray>()
