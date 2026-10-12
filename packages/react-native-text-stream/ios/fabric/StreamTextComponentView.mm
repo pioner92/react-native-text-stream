@@ -10,6 +10,8 @@
 #import "StreamTextSwift.h"
 #import "StreamTextPrepared.h"
 #include "../../cpp/StreamTextBuffers.hpp"
+#include "../../cpp/StreamTextFetch.hpp"
+#include <atomic>
 #include "../../cpp/StreamTextViewShadowNode.hpp"
 #include <utility>
 
@@ -62,11 +64,44 @@ static NSString *_Nullable StreamTextNSString(const std::string &value) {
   BOOL _hasPropSource;
   // The buffer the renderer shows (the heights it reports are for it), even once `_source` is released.
   const void *_attachedData;
+  // A buffer from streamFetch() wakes the renderer on every write instead of being polled.
+  std::shared_ptr<StreamTextMappedBuffer> _observed;
+  uint64_t _observerToken;
 }
 
 - (void)dealloc {
+  [self stopObserving];
   // Before the ivars go, `_source` among them: the renderer's watcher reads that buffer.
   [_renderer invalidate];
+}
+
+- (void)stopObserving {
+  if (_observed) {
+    _observed->unobserve(_observerToken);
+    _observed = nullptr;
+  }
+}
+
+/** Wakes the renderer, on the main thread, once per batch of writes to `buffer`. */
+- (BOOL)observe:(const std::shared_ptr<jsi::MutableBuffer> &)source {
+  [self stopObserving];
+  auto mapped = std::dynamic_pointer_cast<StreamTextMappedBuffer>(source);
+  if (!mapped) {
+    return NO;
+  }
+  __weak StreamTextRenderer *renderer = _renderer;
+  auto pending = std::make_shared<std::atomic<bool>>(false);
+  _observerToken = mapped->observe([renderer, pending] {
+    if (pending->exchange(true)) {
+      return;
+    }
+    dispatch_async(dispatch_get_main_queue(), ^{
+      pending->store(false);
+      [renderer bufferDidChange];
+    });
+  });
+  _observed = std::move(mapped);
+  return YES;
 }
 
 + (void)load {
@@ -176,9 +211,12 @@ static NSString *_Nullable StreamTextNSString(const std::string &value) {
   // The old buffer is released only after the renderer moved off it; the new one may already be
   // released inside attach, when it is finished and shown in one go.
   auto previous = std::exchange(_source, source);
+  // Subscribed before attaching: a write after the renderer's first read still wakes it.
+  BOOL pushed = [self observe:source];
   [_renderer attachWithBase:source ? source->data() : nullptr
                        size:source ? (NSInteger)source->size() : 0
-                   prepared:prepared];
+                   prepared:prepared
+                     pushed:pushed];
 }
 
 // Commands from the JS wrapper's ref: `attach(id)` takes a buffer put in StreamTextBuffers.

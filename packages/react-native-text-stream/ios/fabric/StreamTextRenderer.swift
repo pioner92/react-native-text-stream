@@ -41,6 +41,8 @@ public final class StreamTextRenderer: UIView {
   private var bytesPerTick = 32 * 1024
   private var displayLink: CADisplayLink?
   private lazy var watcher = BufferWatcher { [weak self] in self?.watcherWoke() }
+  /// The buffer's writer wakes the renderer (`bufferDidChange`): no watcher polls it.
+  private var pushed = false
 
   private var textAttributes: [NSAttributedString.Key: Any] = [:]
   private var layoutWidth: CGFloat = -1
@@ -224,7 +226,11 @@ public final class StreamTextRenderer: UIView {
   /// Starts rendering the TSB1 buffer at `base` (`size` bytes); nil detaches. The caller keeps
   /// the memory alive until the next call.
   /// `prepared`: the layout the shadow node prepared for this buffer, if it is finished and small.
-  @objc public func attach(base newBase: UnsafeMutableRawPointer?, size: Int, prepared: StreamTextPreparedLayout?) {
+  /// `pushed`: its writer calls `bufferDidChange()` on every write (streamFetch), so nothing polls it.
+  @objc public func attach(
+    base newBase: UnsafeMutableRawPointer?, size: Int, prepared: StreamTextPreparedLayout?, pushed: Bool
+  ) {
+    self.pushed = pushed
     let attachStarted = CACurrentMediaTime()
     defer {
       let time = CACurrentMediaTime() - attachStarted
@@ -279,7 +285,7 @@ public final class StreamTextRenderer: UIView {
     if !instantFill {
       reportStatus("streaming", bytes: 0)
       setTicking(window != nil)
-      if window != nil { watcher.start(base: newBase, from: 0) }
+      if window != nil && !pushed { watcher.start(base: newBase, from: 0) }
     }
     // A freshly mounted view has no width yet: the text is laid out once it gets one.
     tick(fillAll: instantFill)
@@ -289,7 +295,7 @@ public final class StreamTextRenderer: UIView {
     super.didMoveToWindow()
     let active = window != nil && base != nil && !finished
     setTicking(active)
-    if active, let base { watcher.start(base: base, from: offset) } else { watcher.stop() }
+    if active, !pushed, let base { watcher.start(base: base, from: offset) } else { watcher.stop() }
   }
 
   public override func layoutSubviews() {
@@ -412,6 +418,12 @@ public final class StreamTextRenderer: UIView {
       displayLink?.invalidate()
       displayLink = nil
     }
+  }
+
+  /// The buffer's writer published bytes or its final status (a pushed buffer). Main thread.
+  @objc public func bufferDidChange() {
+    guard base != nil, !finished, window != nil else { return }
+    tick()
   }
 
   /// New bytes or a final status landed: show them now, not at the next frame.

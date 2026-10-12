@@ -3,7 +3,7 @@ import { ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import Animated, { useAnimatedProps, useSharedValue } from 'react-native-reanimated';
 import { fetch } from 'react-native-nitro-fetch';
 import { TextDecoder } from 'react-native-nitro-text-decoder';
-import { StreamText, streamFetch } from 'react-native-text-stream';
+import { StreamText, streamFetch, useStreamTextRef, type StreamTextHandle } from 'react-native-text-stream';
 import { createFrameMonitor } from 'text-stream-testing';
 import { StreamdownText } from 'react-native-streamdown';
 import { pairs, type Point } from './stats';
@@ -252,17 +252,23 @@ function NativeStream({ url, onFinish }: VariantProps) {
   return <NativeStreamView buffer={buffer} url={url} onFinish={onFinish} />;
 }
 
-// D: the same view, the request made by the library itself (streamFetch) instead of nitro-fetch.
+// D: the same view, the request made by the library itself (streamFetch) instead of nitro-fetch,
+// handed over through the ref: no setState, no re-render.
 function OwnFetchStream({ url, onFinish }: VariantProps) {
-  const [buffer, setBuffer] = useState<ArrayBuffer>();
+  const streamRef = useStreamTextRef();
+  const logKey = url;
 
   useEffect(() => {
     const stream = streamFetch(url);
-    setBuffer(stream.buffer);
-    return () => stream.abort();
-  }, [url]);
+    streamRef.attach(stream);
+    const stopWatching = watchCompletion(stream.buffer, logKey, onFinish);
+    return () => {
+      stopWatching();
+      stream.abort();
+    };
+  }, [url, onFinish, logKey, streamRef]);
 
-  return <NativeStreamView buffer={buffer} url={url} onFinish={onFinish} />;
+  return <NativeTextFrame streamRef={streamRef} logKey={logKey} />;
 }
 
 function NativeStreamView({
@@ -272,26 +278,41 @@ function NativeStreamView({
 }: { buffer: ArrayBuffer | undefined } & Pick<VariantProps, 'url' | 'onFinish'>) {
   const logKey = url;
 
-  useEffect(() => {
-    if (!buffer) return;
-    // TSB1 header: committed (u64 @ 8), status (u32 @ 24), little-endian.
-    const header = new DataView(buffer, 0, 64);
-    const id = setInterval(() => {
-      const status = header.getUint32(24, true);
-      const committed = header.getUint32(8, true) + header.getUint32(12, true) * 2 ** 32;
-      const log = displayLogs.streamTextDisplayLog(logKey);
-      const lastShown = log.length ? log[log.length - 1] : 0;
-      if (status !== 0 && lastShown >= committed) {
-        clearInterval(id);
-        onFinish({ shown: pairs(log), jsChunks: 0, render: displayLogs.streamTextRenderStats(logKey) });
-      }
-    }, 100);
-    return () => clearInterval(id);
-  }, [buffer, onFinish, logKey]);
+  useEffect(() => (buffer ? watchCompletion(buffer, logKey, onFinish) : undefined), [buffer, onFinish, logKey]);
 
+  return <NativeTextFrame source={buffer} logKey={logKey} />;
+}
+
+/** Polls (from JS, every 100 ms) until the stream ended and its last bytes are on screen. */
+function watchCompletion(buffer: ArrayBuffer, logKey: string, onFinish: VariantProps['onFinish']) {
+  // TSB1 header: committed (u64 @ 8), status (u32 @ 24), little-endian.
+  const header = new DataView(buffer, 0, 64);
+  const id = setInterval(() => {
+    const status = header.getUint32(24, true);
+    const committed = header.getUint32(8, true) + header.getUint32(12, true) * 2 ** 32;
+    const log = displayLogs.streamTextDisplayLog(logKey);
+    const lastShown = log.length ? log[log.length - 1] : 0;
+    if (status !== 0 && lastShown >= committed) {
+      clearInterval(id);
+      onFinish({ shown: pairs(log), jsChunks: 0, render: displayLogs.streamTextRenderStats(logKey) });
+    }
+  }, 100);
+  return () => clearInterval(id);
+}
+
+function NativeTextFrame({
+  source,
+  streamRef,
+  logKey,
+}: {
+  source?: ArrayBuffer;
+  streamRef?: React.Ref<StreamTextHandle>;
+  logKey: string;
+}) {
   const text = (
     <StreamText
-      source={buffer}
+      ref={streamRef}
+      source={source}
       fontSize={14}
       lineHeight={21}
       color={TEXT_COLOR}

@@ -5,7 +5,9 @@
 
 #include <jsi/jsi.h>
 #include <cstdint>
+#include <functional>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <string>
 #include <utility>
@@ -15,9 +17,15 @@ namespace facebook::react {
 
 using StreamTextHeaders = std::vector<std::pair<std::string, std::string>>;
 
-/** A TSB1 buffer in its own anonymous mapping: pages are only committed once they are written. */
+/**
+ * A TSB1 buffer in its own anonymous mapping: pages are only committed once they are written.
+ * Its writer (streamFetch) tells its observers about every write, so a view showing it is woken
+ * instead of polling the header.
+ */
 class StreamTextMappedBuffer : public jsi::MutableBuffer {
  public:
+  using Observer = std::function<void()>;
+
   /** An initialized, open buffer of `capacity` data bytes; nullptr if the mapping fails. */
   static std::shared_ptr<StreamTextMappedBuffer> create(uint64_t capacity);
   ~StreamTextMappedBuffer() override;
@@ -29,11 +37,23 @@ class StreamTextMappedBuffer : public jsi::MutableBuffer {
     return base_;
   }
 
+  /**
+   * `observer` runs on the writer's thread after new bytes or the final status: it must not block
+   * (post to the main thread). It may still run once after `unobserve` returns.
+   */
+  uint64_t observe(Observer observer);
+  void unobserve(uint64_t token);
+  /** The writer: bytes were published, or the status is final. */
+  void notify();
+
   StreamTextMappedBuffer(uint8_t *base, size_t size) : base_(base), size_(size) {}
 
  private:
   uint8_t *base_;
   size_t size_;
+  std::mutex mutex_;
+  uint64_t lastToken_{0};
+  std::vector<std::pair<uint64_t, std::shared_ptr<Observer>>> observers_;
 };
 
 struct StreamTextFetchRequest {

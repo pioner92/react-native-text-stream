@@ -4,11 +4,13 @@
 
 #include "../../../../ios/TextStreamBuffer.h"
 #include "StreamTextBuffers.hpp"
+#include "StreamTextFetch.hpp"
 #include "StreamTextFetchAndroid.h"
 #include "StreamTextPreparedAndroid.h"
 #include "StreamTextViewShadowNode.hpp"
 
 #include <fbjni/ByteBuffer.h>
+#include <fbjni/NativeRunnable.h>
 #include <fbjni/fbjni.h>
 #include <react/fabric/StateWrapperImpl.h>
 
@@ -42,6 +44,9 @@ class JStreamTextSource : public jni::HybridClass<JStreamTextSource> {
         makeNativeMethod("address", JStreamTextSource::address),
         makeNativeMethod("size", JStreamTextSource::size),
         makeNativeMethod("bytes", JStreamTextSource::bytes),
+        makeNativeMethod("isPushed", JStreamTextSource::isPushed),
+        makeNativeMethod("observe", JStreamTextSource::observe),
+        makeNativeMethod("unobserve", JStreamTextSource::unobserve),
     });
   }
 
@@ -61,6 +66,31 @@ class JStreamTextSource : public jni::HybridClass<JStreamTextSource> {
   /** The whole buffer, header included; read the data only below `committed`. */
   jni::local_ref<jni::JByteBuffer> bytes() {
     return jni::JByteBuffer::wrapBytes(buffer_->data(), buffer_->size());
+  }
+
+  /** Its writer (streamFetch) wakes the view on every write: nothing needs to poll it. */
+  jboolean isPushed() {
+    return std::dynamic_pointer_cast<StreamTextMappedBuffer>(buffer_) != nullptr;
+  }
+
+  /** `wake` runs on the writer's thread after each write; 0 if the buffer is not pushed. */
+  jlong observe(jni::alias_ref<jni::JRunnable> wake) {
+    auto mapped = std::dynamic_pointer_cast<StreamTextMappedBuffer>(buffer_);
+    if (!mapped) {
+      return 0;
+    }
+    auto runnable = std::make_shared<jni::global_ref<jni::JRunnable>>(jni::make_global(wake));
+    return static_cast<jlong>(mapped->observe([runnable] {
+      jni::ThreadScope scope;
+      static const auto run = jni::JRunnable::javaClassStatic()->getMethod<void()>("run");
+      run(*runnable);
+    }));
+  }
+
+  void unobserve(jlong token) {
+    if (auto mapped = std::dynamic_pointer_cast<StreamTextMappedBuffer>(buffer_)) {
+      mapped->unobserve(static_cast<uint64_t>(token));
+    }
   }
 
   std::shared_ptr<jsi::MutableBuffer> buffer_;

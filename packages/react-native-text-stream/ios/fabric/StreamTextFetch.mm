@@ -66,6 +66,8 @@ using namespace facebook::react;
       *stop = YES;
     }
   }];
+  // Wakes the views showing it (no polling).
+  _buffer->notify();
   if (_overflowed) {
     [dataTask cancel];
   }
@@ -78,6 +80,7 @@ using namespace facebook::react;
     status = cancelled ? TSB_STATUS_CANCELLED : TSB_STATUS_ERROR;
   }
   tsb_set_status(_buffer->data(), status);
+  _buffer->notify();
   std::string message;
   if (error && !_overflowed && status == TSB_STATUS_ERROR) {
     message = error.localizedDescription.UTF8String ?: "network error";

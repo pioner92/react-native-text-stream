@@ -74,6 +74,14 @@ class StreamTextSource @DoNotStrip private constructor(@field:DoNotStrip private
   /** The whole buffer, header included. */
   external fun bytes(): ByteBuffer
 
+  /** Its writer (streamFetch) wakes the view on every write: nothing needs to poll it. */
+  external fun isPushed(): Boolean
+
+  /** `wake` runs on the writer's thread after each write: post, don't work. 0 if not pushed. */
+  external fun observe(wake: Runnable): Long
+
+  external fun unobserve(token: Long)
+
   fun release() {
     mHybridData.resetNative()
   }

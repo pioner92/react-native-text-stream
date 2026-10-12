@@ -66,12 +66,16 @@ void JStreamTextFetch::nativeResponse(
 }
 
 void JStreamTextFetch::nativePublish(jni::alias_ref<jclass>, jlong handle, jlong committed) {
-  publish(stateOf(handle)->buffer->data(), uint64_t(committed));
+  auto &buffer = stateOf(handle)->buffer;
+  publish(buffer->data(), uint64_t(committed));
+  // Wakes the views showing it (no polling).
+  buffer->notify();
 }
 
 void JStreamTextFetch::nativeComplete(jni::alias_ref<jclass>, jlong handle, jint status, jni::alias_ref<jstring> error) {
   std::unique_ptr<FetchState> state(stateOf(handle));
   tsb_set_status(state->buffer->data(), uint32_t(status));
+  state->buffer->notify();
   state->listener->onComplete(toStdString(error));
 }
 

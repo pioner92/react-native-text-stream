@@ -7,9 +7,10 @@ import android.os.Process
 import android.os.SystemClock
 
 /**
- * Watches a buffer's header off the main thread and wakes the view when bytes or a final status
- * land. It polls fast while data flows and backs off while the producer is quiet (a model
- * "thinking"), and stops itself once the status is final. Same policy as the iOS BufferWatcher.
+ * Wakes the view when bytes or a final status land in its buffer. A buffer from streamFetch()
+ * tells it on every write (no polling); any other TSB1 buffer is watched off the main thread:
+ * polled fast while data flows, backing off while the producer is quiet (a model "thinking"),
+ * stopping once the status is final. Same policy as the iOS BufferWatcher.
  */
 internal class StreamTextWatcher(private val wake: Runnable) {
   private val lock = Any()
@@ -20,9 +21,13 @@ internal class StreamTextWatcher(private val wake: Runnable) {
   private var wakePending = false
   private var lastChange = 0L
   private var session = 0
+  // Main thread.
+  private var observed: StreamTextSource? = null
+  private var observerToken = 0L
 
-  /** Watches `base` for bytes beyond `from`. Main thread. */
-  fun start(base: Long, from: Long) {
+  /** Watches `base` (`source`'s) for bytes beyond `from`. Main thread. */
+  fun start(base: Long, from: Long, source: StreamTextSource?) {
+    stop()
     val started: Int
     synchronized(lock) {
       this.base = base
@@ -32,7 +37,12 @@ internal class StreamTextWatcher(private val wake: Runnable) {
       lastChange = SystemClock.uptimeMillis()
       started = ++session
     }
-    handler.postDelayed({ poll(started) }, 8)
+    if (source != null && source.isPushed()) {
+      observerToken = source.observe { pushed(started) }
+      observed = source
+    } else {
+      handler.postDelayed({ poll(started) }, 8)
+    }
   }
 
   /** After this returns, the watcher no longer reads the buffer. Main thread. */
@@ -41,6 +51,17 @@ internal class StreamTextWatcher(private val wake: Runnable) {
       base = 0
       session++
     }
+    observed?.unobserve(observerToken)
+    observed = null
+  }
+
+  /** The writer published bytes or the final status; on its thread. */
+  private fun pushed(started: Int) {
+    synchronized(lock) {
+      if (started != session || base == 0L || wakePending) return
+      wakePending = true
+    }
+    mainHandler.post(wake)
   }
 
   /** The view handled the wake; the next change wakes it again. Main thread. */

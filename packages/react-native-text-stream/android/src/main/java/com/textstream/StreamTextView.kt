@@ -322,7 +322,7 @@ class StreamTextView(context: Context) : ReactViewGroup(context) {
       }
       if (!instantFill) {
         reportStatus("streaming", 0)
-        if (isAttachedToWindow) watcher.start(address, 0)
+        if (isAttachedToWindow) watcher.start(address, 0, newSource)
       }
       tick(fillAll = instantFill)
     } finally {
@@ -410,7 +410,7 @@ class StreamTextView(context: Context) : ReactViewGroup(context) {
     } as? View
     if (blocks != null) viewTreeObserver.addOnScrollChangedListener(scrollListener)
     if (base != 0L && !finished) {
-      watcher.start(base, offset)
+      watcher.start(base, offset, source)
       scheduleFrame()
     }
   }

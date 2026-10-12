@@ -22,6 +22,32 @@ StreamTextMappedBuffer::~StreamTextMappedBuffer() {
   munmap(base_, size_);
 }
 
+uint64_t StreamTextMappedBuffer::observe(Observer observer) {
+  std::lock_guard lock(mutex_);
+  observers_.emplace_back(++lastToken_, std::make_shared<Observer>(std::move(observer)));
+  return lastToken_;
+}
+
+void StreamTextMappedBuffer::unobserve(uint64_t token) {
+  std::lock_guard lock(mutex_);
+  std::erase_if(observers_, [token](const auto &entry) { return entry.first == token; });
+}
+
+void StreamTextMappedBuffer::notify() {
+  // Called outside the lock: an observer may (un)observe from its callback.
+  std::vector<std::shared_ptr<Observer>> observers;
+  {
+    std::lock_guard lock(mutex_);
+    observers.reserve(observers_.size());
+    for (const auto &[token, observer] : observers_) {
+      observers.push_back(observer);
+    }
+  }
+  for (const auto &observer : observers) {
+    (*observer)();
+  }
+}
+
 /** Requests in flight, by id: `cancel(id)` finds them, and a module going away cancels them. */
 class StreamTextFetchTasks {
  public:
