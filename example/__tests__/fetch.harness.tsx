@@ -1,5 +1,5 @@
 import React from 'react';
-import { beforeAll, describe, expect, it, render } from 'react-native-harness';
+import { beforeAll, describe, expect, it, render, waitFor } from 'react-native-harness';
 import { StreamText, streamFetch } from 'react-native-text-stream';
 import { Column, newKey, sleep, TEXT_STYLE, waitForSnapshot, waitForText } from './helpers';
 
@@ -86,8 +86,27 @@ describe('streamFetch', () => {
   it('stops at its capacity, as truncated', async () => {
     const stream = streamFetch(streamUrl(50_000, 0, 1024), { capacity: 4096 });
     expect(await stream.done).toEqual({ status: 'truncated' });
-    expect(new TextEncoder().encode(stream.text()).length).toBeLessThanOrEqual(4096);
+    // Filled to the last byte (the cut may split a UTF-8 sequence, so count bytes, not text).
+    const header = new DataView(stream.buffer, 0, 64);
+    expect(header.getUint32(8, true) + header.getUint32(12, true) * 2 ** 32).toBe(4096);
   });
+
+  // URLSession holds the first bytes of a text/plain body (up to 512) to sniff its type unless the
+  // server says `X-Content-Type-Options: nosniff` (README). The types LLM APIs stream go through at
+  // once: a slow stream from a server without that header.
+  for (const type of ['text/event-stream', 'application/x-ndjson', 'application/json']) {
+    it(`gets the first bytes at once, ${type} without nosniff`, async () => {
+      const started = Date.now();
+      const stream = streamFetch(
+        `${SERVER}/?fmt=raw&bytes=2000&chunk=16&tps=4&sniff=1&ctype=${encodeURIComponent(type)}`,
+      );
+      const committed = () => new DataView(stream.buffer, 0, 64).getUint32(8, true);
+      await waitFor(() => expect(committed()).toBeGreaterThan(0), { timeout: 3000, interval: 20 });
+      expect(Date.now() - started).toBeLessThan(1500);
+      stream.abort();
+      await stream.done;
+    });
+  }
 
   it('fails without a server: the response rejects, done says error', async () => {
     const stream = streamFetch('http://localhost:9/');

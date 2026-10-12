@@ -5,6 +5,8 @@
 #include "../../cpp/StreamTextFetch.hpp"
 #include "../TextStreamBuffer.h"
 
+#include <algorithm>
+
 using namespace facebook::react;
 
 /** One request's delegate (URLSession keeps it until the task completes): the buffer's only writer. */
@@ -52,10 +54,14 @@ using namespace facebook::react;
     return;
   }
   void *base = _buffer->data();
+  auto *header = static_cast<TSBHeader *>(base);
   // A body arrives in pieces that need not be contiguous: append each without joining them.
   [data enumerateByteRangesUsingBlock:^(const void *bytes, NSRange range, BOOL *stop) {
-    if (!tsb_append(base, bytes, range.length)) {
-      // The status is now OVERFLOW (it stays: the first status wins); stop the download.
+    uint64_t room = header->capacity - __atomic_load_n(&header->committed, __ATOMIC_RELAXED);
+    // Fill the buffer to the end, as on Android, then stop: the status says the rest is gone.
+    tsb_append(base, bytes, std::min<uint64_t>(range.length, room));
+    if (range.length > room) {
+      tsb_set_status(base, TSB_STATUS_OVERFLOW);
       self->_overflowed = YES;
       *stop = YES;
     }

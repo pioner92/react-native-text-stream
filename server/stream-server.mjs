@@ -92,10 +92,12 @@ function stream(req, res, q) {
   if (id) keepSendLog(id, log);
 
   res.writeHead(200, {
-    'Content-Type': fmt === 'sse' ? 'text/event-stream' : 'text/plain; charset=utf-8',
+    'Content-Type':
+      (q.get('sniff') === '1' && q.get('ctype')) || (fmt === 'sse' ? 'text/event-stream' : 'text/plain; charset=utf-8'),
     'Cache-Control': 'no-cache',
-    // Stops URLSession from buffering the first bytes for MIME sniffing.
-    'X-Content-Type-Options': 'nosniff',
+    // Stops URLSession from buffering the first bytes for MIME sniffing (`sniff=1`: as a server
+    // that doesn't send it, for streamFetch() tests).
+    ...(q.get('sniff') === '1' ? {} : { 'X-Content-Type-Options': 'nosniff' }),
   });
 
   let i = 0;
