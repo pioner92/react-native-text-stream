@@ -1,11 +1,15 @@
 import React from 'react';
-import { View } from 'react-native';
-import { expect, waitFor } from 'react-native-harness';
+import { PixelRatio, Platform, View } from 'react-native';
+import { describe, expect, it, waitFor } from 'react-native-harness';
 import { createStreamTextTesting, type StreamTextSnapshot } from 'text-stream-testing';
 
 export const testing = createStreamTextTesting();
 
 export const TSB = { open: 0, done: 1, error: 2, cancelled: 3, overflow: 4 } as const;
+
+/** Suites and tests of what Android doesn't have yet (named where they are used): skipped there. */
+export const describeIOS = Platform.OS === 'ios' ? describe : describe.skip;
+export const itIOS = Platform.OS === 'ios' ? it : it.skip;
 
 const encoder = new TextEncoder();
 export const utf8 = (text: string) => encoder.encode(text);
@@ -77,6 +81,18 @@ export function Column({ width = 300, children }: { width?: number; children: Re
 }
 
 export const TEXT_STYLE = { fontSize: 14, lineHeight: 21 } as const;
+
+/**
+ * The height of `lines` lines at `lineHeight`: Android lays lines out on whole pixels, rounding
+ * the pitch up as <Text> does (CustomLineHeightSpan), so it is exact only in pixels there.
+ */
+export function expectLinesHeight(height: number, lines: number, lineHeight: number, { atLeast = false } = {}) {
+  const ratio = Platform.OS === 'android' ? PixelRatio.get() : 1;
+  const actual = Platform.OS === 'android' ? Math.round(height * ratio) : height;
+  const expected = lines * (Platform.OS === 'android' ? Math.ceil(lineHeight * ratio) : lineHeight);
+  if (atLeast) expect(actual).toBeGreaterThan(expected);
+  else expect(actual).toBe(expected);
+}
 
 export const PARAGRAPHS =
   'Streaming text straight from the network into a native view ⚡️ Every token lands in a native buffer.\n\n' +

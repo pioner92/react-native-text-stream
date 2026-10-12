@@ -12,7 +12,7 @@ export interface FrameStats {
 }
 
 /** Measures UI-thread frame pacing with a CADisplayLink (benchmarks only). */
-export interface FrameMonitor extends HybridObject<{ ios: 'swift' }> {
+export interface FrameMonitor extends HybridObject<{ ios: 'swift'; android: 'kotlin' }> {
   start(): void
   /** Resolves on the next frame, so a main-thread stall in progress is included. */
   stop(): Promise<FrameStats>

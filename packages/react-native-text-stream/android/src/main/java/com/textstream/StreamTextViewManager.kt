@@ -31,7 +31,23 @@ class StreamTextViewManager : ReactViewManager() {
 
   override fun onAfterUpdateTransaction(view: ReactViewGroup) {
     super.onAfterUpdateTransaction(view)
-    (view as StreamTextView).applyStyle()
+    val streamText = view as StreamTextView
+    streamText.applyStyle()
+    if (StreamTextDebug.enabled) {
+      val nativeId = view.getTag(com.facebook.react.R.id.view_tag_native_id) as? String
+      streamText.setDisplayLogKey(if (streamText.recordDisplayLog) nativeId else null)
+    }
+  }
+
+  /** Tests and benchmarks only; no effect without STREAMTEXT_TESTING. */
+  @ReactProp(name = "recordDisplayLog")
+  fun setRecordDisplayLog(view: ReactViewGroup, value: Boolean) {
+    (view as StreamTextView).recordDisplayLog = value
+  }
+
+  @ReactProp(name = "selectable", defaultBoolean = true)
+  fun setSelectable(view: ReactViewGroup, value: Boolean) {
+    (view as StreamTextView).selectable = value
   }
 
   override fun onDropViewInstance(view: ReactViewGroup) {

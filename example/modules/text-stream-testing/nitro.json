@@ -17,11 +17,19 @@
       "ios": {
         "language": "swift",
         "implementationClassName": "HybridFrameMonitor"
+      },
+      "android": {
+        "language": "kotlin",
+        "implementationClassName": "HybridFrameMonitor"
       }
     },
     "StreamTextTesting": {
       "ios": {
         "language": "swift",
+        "implementationClassName": "HybridStreamTextTesting"
+      },
+      "android": {
+        "language": "kotlin",
         "implementationClassName": "HybridStreamTextTesting"
       }
     }

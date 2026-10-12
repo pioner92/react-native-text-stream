@@ -11,6 +11,7 @@ import android.os.Build
 import android.text.DynamicLayout
 import android.text.Layout
 import android.text.SpannableStringBuilder
+import android.text.Spanned
 import android.text.TextDirectionHeuristics
 import android.text.TextPaint
 import android.util.Log
@@ -24,6 +25,7 @@ import com.facebook.react.uimanager.UIManagerHelper
 import com.facebook.react.views.text.ReactTypefaceUtils
 import com.facebook.react.views.view.ReactViewGroup
 import java.nio.ByteBuffer
+import kotlin.math.ceil
 import kotlin.math.max
 import kotlin.math.min
 
@@ -50,13 +52,20 @@ class StreamTextView(context: Context) : ReactViewGroup(context) {
   var lineHeight = 0f
   var letterSpacing = 0f
   var textAlign: String? = null
+  var selectable = true
+
+  /** Tests and benchmarks (STREAMTEXT_TESTING): `nativeID` with `recordDisplayLog`. */
+  var recordDisplayLog = false
+  private var displayLogKey: String? = null
+  /** Bytes appended and not yet drawn: logged when they are. */
+  private var unloggedShown = -1L
+  /** Text was shown at least once (the iOS text view exists). */
+  private var hadText = false
 
   private val paint = TextPaint(Paint.ANTI_ALIAS_FLAG)
   private val text = SpannableStringBuilder()
   private var textLayout: DynamicLayout? = null
   private var layoutWidth = -1
-  /** With a `lineHeight`: the space TextKit puts above each line, which the layout puts below. */
-  private var lineTopExtra = 0
   private var appliedStyle: List<Any?>? = null
 
   // Reader state, main thread only.
@@ -135,6 +144,33 @@ class StreamTextView(context: Context) : ReactViewGroup(context) {
     watcher.stop()
     releaseSource()
     discardBlocks()
+    setDisplayLogKey(null)
+  }
+
+  /** Tests and benchmarks: records when bytes reach the screen under `key` (null stops). */
+  fun setDisplayLogKey(key: String?) {
+    if (!StreamTextDebug.enabled || key == displayLogKey) return
+    displayLogKey?.let { StreamTextDebug.unregister(it, this) }
+    displayLogKey = key
+    key?.let { StreamTextDebug.register(it, this) }
+  }
+
+  /** What the view shows, for tests. Main thread. */
+  fun debugState(): StreamTextDebugState {
+    val c = paint.color
+    return StreamTextDebugState(
+        text = text.toString(),
+        height = reportedHeight,
+        status = reportedStatus ?: "",
+        hasTextView = hadText,
+        fontSize = fontSize,
+        color = "#%02X%02X%02X%02X".format(Color.red(c), Color.green(c), Color.blue(c), Color.alpha(c)),
+        selectable = selectable,
+        accessibilityValue = accessibilityText(),
+        mode = if (hadText) "textView" else "",
+        engine = "",
+        tiles = blocks.size,
+    )
   }
 
   // MARK: - Attaching
@@ -150,8 +186,11 @@ class StreamTextView(context: Context) : ReactViewGroup(context) {
     offset = 0
     finished = false
     decoder.reset()
+    unloggedShown = -1
+    displayLogKey?.let { StreamTextDebug.clearLog(it) }
     if (text.isNotEmpty()) {
       text.clear()
+      applyLineHeightSpan()
       markDirty(0)
     }
     try {
@@ -300,7 +339,9 @@ class StreamTextView(context: Context) : ReactViewGroup(context) {
     if (chars.isEmpty()) return
     val oldLength = text.length
     text.append(chars)
+    hadText = true
     markDirty(oldLength)
+    if (displayLogKey != null) unloggedShown = offset
   }
 
   // MARK: - Measuring
@@ -330,7 +371,7 @@ class StreamTextView(context: Context) : ReactViewGroup(context) {
     val layout = textLayout ?: return 0
     val started = System.nanoTime()
     // Like <Text>, an empty view has no height (and mounting one doesn't need a commit).
-    val px = if (text.isEmpty()) 0 else layout.height + lineTopExtra
+    val px = if (text.isEmpty()) 0 else layout.height
     val height = PixelUtil.toDIPFromPixel(px.toFloat())
     if (height == reportedHeight) return 0
     reportedHeight = height
@@ -370,8 +411,10 @@ class StreamTextView(context: Context) : ReactViewGroup(context) {
     }
     if (style == appliedStyle) return
     appliedStyle = style
-    paint.textSize = PixelUtil.toPixelFromDIP(fontSize)
-    paint.letterSpacing = if (fontSize > 0) letterSpacing / fontSize else 0f
+    // Whole pixels, and letter spacing in em of them, as <Text> (TextAttributeProps) has them.
+    val textSize = ceil(PixelUtil.toPixelFromDIP(fontSize).toDouble()).toFloat()
+    paint.textSize = textSize
+    paint.letterSpacing = if (textSize > 0) PixelUtil.toPixelFromDIP(letterSpacing) / textSize else 0f
     paint.typeface = ReactTypefaceUtils.applyStyles(
         null, Typeface.NORMAL, ReactTypefaceUtils.parseFontWeight(fontWeight), fontFamily, context.assets)
     rebuildLayout()
@@ -395,27 +438,33 @@ class StreamTextView(context: Context) : ReactViewGroup(context) {
       "center" -> Layout.Alignment.ALIGN_CENTER
       else -> Layout.Alignment.ALIGN_NORMAL
     }
-    // TextKit puts a line's extra height above it; the layout adds `spacingAdd` below. The view
-    // draws `lineTopExtra` lower, so the baselines match.
-    val metrics = paint.fontMetricsInt
-    val natural = metrics.descent - metrics.ascent
-    val spacingAdd = if (lineHeight > 0) Math.round(PixelUtil.toPixelFromDIP(lineHeight)) - natural else 0
-    lineTopExtra = spacingAdd
+    // Line metrics as <Text> has them: a lineHeight span, and the font padding it keeps by default
+    // (includeFontPadding) where no span sets the line's top or bottom.
+    applyLineHeightSpan()
     textLayout = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
       DynamicLayout.Builder.obtain(text, paint, layoutWidth)
           .setAlignment(alignment)
-          .setLineSpacing(spacingAdd.toFloat(), 1f)
-          .setIncludePad(false)
+          .setIncludePad(true)
           .setTextDirection(TextDirectionHeuristics.FIRSTSTRONG_LTR)
           // Greedy wrapping, as TextKit: an append never re-wraps the lines above it.
           .setBreakStrategy(Layout.BREAK_STRATEGY_SIMPLE)
           .setHyphenationFrequency(Layout.HYPHENATION_FREQUENCY_NONE)
+          // Lines with emoji or CJK from fallback fonts are as tall as those need, as in <Text>.
+          .setUseLineSpacingFromFallbacks(true)
           .setJustificationMode(
               if (textAlign == "justify") Layout.JUSTIFICATION_MODE_INTER_WORD else Layout.JUSTIFICATION_MODE_NONE)
           .build()
     } else {
       @Suppress("DEPRECATION")
-      DynamicLayout(text, paint, layoutWidth, alignment, 1f, spacingAdd.toFloat(), false)
+      DynamicLayout(text, paint, layoutWidth, alignment, 1f, 0f, true)
+    }
+  }
+
+  /** Covers the whole text, and grows with it (inclusive at both ends). */
+  private fun applyLineHeightSpan() {
+    for (span in text.getSpans(0, text.length, StreamTextLineHeightSpan::class.java)) text.removeSpan(span)
+    if (lineHeight > 0) {
+      text.setSpan(StreamTextLineHeightSpan(PixelUtil.toPixelFromDIP(lineHeight)), 0, text.length, Spanned.SPAN_INCLUSIVE_INCLUSIVE)
     }
   }
 
@@ -442,10 +491,15 @@ class StreamTextView(context: Context) : ReactViewGroup(context) {
 
   override fun onDraw(canvas: Canvas) {
     super.onDraw(canvas)
+    // The text appended since the last frame is drawn now: log it as shown.
+    if (unloggedShown >= 0) {
+      displayLogKey?.let { StreamTextDebug.appendLog(it, unloggedShown) }
+      unloggedShown = -1
+    }
     val layout = textLayout ?: return
     if (text.isEmpty()) return
     canvas.save()
-    canvas.translate(paddingLeft.toFloat(), (paddingTop + lineTopExtra).toFloat())
+    canvas.translate(paddingLeft.toFloat(), paddingTop.toFloat())
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && canvas.isHardwareAccelerated) {
       drawBlocks(canvas, layout)
     } else {
@@ -485,8 +539,16 @@ class StreamTextView(context: Context) : ReactViewGroup(context) {
   /** Only the end of the text: a snapshot of megabytes of it would stall the main thread. */
   override fun onInitializeAccessibilityNodeInfo(info: AccessibilityNodeInfo) {
     super.onInitializeAccessibilityNodeInfo(info)
+    info.text = accessibilityText()
+  }
+
+  private fun accessibilityText(): String {
     val length = text.length
-    info.text = if (length <= ACCESSIBLE_TAIL_CHARS) text.toString() else "…" + text.subSequence(length - ACCESSIBLE_TAIL_CHARS, length)
+    if (length <= ACCESSIBLE_TAIL_CHARS) return text.toString()
+    // Not from the middle of a surrogate pair.
+    var start = length - ACCESSIBLE_TAIL_CHARS
+    if (Character.isLowSurrogate(text[start])) start++
+    return "…" + text.subSequence(start, length)
   }
 
   private companion object {

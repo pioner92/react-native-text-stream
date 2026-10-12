@@ -18,6 +18,7 @@ import {
   utf8,
   waitForSnapshot,
   waitForText,
+  describeIOS,
 } from './helpers';
 
 // A finished `source` prop is laid out in the shadow node (CoreText where it can) and drawn on a
@@ -50,7 +51,8 @@ async function mountFinished(text: string, props: Record<string, unknown> = TEXT
   return { key, s, heights, view };
 }
 
-describe('StreamText: prepared layouts', () => {
+// Not on Android yet: prepared layouts.
+describeIOS('StreamText: prepared layouts', () => {
   it('draws a finished source on a canvas, at the height the text view would have', async () => {
     const prepared = await mountFinished(PARAGRAPHS);
     expect(prepared.s.mode).toBe('canvas');

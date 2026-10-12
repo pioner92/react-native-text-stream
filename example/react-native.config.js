@@ -14,11 +14,11 @@ module.exports = {
         [pkg.name]: {
             root: path.join(__dirname, '../packages/react-native-text-stream'),
         },
-        // Benchmark and test helpers (FrameMonitor, StreamTextTesting): this app only, iOS only.
+        // Benchmark and test helpers (FrameMonitor, StreamTextTesting): this app only.
         // STREAMTEXT_TESTING=0 builds without them, as an app using the library would.
         'text-stream-testing': {
             root: path.join(__dirname, 'modules/text-stream-testing'),
-            platforms: process.env.STREAMTEXT_TESTING === '0' ? { ios: null, android: null } : { android: null },
+            platforms: process.env.STREAMTEXT_TESTING === '0' ? { ios: null, android: null } : {},
         },
     },
 }

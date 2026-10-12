@@ -1,9 +1,10 @@
 import React from 'react';
+import { Platform, Text } from 'react-native';
 import { afterEach, describe, expect, it, render, waitFor } from 'react-native-harness';
 import { fetch as nitroFetch } from 'react-native-nitro-fetch';
 import { StreamText, useStreamTextRef, type StreamTextRef, type StreamTextStatus } from 'react-native-text-stream';
 import { bufferText, committedBytes, headerStatus } from 'text-stream-testing';
-import { arrayBuffer, buffer, Column, layouts, newKey, snapshot, TEXT_STYLE, testing, TSB, utf8, waitForSnapshot } from './helpers';
+import { arrayBuffer, buffer, Column, expectLinesHeight, layouts, newKey, snapshot, TEXT_STYLE, testing, TSB, utf8, waitForSnapshot } from './helpers';
 
 // Seams, live: each test crosses a boundary between two layers that were written separately and
 // checks that both sides agree on the same data.
@@ -30,11 +31,24 @@ describe('seams', () => {
     const key = newKey();
     const { heights, onLayout } = layouts();
     const tsb = buffer();
-    testing.startProducer(tsb, arrayBuffer(utf8('line of text\n'.repeat(30))), 13, 5, TSB.done);
-    await render(<Column><StreamText source={tsb} nativeID={key} recordDisplayLog onLayout={onLayout('s')} {...TEXT_STYLE} /></Column>);
+    const content = 'line of text\n'.repeat(30);
+    testing.startProducer(tsb, arrayBuffer(utf8(content)), 13, 5, TSB.done);
+    await render(
+      <Column>
+        <StreamText source={tsb} nativeID={key} recordDisplayLog onLayout={onLayout('s')} {...TEXT_STYLE} />
+        <Text onLayout={onLayout('t')} style={TEXT_STYLE}>{content}</Text>
+      </Column>,
+    );
     const s = await waitForSnapshot(key, (x) => expect(x.status).toBe('done'), 5000);
     await waitFor(() => expect(heights.s).toBe(s.height));
-    expect(s.height).toBe(31 * TEXT_STYLE.lineHeight); // 30 lines and the empty one after the last \n
+    if (Platform.OS === 'android') {
+      // The empty line after the last \n keeps the font's own height there (StaticLayout gives it
+      // no LineHeightSpan), as <Text>'s does.
+      await waitFor(() => expect(s.height).toBe(heights.t));
+      expectLinesHeight(s.height, 30, TEXT_STYLE.lineHeight, { atLeast: true });
+    } else {
+      expectLinesHeight(s.height, 31, TEXT_STYLE.lineHeight); // 30 lines and the empty one after the last \n
+    }
   });
 
   it('renderer ↔ event ↔ JS wrapper: the view, onStatusChange and getStatus() agree', async () => {

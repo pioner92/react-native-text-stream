@@ -38,7 +38,7 @@ export interface StreamTextTestStyle {
  * Tests only: a producer that writes TSB1 buffers the way nitro-fetch does (release stores from
  * a background queue), and a way to read what a StreamTextView with `recordDisplayLog` shows.
  */
-export interface StreamTextTesting extends HybridObject<{ ios: 'swift' }> {
+export interface StreamTextTesting extends HybridObject<{ ios: 'swift'; android: 'kotlin' }> {
   /** A natively-backed, empty, open TSB1 buffer with room for `capacity` bytes. */
   createBuffer(capacity: number): ArrayBuffer
   /** Appends `bytes` (overflowing the capacity sets the status to overflow). */

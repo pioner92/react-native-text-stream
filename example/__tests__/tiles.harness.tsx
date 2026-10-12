@@ -2,7 +2,7 @@ import React from 'react';
 import { Dimensions, ScrollView, View } from 'react-native';
 import { describe, expect, it, render } from 'react-native-harness';
 import { StreamText } from 'react-native-text-stream';
-import { buffer, newKey, sleep, snapshot, testing, TEXT_STYLE, TSB, waitForSnapshot } from './helpers';
+import { buffer, describeIOS, newKey, sleep, snapshot, testing, TEXT_STYLE, TSB, waitForSnapshot } from './helpers';
 
 type Memory = { bytes: number; tiles: number; canvases: number; offWindow: number; footprintMB: number };
 const memory = async (): Promise<Memory> => JSON.parse(await testing.tileMemory());
@@ -16,7 +16,8 @@ const bytesFor = (points: number) => (points + 2 * 256) * width * scale * scale 
 const ON_SCREEN = bytesFor(height);
 const AT_MOST = bytesFor(height + 2 * 1024);
 
-describe('StreamText: canvas tile memory', () => {
+// Not on Android yet: canvas tiles.
+describeIOS('StreamText: canvas tile memory', () => {
   it('a full-screen canvas holds the screen and its margins, only the screen out of the window or after a memory warning', async () => {
     const key = newKey();
     let scroll: ScrollView | null = null;

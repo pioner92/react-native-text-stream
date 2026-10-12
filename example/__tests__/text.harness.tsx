@@ -1,11 +1,13 @@
 import React from 'react';
-import { Text } from 'react-native';
+import { Platform, Text } from 'react-native';
 import { describe, expect, it, render, waitFor } from 'react-native-harness';
 import { StreamText } from 'react-native-text-stream';
 import { bufferText } from 'text-stream-testing';
 import {
   buffer,
   Column,
+  expectLinesHeight,
+  itIOS,
   layouts,
   newKey,
   PARAGRAPHS,
@@ -51,7 +53,9 @@ describe('StreamText: text and height', () => {
     expect(many.height).toBeGreaterThan(one.height);
   });
 
-  for (const width of [300, 301.5]) it(`lays out exactly like <Text> at width ${width}`, async () => {
+  // Android: also with the font's own line height, where <Text> keeps its font padding.
+  const styles = Platform.OS === 'android' ? [TEXT_STYLE, { fontSize: 14 }] : [TEXT_STYLE];
+  for (const style of styles) for (const width of [300, 301.5]) it(`lays out exactly like <Text> at width ${width}, ${JSON.stringify(style)}`, async () => {
     const key = newKey();
     const { heights, onLayout } = layouts();
     await render(
@@ -61,9 +65,9 @@ describe('StreamText: text and height', () => {
           nativeID={key}
           recordDisplayLog
           onLayout={onLayout('stream')}
-          {...TEXT_STYLE}
+          {...style}
         />
-        <Text onLayout={onLayout('text')} style={TEXT_STYLE}>
+        <Text onLayout={onLayout('text')} style={style}>
           {PARAGRAPHS}
         </Text>
       </Column>,
@@ -83,7 +87,7 @@ describe('StreamText: text and height', () => {
         <StreamText source={buffer('a\nb\nc', TSB.done)} nativeID={key} recordDisplayLog onLayout={onLayout('s')} fontSize={14} lineHeight={30} />
       </Column>,
     );
-    await waitFor(() => expect(heights.s).toBe(90));
+    await waitFor(() => expectLinesHeight(heights.s, 3, 30));
   });
 
   it('reassembles UTF-8 sequences split across appends, at every split point', async () => {
@@ -163,7 +167,8 @@ describe('StreamText: text and height', () => {
     expect(s.status).toBe('done');
   });
 
-  it('exposes what the screen shows of a long finished text to accessibility, not all of it', async () => {
+  // Not on Android yet: prepared layouts (canvas).
+  itIOS('exposes what the screen shows of a long finished text to accessibility, not all of it', async () => {
     const key = newKey();
     const long = 'x'.repeat(5000) + 'THE END';
     await render(

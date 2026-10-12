@@ -1,0 +1,80 @@
+// Benchmark and test helpers for the example app (FrameMonitor, StreamTextTesting): Android side.
+buildscript {
+  repositories {
+    google()
+    mavenCentral()
+  }
+}
+
+def getExtOrDefault(name, defaultValue) {
+  return rootProject.ext.has(name) ? rootProject.ext.get(name) : defaultValue
+}
+
+def reactNativeArchitectures() {
+  def value = rootProject.getProperties().get("reactNativeArchitectures")
+  return value ? value.split(",") : ["armeabi-v7a", "x86", "x86_64", "arm64-v8a"]
+}
+
+apply plugin: 'com.android.library'
+if (project.extensions.findByName('kotlin') == null) {
+  apply plugin: 'kotlin-android'
+}
+apply from: '../nitrogen/generated/android/TextStreamTesting+autolinking.gradle'
+
+android {
+  namespace 'com.margelo.nitro.textstreamtesting'
+  ndkVersion getExtOrDefault('ndkVersion', null)
+  compileSdkVersion getExtOrDefault('compileSdkVersion', 36)
+
+  defaultConfig {
+    minSdkVersion getExtOrDefault('minSdkVersion', 24)
+    targetSdkVersion getExtOrDefault('targetSdkVersion', 36)
+    externalNativeBuild {
+      cmake {
+        cppFlags "-frtti -fexceptions -Wall"
+        arguments "-DANDROID_STL=c++_shared", "-DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON"
+        abiFilters (*reactNativeArchitectures())
+      }
+    }
+  }
+
+  externalNativeBuild {
+    cmake {
+      path "CMakeLists.txt"
+    }
+  }
+
+  packagingOptions {
+    excludes = [
+      "**/libc++_shared.so",
+      "**/libfbjni.so",
+      "**/libjsi.so",
+      "**/libreactnative.so",
+      "**/libNitroModules.so",
+    ]
+  }
+
+  buildFeatures {
+    prefab true
+  }
+
+  compileOptions {
+    sourceCompatibility JavaVersion.VERSION_17
+    targetCompatibility JavaVersion.VERSION_17
+  }
+
+  kotlinOptions {
+    jvmTarget = '17'
+  }
+}
+
+repositories {
+  google()
+  mavenCentral()
+}
+
+dependencies {
+  implementation 'com.facebook.react:react-android'
+  implementation project(':react-native-nitro-modules')
+  implementation project(':react-native-text-stream')
+}

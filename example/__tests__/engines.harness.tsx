@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'react-native-harness';
 import type { StreamTextTestStyle } from 'text-stream-testing';
-import { PARAGRAPHS, testing } from './helpers';
+import { describeIOS, PARAGRAPHS, testing } from './helpers';
 
 // The CoreText engine must make exactly TextKit's lines (the text view's engine): a canvas swapped
 // for a text view, or a remount of a streamed text, must not move a single glyph.
@@ -56,7 +56,8 @@ function expectSameLines(result: Record<string, number>, what: string) {
   expect(result.comparedGlyphs).toBeGreaterThan(0);
 }
 
-describe('StreamText: CoreText lines match TextKit', () => {
+// iOS engines (CoreText vs TextKit).
+describeIOS('StreamText: CoreText lines match TextKit', () => {
   for (const [name, text] of Object.entries(CORPUS)) {
     it(`${name}, at three widths`, () => {
       for (const width of [300, 301.5, 211]) {

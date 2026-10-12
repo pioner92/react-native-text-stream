@@ -2,7 +2,7 @@ import React from 'react';
 import { View } from 'react-native';
 import { describe, expect, it, render } from 'react-native-harness';
 import { StreamText } from 'react-native-text-stream';
-import { buffer, newKey, testing, TEXT_STYLE, TSB, waitForSnapshot } from './helpers';
+import { buffer, describeIOS, newKey, testing, TEXT_STYLE, TSB, waitForSnapshot } from './helpers';
 
 const SENTENCES = [
   'Streaming text straight from the network into a native view, every token lands in a buffer. ',
@@ -40,7 +40,8 @@ function Chat({ keys, style }: { keys: string[]; style: object }) {
   );
 }
 
-describe('StreamText: the surface changes width (rotation, Split View)', () => {
+// Not on Android yet: prepared layouts at a new width, resizeSurface.
+describeIOS('StreamText: the surface changes width (rotation, Split View)', () => {
   for (const [engine, style] of [
     ['coreText', TEXT_STYLE],
     ['textKit', { fontSize: 14 }], // no lineHeight: TextKit lays it out
