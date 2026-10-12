@@ -22,6 +22,8 @@ public protocol HybridStreamTextTestingSpec_protocol: HybridObject {
   func setPreparedLayout(enabled: Bool) throws -> Void
   func setPreparedCoreText(enabled: Bool) throws -> Void
   func resizeSurface(keys: [String], width: Double, ms: Double) throws -> Promise<String>
+  func tileMemory() throws -> Promise<String>
+  func cover(shown: Bool) throws -> Promise<Double>
   func clearPreparedLayouts() throws -> Void
   func preparedCacheCount() throws -> Double
   func preparedCacheDump() throws -> String

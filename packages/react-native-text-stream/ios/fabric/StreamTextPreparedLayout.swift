@@ -550,8 +550,12 @@ private final class CoreTextLines {
 }
 
 /// Set on the main thread, read by background tile draws: a stale read only draws one tile in vain.
+/// The canvas is read on the main thread only, so a background draw never holds it (its deinit
+/// stays on the main thread).
 private final class DrawToken: @unchecked Sendable {
   var cancelled = false
+  weak var canvas: StreamTextCanvas?
+  init(_ canvas: StreamTextCanvas?) { self.canvas = canvas }
 }
 
 /// Shows a prepared layout as image tiles: those on screen are drawn right away on the main thread
@@ -573,9 +577,12 @@ final class StreamTextCanvas: UIView {
   var visibleBounds: (() -> CGRect)?
 
   private var tiles: [Int: CALayer] = [:]
+  /// Tests: bytes of every canvas's tiles, and the canvases alive. Main thread.
+  static var tileBytes = 0
+  static let all = NSHashTable<StreamTextCanvas>.weakObjects()
   /// Tiles being drawn in the background; a redraw or leaving the window cancels them.
   private var pending = Set<Int>()
-  private var drawToken = DrawToken()
+  private lazy var drawToken = DrawToken(self)
   private var scrollObservation: NSKeyValueObservation?
 
   // Selection (StreamTextSelection.swift).
@@ -605,6 +612,7 @@ final class StreamTextCanvas: UIView {
     self.layout = layout
     self.color = color
     super.init(frame: CGRect(x: 0, y: 0, width: layout.width, height: layout.height))
+    Self.all.add(self)
     backgroundColor = .clear
     isOpaque = false
     if #available(iOS 17.0, *) {
@@ -617,12 +625,43 @@ final class StreamTextCanvas: UIView {
   @available(*, unavailable)
   required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
 
+  deinit {
+    MainActor.assumeIsolated { for row in Array(tiles.keys) { drop(row) } }
+  }
+
   /// A new layout of the same text (another width or style): redraws what is on screen at once.
   func replace(_ layout: StreamTextPreparedLayout) {
     if selection.length > 0 || isFirstResponder { _ = resignFirstResponder() }
     self.layout = layout
     frame = CGRect(x: 0, y: 0, width: layout.width, height: layout.height)
     redraw()
+  }
+
+  /// Under memory pressure, canvases keep only what is on screen.
+  private static let trimOnMemoryWarning: NSObjectProtocol = NotificationCenter.default.addObserver(
+    forName: UIApplication.didReceiveMemoryWarningNotification, object: nil, queue: .main
+  ) { _ in
+    MainActor.assumeIsolated {
+      for canvas in all.allObjects {
+        canvas.cancelDrawing()
+        let visible = canvas.window == nil ? .null : canvas.visibleRect()
+        canvas.trim(to: visible)
+        canvas.leanUntilMoved = visible
+      }
+    }
+  }
+  /// After a memory warning, what the screen showed then: nothing is drawn ahead until that changes.
+  private var leanUntilMoved: CGRect?
+
+  override func willMove(toWindow newWindow: UIWindow?) {
+    super.willMove(toWindow: newWindow)
+    _ = Self.trimOnMemoryWarning
+    // Covered by another screen or tab: what was on screen stays, to show at once on the way back.
+    if newWindow == nil { trim(to: visibleRect()) }
+  }
+
+  private func trim(to rect: CGRect) {
+    for (row, tile) in tiles where !tile.frame.intersects(rect) { drop(row) }
   }
 
   override func didMoveToWindow() {
@@ -659,8 +698,7 @@ final class StreamTextCanvas: UIView {
   /// Drops every tile and draws the visible ones again now: never blank, never stale.
   private func redraw() {
     cancelDrawing()
-    for tile in tiles.values { tile.removeFromSuperlayer() }
-    tiles.removeAll()
+    for row in Array(tiles.keys) { drop(row) }
     updateTiles()
   }
 
@@ -671,12 +709,11 @@ final class StreamTextCanvas: UIView {
   func updateTiles() {
     guard window != nil, layout.height > 0 else { return }
     let visible = visibleRect()
-    let near = visible.isEmpty ? visible : visible.insetBy(dx: 0, dy: -Self.prefetch).intersection(bounds)
+    if let lean = leanUntilMoved, lean != visible { leanUntilMoved = nil }
+    let ahead = leanUntilMoved == nil ? Self.prefetch : 0
+    let near = visible.isEmpty ? visible : visible.insetBy(dx: 0, dy: -ahead).intersection(bounds)
     let keep = visible.isEmpty ? visible : visible.insetBy(dx: 0, dy: -2 * Self.prefetch)
-    for (row, tile) in tiles where !tile.frame.intersects(keep) {
-      tile.removeFromSuperlayer()
-      tiles[row] = nil
-    }
+    for (row, tile) in tiles where !tile.frame.intersects(keep) { drop(row) }
     guard !near.isEmpty else { return }
     let started = CACurrentMediaTime()
     var drewNow = false
@@ -695,7 +732,7 @@ final class StreamTextCanvas: UIView {
 
   private func cancelDrawing() {
     drawToken.cancelled = true
-    drawToken = DrawToken()
+    drawToken = DrawToken(self)
     pending.removeAll()
   }
 
@@ -705,12 +742,12 @@ final class StreamTextCanvas: UIView {
     let traits = traitCollection
     let token = drawToken
     let (layout, color) = (layout, color)
-    Self.drawQueue.async { [weak self] in
+    Self.drawQueue.async {
       // Skipped once scrolled past, redrawn or unmounted: the queue only holds what is still wanted.
-      guard !token.cancelled, self != nil else { return }
+      guard !token.cancelled else { return }
       let image = Self.render(rect, layout: layout, color: color, traits: traits)
-      DispatchQueue.main.async { [weak self] in
-        guard let self, !token.cancelled, self.pending.remove(row) != nil, self.tiles[row] == nil else { return }
+      DispatchQueue.main.async {
+        guard let self = token.canvas, !token.cancelled, self.pending.remove(row) != nil, self.tiles[row] == nil else { return }
         self.install(row, image: image)
       }
     }
@@ -723,6 +760,19 @@ final class StreamTextCanvas: UIView {
     tile.contents = image
     layer.addSublayer(tile)
     tiles[row] = tile
+    Self.tileBytes += Self.bytes(of: tile)
+  }
+
+  private func drop(_ row: Int) {
+    guard let tile = tiles.removeValue(forKey: row) else { return }
+    tile.removeFromSuperlayer()
+    Self.tileBytes -= Self.bytes(of: tile)
+  }
+
+  private static func bytes(of tile: CALayer) -> Int {
+    guard let contents = tile.contents else { return 0 }
+    let image = contents as! CGImage
+    return image.bytesPerRow * image.height
   }
 
   /// Any thread.

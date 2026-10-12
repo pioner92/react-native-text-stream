@@ -137,6 +137,22 @@ namespace margelo::nitro::textstreamtesting {
       auto __value = std::move(__result.value());
       return __value;
     }
+    inline std::shared_ptr<Promise<std::string>> tileMemory() override {
+      auto __result = _swiftPart.tileMemory();
+      if (__result.hasError()) [[unlikely]] {
+        std::rethrow_exception(__result.error());
+      }
+      auto __value = std::move(__result.value());
+      return __value;
+    }
+    inline std::shared_ptr<Promise<double>> cover(bool shown) override {
+      auto __result = _swiftPart.cover(std::forward<decltype(shown)>(shown));
+      if (__result.hasError()) [[unlikely]] {
+        std::rethrow_exception(__result.error());
+      }
+      auto __value = std::move(__result.value());
+      return __value;
+    }
     inline void clearPreparedLayouts() override {
       auto __result = _swiftPart.clearPreparedLayouts();
       if (__result.hasError()) [[unlikely]] {

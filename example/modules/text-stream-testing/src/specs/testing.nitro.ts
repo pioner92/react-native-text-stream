@@ -67,6 +67,16 @@ export interface StreamTextTesting extends HybridObject<{ ios: 'swift' }> {
    * budget, and the longest of them.
    */
   resizeSurface(keys: string[], width: number, ms: number): Promise<string>
+  /**
+   * The canvases' image tiles, as JSON: `{ bytes, tiles, canvases, offWindow, footprintMB }`
+   * (`offWindow`: canvases out of a window that still hold tiles; `footprintMB`: the app's memory).
+   */
+  tileMemory(): Promise<string>
+  /**
+   * Shows (or dismisses) a full-screen view controller over the app, which takes the app's views
+   * out of the window, as a pushed screen or another tab does. Resolves with the main-thread ms.
+   */
+  cover(shown: boolean): Promise<number>
   /** Forgets every prepared layout, so the next mounts lay out from scratch (a cold start). */
   clearPreparedLayouts(): void
   /** Prepared layouts cached for later mounts. */

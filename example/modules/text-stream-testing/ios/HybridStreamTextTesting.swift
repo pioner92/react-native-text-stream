@@ -90,6 +90,49 @@ class HybridStreamTextTesting: HybridStreamTextTestingSpec {
     return promise
   }
 
+  func tileMemory() throws -> Promise<String> {
+    let promise = Promise<String>()
+    DispatchQueue.main.async {
+      let tiles = StreamTextRenderer.debugTiles
+      var info = task_vm_info_data_t()
+      var count = mach_msg_type_number_t(MemoryLayout<task_vm_info_data_t>.size / MemoryLayout<natural_t>.size)
+      _ = withUnsafeMutablePointer(to: &info) {
+        $0.withMemoryRebound(to: integer_t.self, capacity: Int(count)) { task_info(mach_task_self_, task_flavor_t(TASK_VM_INFO), $0, &count) }
+      }
+      let result: [String: Any] = ["bytes": tiles.bytes, "tiles": tiles.tiles, "canvases": tiles.canvases,
+                                   "offWindow": tiles.offWindow, "footprintMB": Double(info.phys_footprint) / 1_048_576]
+      let data = (try? JSONSerialization.data(withJSONObject: result)) ?? Data()
+      promise.resolve(withResult: String(decoding: data, as: UTF8.self))
+    }
+    return promise
+  }
+
+  private static var coverController: UIViewController?
+
+  func cover(shown: Bool) throws -> Promise<Double> {
+    let promise = Promise<Double>()
+    DispatchQueue.main.async {
+      let root = UIApplication.shared.connectedScenes.compactMap { ($0 as? UIWindowScene)?.keyWindow }.first?.rootViewController
+      let started = CACurrentMediaTime()
+      // Main-thread time of the switch, with the layout it causes (canvases coming back draw then).
+      let done = {
+        root?.view.window?.layoutIfNeeded()
+        promise.resolve(withResult: (CACurrentMediaTime() - started) * 1000)
+      }
+      if shown {
+        let cover = UIViewController()
+        cover.view.backgroundColor = .systemBackground
+        cover.modalPresentationStyle = .fullScreen
+        Self.coverController = cover
+        root?.present(cover, animated: false, completion: done)
+      } else {
+        Self.coverController = nil
+        root?.dismiss(animated: false, completion: done)
+      }
+    }
+    return promise
+  }
+
   func clearPreparedLayouts() throws {
     StreamTextPreparedLayout.generation += 1
     StreamTextPreparedLayout.cacheClear?()

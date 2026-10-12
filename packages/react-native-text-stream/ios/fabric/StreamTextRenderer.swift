@@ -265,6 +265,14 @@ public final class StreamTextRenderer: UIView {
     return String(decoding: data, as: UTF8.self)
   }
 
+  /// Tests: the tiles of every canvas: bytes, how many, canvases alive and those out of a window
+  /// that still hold tiles. Main thread.
+  @_spi(Testing) public static var debugTiles: (bytes: Int, tiles: Int, canvases: Int, offWindow: Int) {
+    let canvases = StreamTextCanvas.all.allObjects
+    return (StreamTextCanvas.tileBytes, canvases.reduce(0) { $0 + $1.tileCount }, canvases.count,
+            canvases.filter { $0.window == nil && $0.tileCount > 0 }.count)
+  }
+
   /// Tests: "canvas", "textView" or "" (nothing shown yet), and the canvas's engine.
   @_spi(Testing) public var debugMode: (mode: String, engine: String, tiles: Int) {
     if let canvas { return ("canvas", canvas.layout.isCoreText ? "coreText" : "textKit", canvas.tileCount) }
