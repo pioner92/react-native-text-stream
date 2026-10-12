@@ -3,7 +3,7 @@ import { ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import Animated, { useAnimatedProps, useSharedValue } from 'react-native-reanimated';
 import { fetch } from 'react-native-nitro-fetch';
 import { TextDecoder } from 'react-native-nitro-text-decoder';
-import { StreamText } from 'react-native-text-stream';
+import { StreamText, streamFetch } from 'react-native-text-stream';
 import { createFrameMonitor } from 'text-stream-testing';
 import { StreamdownText } from 'react-native-streamdown';
 import { pairs, type Point } from './stats';
@@ -242,13 +242,35 @@ const displayLogs = createFrameMonitor();
 
 function NativeStream({ url, onFinish }: VariantProps) {
   const [buffer, setBuffer] = useState<ArrayBuffer>();
-  const logKey = url;
 
   useEffect(() => {
     fetch(url, { stream: true, nativeBuffer: true })
       .then((res) => setBuffer(res.nativeBuffer))
       .catch((e) => onFinish({ shown: [], jsChunks: 0, error: String(e) }));
   }, [url, onFinish]);
+
+  return <NativeStreamView buffer={buffer} url={url} onFinish={onFinish} />;
+}
+
+// D: the same view, the request made by the library itself (streamFetch) instead of nitro-fetch.
+function OwnFetchStream({ url, onFinish }: VariantProps) {
+  const [buffer, setBuffer] = useState<ArrayBuffer>();
+
+  useEffect(() => {
+    const stream = streamFetch(url);
+    setBuffer(stream.buffer);
+    return () => stream.abort();
+  }, [url]);
+
+  return <NativeStreamView buffer={buffer} url={url} onFinish={onFinish} />;
+}
+
+function NativeStreamView({
+  buffer,
+  url,
+  onFinish,
+}: { buffer: ArrayBuffer | undefined } & Pick<VariantProps, 'url' | 'onFinish'>) {
+  const logKey = url;
 
   useEffect(() => {
     if (!buffer) return;
@@ -292,6 +314,7 @@ export const VARIANT_COMPONENTS: Record<VariantId, React.ComponentType<VariantPr
   B1: ReanimatedText,
   B2: StreamdownVariant,
   C: NativeStream,
+  D: OwnFetchStream,
 };
 
 const HISTORY = [

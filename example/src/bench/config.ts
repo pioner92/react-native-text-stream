@@ -2,7 +2,7 @@
 export const SERVER = 'http://localhost:9877';
 
 export type ScenarioId = 'S1' | 'S2' | 'S3' | 'S4' | 'S5' | 'S6' | 'S7';
-export type VariantId = 'A1' | 'A2' | 'B1' | 'B2' | 'C';
+export type VariantId = 'A1' | 'A2' | 'B1' | 'B2' | 'C' | 'D';
 
 export interface Scenario {
   id: ScenarioId;
@@ -42,6 +42,7 @@ export const VARIANTS: { id: VariantId; title: string }[] = [
   { id: 'B1', title: 'Reanimated · animated TextInput' },
   { id: 'B2', title: 'react-native-streamdown · per frame' },
   { id: 'C', title: 'Native · nativeBuffer + StreamText' },
+  { id: 'D', title: 'Native · streamFetch + StreamText' },
 ];
 
 /** Narrows a run for investigation; leave empty for the full matrix. */
