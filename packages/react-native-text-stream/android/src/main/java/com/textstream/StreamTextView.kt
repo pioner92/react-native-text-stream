@@ -5,7 +5,8 @@ import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
-import android.graphics.RenderNode
+import android.graphics.Matrix
+import android.graphics.RectF
 import android.os.Build
 import android.text.DynamicLayout
 import android.text.Layout
@@ -14,7 +15,12 @@ import android.text.TextPaint
 import android.util.Log
 import android.util.TypedValue
 import android.view.Choreographer
+import android.view.View
+import android.view.ViewTreeObserver
 import android.view.accessibility.AccessibilityNodeInfo
+import android.widget.HorizontalScrollView
+import android.widget.ScrollView
+import androidx.annotation.RequiresApi
 import com.facebook.react.bridge.ReactContext
 import com.facebook.react.uimanager.PixelUtil
 import com.facebook.react.uimanager.StateWrapper
@@ -110,10 +116,14 @@ class StreamTextView(context: Context) : ReactViewGroup(context) {
   private var heightPending = false
   private var reportedStatus: String? = null
 
-  // Blocks of lines, each recorded once into its own display list (API 29+).
-  private val blocks = ArrayList<RenderNode>()
-  /** Blocks [0, cleanBlocks) are recorded and current. */
-  private var cleanBlocks = 0
+  // Blocks of lines, each its own display list, recorded near the screen (API 29+).
+  private val blocks = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) StreamTextBlocks() else null
+  /** The nearest scroll view, whose bounds are what the view can show; else the window. */
+  private var scrollAncestor: View? = null
+  private val toWindow = Matrix()
+  private val fromWindow = Matrix()
+  private val viewportRect = RectF()
+  private val scrollListener = ViewTreeObserver.OnScrollChangedListener { if (needsRedraw()) invalidate() }
 
   /** False while ReactViewGroup's constructor runs, before the fields above are set. */
   private var initialized = false
@@ -201,7 +211,7 @@ class StreamTextView(context: Context) : ReactViewGroup(context) {
         accessibilityValue = accessibilityText(),
         mode = if (canvas != null) "canvas" else if (hadText) "textView" else "",
         engine = if (canvas != null) "staticLayout" else "",
-        tiles = blocks.size,
+        tiles = blocks?.count ?: 0,
     )
   }
 
@@ -356,6 +366,10 @@ class StreamTextView(context: Context) : ReactViewGroup(context) {
 
   override fun onAttachedToWindow() {
     super.onAttachedToWindow()
+    scrollAncestor = generateSequence(parent) { it.parent }.firstOrNull {
+      it is ScrollView || it is HorizontalScrollView
+    } as? View
+    if (blocks != null) viewTreeObserver.addOnScrollChangedListener(scrollListener)
     if (base != 0L && !finished) {
       watcher.start(base, offset)
       scheduleFrame()
@@ -364,6 +378,8 @@ class StreamTextView(context: Context) : ReactViewGroup(context) {
 
   override fun onDetachedFromWindow() {
     super.onDetachedFromWindow()
+    if (blocks != null) viewTreeObserver.removeOnScrollChangedListener(scrollListener)
+    scrollAncestor = null
     stopTicking()
     watcher.stop()
     discardBlocks()
@@ -566,18 +582,20 @@ class StreamTextView(context: Context) : ReactViewGroup(context) {
     val layout = textLayout
     val block = if (layout == null || charOffset == 0 || canvas != null) 0 else {
       // The line the append continued may re-wrap (one more for safety).
-      max(layout.getLineForOffset(charOffset) - 1, 0) / BLOCK_LINES
+      max(layout.getLineForOffset(charOffset) - 1, 0) / StreamTextBlocks.LINES
     }
-    cleanBlocks = min(cleanBlocks, block)
+    blocks?.markDirty(block)
     invalidate()
   }
 
   private fun discardBlocks() {
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-      for (node in blocks) node.discardDisplayList()
-    }
-    blocks.clear()
-    cleanBlocks = 0
+    blocks?.discard()
+  }
+
+  override fun onLayout(changed: Boolean, left: Int, top: Int, right: Int, bottom: Int) {
+    super.onLayout(changed, left, top, right, bottom)
+    // Moved within its scroll view (a bubble above grew): other blocks may be near the screen now.
+    if (changed && needsRedraw()) invalidate()
   }
 
   override fun onDraw(canvas: Canvas) {
@@ -594,49 +612,78 @@ class StreamTextView(context: Context) : ReactViewGroup(context) {
     prepared?.paint?.color = paint.color
     canvas.save()
     canvas.translate(paddingLeft.toFloat(), paddingTop.toFloat())
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && canvas.isHardwareAccelerated) {
-      drawBlocks(canvas, layout)
+    val blocks = blocks
+    if (blocks != null && canvas.isHardwareAccelerated && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+      val near = nearScreen(layout, AHEAD_DP)
+      blocks.draw(canvas, layout, near, nearScreen(layout, KEEP_DP))
     } else {
       layout.draw(canvas)
     }
     canvas.restore()
   }
 
-  @androidx.annotation.RequiresApi(Build.VERSION_CODES.Q)
-  private fun drawBlocks(canvas: Canvas, layout: Layout) {
-    val lineCount = layout.lineCount
-    val count = (lineCount + BLOCK_LINES - 1) / BLOCK_LINES
-    while (blocks.size > count) blocks.removeAt(blocks.size - 1).discardDisplayList()
-    while (blocks.size < count) blocks.add(RenderNode("StreamTextBlock"))
-    for (i in min(cleanBlocks, count) until count) {
-      val first = i * BLOCK_LINES
-      val last = min(first + BLOCK_LINES, lineCount)
-      val top = layout.getLineTop(first)
-      val bottom = layout.getLineTop(last)
-      val node = blocks[i]
-      node.setPosition(0, top, layout.width, bottom)
-      val recording = node.beginRecording()
-      try {
-        // Layout.draw picks the lines in the clip, which is the block's bounds.
-        recording.translate(0f, -top.toFloat())
-        layout.draw(recording)
-      } finally {
-        node.endRecording()
-      }
-    }
-    cleanBlocks = count
-    for (node in blocks) canvas.drawRenderNode(node)
+  /** A scroll or a move brought other blocks near the screen than the ones drawn. */
+  private fun needsRedraw(): Boolean {
+    val blocks = blocks ?: return false
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q || shownText().isEmpty()) return false
+    val layout: Layout = canvas?.layout ?: textLayout ?: return false
+    val near = nearScreen(layout, AHEAD_DP)
+    return if (near.isEmpty()) blocks.drawnLast >= blocks.drawnFirst
+    else near.first != blocks.drawnFirst || near.last != blocks.drawnLast
+  }
+
+  /** The blocks within `margin` dp of what the view's scroll view (or the window) shows. */
+  @RequiresApi(Build.VERSION_CODES.Q)
+  private fun nearScreen(layout: Layout, margin: Float): IntRange {
+    val blocks = blocks ?: return IntRange.EMPTY
+    val viewport = viewport() ?: return IntRange.EMPTY
+    val px = PixelUtil.toPixelFromDIP(margin)
+    return blocks.range(layout, (viewport.top - paddingTop - px).toInt(), (viewport.bottom - paddingTop + px).toInt())
+  }
+
+  /**
+   * What the view's scroll view (or the window) shows, in the view's coordinates, transforms
+   * included (an inverted scroll view). Main thread; the rect is reused.
+   */
+  @RequiresApi(Build.VERSION_CODES.Q)
+  private fun viewport(): RectF? {
+    val clip = scrollAncestor ?: rootView ?: return null
+    toWindow.reset()
+    transformMatrixToGlobal(toWindow)
+    if (!toWindow.invert(fromWindow)) return null
+    toWindow.reset()
+    clip.transformMatrixToGlobal(toWindow)
+    viewportRect.set(0f, 0f, clip.width.toFloat(), clip.height.toFloat())
+    toWindow.mapRect(viewportRect)
+    fromWindow.mapRect(viewportRect)
+    return viewportRect
   }
 
   // MARK: - Accessibility
 
-  /** Only the end of the text: a snapshot of megabytes of it would stall the main thread. */
+  /**
+   * A canvas exposes the lines on screen, whole, as iOS does; the text it lays out itself (a
+   * stream) only its end: a snapshot of megabytes of text would stall the main thread.
+   */
   override fun onInitializeAccessibilityNodeInfo(info: AccessibilityNodeInfo) {
     super.onInitializeAccessibilityNodeInfo(info)
     info.text = accessibilityText()
   }
 
   private fun accessibilityText(): String {
+    val prepared = canvas
+    if (prepared != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+      val layout = prepared.layout
+      val viewport = viewport()
+      if (viewport != null && layout.lineCount > 0) {
+        val top = (viewport.top - paddingTop).toInt()
+        val bottom = (viewport.bottom - paddingTop).toInt()
+        if (bottom < 0 || top > layout.height) return ""
+        val first = layout.getLineForVertical(max(top, 0))
+        val last = layout.getLineForVertical(min(bottom, layout.height))
+        return prepared.text.substring(layout.getLineStart(first), layout.getLineEnd(last))
+      }
+    }
     val shown = shownText()
     val length = shown.length
     if (length <= ACCESSIBLE_TAIL_CHARS) return shown.toString()
@@ -655,7 +702,9 @@ class StreamTextView(context: Context) : ReactViewGroup(context) {
     const val MAX_BYTES_PER_TICK = 256 * 1024
     /** As the C++ prepared layouts' limit (StreamTextPreparedAndroid.cpp). */
     const val INSTANT_FILL_BYTES = 64L * 1024
-    const val BLOCK_LINES = 32
+    /** Drawn ahead of the screen, and kept, above and below (iOS: 512 and 1024 pt). */
+    const val AHEAD_DP = 512f
+    const val KEEP_DP = 1024f
     const val ACCESSIBLE_TAIL_CHARS = 2000
   }
 }

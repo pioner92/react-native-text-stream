@@ -247,8 +247,7 @@ describe('StreamText: prepared layouts', () => {
     await waitFor(() => expect(testing.preparedCacheCount()).toBe(0), { timeout: 2000 });
   });
 
-  // Not on Android yet: tiles near the screen.
-  itIOS('a tall text keeps tiles only near the screen as it scrolls', async () => {
+  it('a tall text keeps tiles only near the screen as it scrolls', async () => {
     const key = newKey();
     let scroll: ScrollView | null = null;
     let contentHeight = 0;
@@ -452,8 +451,7 @@ describe('StreamText: prepared layouts', () => {
     expect(onCanvas[3]).toMatchObject({ rtl: true, rects: [{ rtl: true }] });
   });
 
-  // Not on Android yet: tiles near the screen.
-  itIOS('bubbles mounted below the screen draw once scrolled to, and let go of tiles far away', async () => {
+  it('bubbles mounted below the screen draw once scrolled to, and let go of tiles far away', async () => {
     const keys = Array.from({ length: 20 }, newKey);
     const texts = keys.map((_, i) => `bubble ${i} ` + 'some words in a chat message. '.repeat(12));
     let scroll: ScrollView | null = null;

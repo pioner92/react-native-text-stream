@@ -7,7 +7,6 @@ import {
   buffer,
   Column,
   expectLinesHeight,
-  itIOS,
   layouts,
   newKey,
   PARAGRAPHS,
@@ -167,8 +166,7 @@ describe('StreamText: text and height', () => {
     expect(s.status).toBe('done');
   });
 
-  // Not on Android yet: prepared layouts (canvas).
-  itIOS('exposes what the screen shows of a long finished text to accessibility, not all of it', async () => {
+  it('exposes what the screen shows of a long finished text to accessibility, not all of it', async () => {
     const key = newKey();
     const long = 'x'.repeat(5000) + 'THE END';
     await render(
