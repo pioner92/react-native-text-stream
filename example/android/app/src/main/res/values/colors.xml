@@ -1,0 +1,4 @@
+<resources>
+    <!-- App.tsx C.bg -->
+    <color name="app_background">#0A0A0F</color>
+</resources>
