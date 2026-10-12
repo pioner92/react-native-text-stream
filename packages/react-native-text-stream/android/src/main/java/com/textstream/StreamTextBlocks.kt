@@ -43,18 +43,11 @@ internal class StreamTextBlocks {
     drawnLast = -1
   }
 
-  /** Blocks of `layout` covering layout y in [top, bottom], or an empty range. */
-  fun range(layout: Layout, top: Int, bottom: Int): IntRange {
-    val height = layout.height
-    if (bottom < 0 || top > height || layout.lineCount == 0) return IntRange.EMPTY
-    val first = layout.getLineForVertical(max(top, 0)) / LINES
-    val last = layout.getLineForVertical(min(bottom, height)) / LINES
-    return first..last
-  }
-
-  /** Draws the blocks in `draw`, recording those not current; drops those outside `keep`. */
-  fun draw(canvas: Canvas, layout: Layout, draw: IntRange, keep: IntRange) {
-    val lineCount = layout.lineCount
+  /**
+   * Draws the blocks in `draw` of the first `lineCount` lines of `layout`, recording those not
+   * current; drops those outside `keep`.
+   */
+  fun draw(canvas: Canvas, layout: Layout, lineCount: Int, draw: IntRange, keep: IntRange) {
     val count = (lineCount + LINES - 1) / LINES
     while (nodes.size > count) nodes.removeAt(nodes.size - 1).discardDisplayList()
     while (nodes.size < count) nodes.add(RenderNode("StreamTextBlock"))
@@ -95,5 +88,15 @@ internal class StreamTextBlocks {
 
   companion object {
     const val LINES = 32
+
+    /** Blocks of the first `lineCount` lines of `layout` covering y in [top, bottom], or none. */
+    fun range(layout: Layout, lineCount: Int, top: Int, bottom: Int): IntRange {
+      if (lineCount == 0) return IntRange.EMPTY
+      val height = layout.getLineTop(lineCount)
+      if (bottom < 0 || top > height) return IntRange.EMPTY
+      val first = min(layout.getLineForVertical(max(top, 0)), lineCount - 1) / LINES
+      val last = min(layout.getLineForVertical(min(bottom, height)), lineCount - 1) / LINES
+      return first..last
+    }
   }
 }

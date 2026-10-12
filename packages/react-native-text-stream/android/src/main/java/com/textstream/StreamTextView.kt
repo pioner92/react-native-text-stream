@@ -8,9 +8,7 @@ import android.graphics.Paint
 import android.graphics.Matrix
 import android.graphics.RectF
 import android.os.Build
-import android.text.DynamicLayout
 import android.text.Layout
-import android.text.SpannableStringBuilder
 import android.text.TextPaint
 import android.util.Log
 import android.util.TypedValue
@@ -92,13 +90,12 @@ class StreamTextView(context: Context) : ReactViewGroup(context) {
   private var style = StreamTextStyle()
   private var styleApplied = false
   private var paint = TextPaint(Paint.ANTI_ALIAS_FLAG)
-  /** The text the view laid out itself: streamed, attached, or a canvas it fell back from. */
-  private val text = SpannableStringBuilder()
-  private var textLayout: DynamicLayout? = null
+  /** The text the view lays out itself: streamed, attached, or a canvas it fell back from. */
+  private val flow = StreamTextFlow()
   /** Content width in px. */
   private var layoutWidth = -1
 
-  /** A prepared layout shown as is; then [text] stays empty. */
+  /** A prepared layout shown as is; then [flow] stays empty. */
   private var canvas: StreamTextPreparedLayout? = null
   /** The layout the latest state prepared for the `source` prop (a new width or style). */
   private var latestPrepared: StreamTextPreparedLayout? = null
@@ -110,7 +107,7 @@ class StreamTextView(context: Context) : ReactViewGroup(context) {
   private var source: StreamTextSource? = null
   /** The source came from the `source` prop (not an `attach` command). */
   private var sourceIsProp = false
-  /** A finished prop source shown in [text], for a background layout when the view goes. */
+  /** A finished prop source shown in [flow], for a background layout when the view goes. */
   private var finishedProp: StreamTextSource? = null
   private var base = 0L
   private var bytes: ByteBuffer? = null
@@ -140,7 +137,8 @@ class StreamTextView(context: Context) : ReactViewGroup(context) {
   private var heightPending = false
   private var reportedStatus: String? = null
 
-  // Blocks of lines, each its own display list, recorded near the screen (API 29+).
+  // A canvas's blocks of lines, each its own display list, recorded near the screen (API 29+);
+  // the flow has its own.
   private val blocks = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) StreamTextBlocks() else null
   /** The nearest scroll view, whose bounds are what the view can show; else the window. */
   private var scrollAncestor: View? = null
@@ -235,11 +233,11 @@ class StreamTextView(context: Context) : ReactViewGroup(context) {
         accessibilityValue = accessibilityText(),
         mode = if (canvas != null) "canvas" else if (hadText) "textView" else "",
         engine = if (canvas != null) "staticLayout" else "",
-        tiles = blocks?.count ?: 0,
+        tiles = if (canvas != null) blocks?.count ?: 0 else flow.blockCount,
     )
   }
 
-  private fun shownText(): CharSequence = canvas?.text ?: text
+  private fun shownText(): CharSequence = canvas?.text ?: flow.text
 
   // MARK: - Attaching
 
@@ -273,9 +271,8 @@ class StreamTextView(context: Context) : ReactViewGroup(context) {
       canvas = null
       markDirty(0)
     }
-    if (text.isNotEmpty()) {
-      text.clear()
-      style.applySegmentedLineHeight(text)
+    if (flow.text.isNotEmpty()) {
+      flow.clear()
       markDirty(0)
     }
     var fromState = false
@@ -361,7 +358,8 @@ class StreamTextView(context: Context) : ReactViewGroup(context) {
     // No layout for this width or style: lay the text out here.
     canvasStale = false
     canvas = null
-    text.append(current.text)
+    flow.clear()
+    flow.text.append(current.text)
     hadText = true
     rebuildLayout()
     reportHeight()
@@ -459,7 +457,7 @@ class StreamTextView(context: Context) : ReactViewGroup(context) {
       appendText(decoded)
       val appendTime = System.nanoTime() - started
       // Before the first layout there is no width: the text is laid out once the view gets one.
-      val measured = textLayout != null
+      val measured = flow.isLaidOut
       val commitTime = if (fillAll) 0L else reportHeight()
       val tickTime = System.nanoTime() - started
       stats?.let {
@@ -510,13 +508,12 @@ class StreamTextView(context: Context) : ReactViewGroup(context) {
 
   private fun appendText(chars: CharSequence) {
     if (chars.isEmpty()) return
-    val oldLength = text.length
     // With its line height spans, so the re-wrap the append triggers already sees them.
     val spanned = style.withLineHeight(chars)
-    text.append(spanned)
+    if (flow.append(chars, spanned)) flow.freezeIfLong(style, paint) else rebuildLayout()
     selection.append(spanned)
     hadText = true
-    markDirty(oldLength)
+    invalidate()
     if (displayLogKey != null) unloggedShown = offset
   }
 
@@ -573,11 +570,10 @@ class StreamTextView(context: Context) : ReactViewGroup(context) {
 
   /** Returns the time (ns) spent committing the new height, if there was one. */
   private fun reportHeight(): Long {
-    if (canvas != null) return 0
-    val layout = textLayout ?: return 0
+    if (canvas != null || !flow.isLaidOut) return 0
     val started = System.nanoTime()
     // Like <Text>, an empty view has no height (and mounting one doesn't need a commit).
-    val px = if (text.isEmpty()) 0 else layout.height
+    val px = flow.height
     val height = PixelUtil.toDIPFromPixel(px.toFloat())
     if (height == reportedHeight) return 0
     reportedHeight = height
@@ -638,24 +634,21 @@ class StreamTextView(context: Context) : ReactViewGroup(context) {
 
   private fun rebuildLayout() {
     markDirty(0)
-    textLayout = if (layoutWidth > 0) style.dynamicLayout(text, paint, layoutWidth) else null
+    flow.rebuild(style, paint, layoutWidth)
   }
 
   // MARK: - Drawing
 
-  /** The text from `charOffset` on changed: re-record the blocks it touches. */
-  private fun markDirty(charOffset: Int) {
-    val layout = textLayout
-    val block = if (layout == null || charOffset == 0 || canvas != null) 0 else {
-      // The line the append continued may re-wrap (one more for safety).
-      max(layout.getLineForOffset(charOffset) - 1, 0) / StreamTextBlocks.LINES
-    }
-    blocks?.markDirty(block)
+  /** Every line changed (a new text, color or layout): re-record every block. Appends mark their own. */
+  private fun markDirty(@Suppress("UNUSED_PARAMETER") charOffset: Int) {
+    blocks?.markDirty(0)
+    flow.markAllDirty()
     invalidate()
   }
 
   private fun discardBlocks() {
     blocks?.discard()
+    flow.discardBlocks()
   }
 
   override fun onLayout(changed: Boolean, left: Int, top: Int, right: Int, bottom: Int) {
@@ -673,20 +666,28 @@ class StreamTextView(context: Context) : ReactViewGroup(context) {
     }
     if (selection.overlay != null) return
     val drawStarted = if (stats != null) System.nanoTime() else 0L
-    val prepared = this.canvas
-    val layout: Layout = prepared?.layout ?: textLayout ?: return
     if (shownText().isEmpty()) return
+    val prepared = this.canvas
+    if (prepared == null && !flow.isLaidOut) return
     // A prepared layout draws with its own paint.
     prepared?.paint?.color = paint.color
     canvas.save()
     canvas.translate(paddingLeft.toFloat(), paddingTop.toFloat())
-    val blocks = blocks
-    if (blocks != null && canvas.isHardwareAccelerated && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-      val near = nearScreen(layout, AHEAD_DP)
-      blocks.draw(canvas, layout, near, nearScreen(layout, KEEP_DP))
-    } else {
-      layout.draw(canvas)
+    val blocked = canvas.isHardwareAccelerated && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q
+    val drawSection = { layout: Layout, lines: Int, y: Int, sectionBlocks: StreamTextBlocks? ->
+      canvas.save()
+      canvas.translate(0f, y.toFloat())
+      if (sectionBlocks != null && blocked && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+        sectionBlocks.draw(
+            canvas, layout, lines, nearScreen(layout, lines, y, AHEAD_DP), nearScreen(layout, lines, y, KEEP_DP))
+      } else {
+        // Without display lists (before API 29): the lines this section shows.
+        canvas.clipRect(0, 0, layout.width, layout.getLineTop(lines))
+        layout.draw(canvas)
+      }
+      canvas.restore()
     }
+    if (prepared != null) drawSection(prepared.layout, prepared.layout.lineCount, 0, blocks) else flow.forEachSection(drawSection)
     canvas.restore()
     stats?.let {
       val time = System.nanoTime() - drawStarted
@@ -698,21 +699,28 @@ class StreamTextView(context: Context) : ReactViewGroup(context) {
 
   /** A scroll or a move brought other blocks near the screen than the ones drawn. */
   private fun needsRedraw(): Boolean {
-    val blocks = blocks ?: return false
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q || shownText().isEmpty()) return false
-    val layout: Layout = canvas?.layout ?: textLayout ?: return false
-    val near = nearScreen(layout, AHEAD_DP)
-    return if (near.isEmpty()) blocks.drawnLast >= blocks.drawnFirst
-    else near.first != blocks.drawnFirst || near.last != blocks.drawnLast
+    var redraw = false
+    val check = { layout: Layout, lines: Int, y: Int, sectionBlocks: StreamTextBlocks? ->
+      if (sectionBlocks != null && !redraw) {
+        val near = nearScreen(layout, lines, y, AHEAD_DP)
+        redraw = if (near.isEmpty()) sectionBlocks.drawnLast >= sectionBlocks.drawnFirst
+        else near.first != sectionBlocks.drawnFirst || near.last != sectionBlocks.drawnLast
+      }
+    }
+    val prepared = canvas
+    if (prepared != null) check(prepared.layout, prepared.layout.lineCount, 0, blocks) else flow.forEachSection(check)
+    return redraw
   }
 
-  /** The blocks within `margin` dp of what the view's scroll view (or the window) shows. */
+  /** The blocks of `layout`'s first `lines`, drawn `y` px below the text's top, within `margin` dp of the screen. */
   @RequiresApi(Build.VERSION_CODES.Q)
-  private fun nearScreen(layout: Layout, margin: Float): IntRange {
-    val blocks = blocks ?: return IntRange.EMPTY
+  private fun nearScreen(layout: Layout, lines: Int, y: Int, margin: Float): IntRange {
     val viewport = viewport() ?: return IntRange.EMPTY
     val px = PixelUtil.toPixelFromDIP(margin)
-    return blocks.range(layout, (viewport.top - paddingTop - px).toInt(), (viewport.bottom - paddingTop + px).toInt())
+    val top = (viewport.top - paddingTop - y - px).toInt()
+    val bottom = (viewport.bottom - paddingTop - y + px).toInt()
+    return StreamTextBlocks.range(layout, lines, top, bottom)
   }
 
   /**

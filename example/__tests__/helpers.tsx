@@ -10,6 +10,8 @@ export const TSB = { open: 0, done: 1, error: 2, cancelled: 3, overflow: 4 } as 
 /** Suites and tests of what Android doesn't have yet (named where they are used): skipped there. */
 export const describeIOS = Platform.OS === 'ios' ? describe : describe.skip;
 export const itIOS = Platform.OS === 'ios' ? it : it.skip;
+/** What only Android has, or only Android passes yet (named where used). */
+export const describeAndroid = Platform.OS === 'android' ? describe : describe.skip;
 
 const encoder = new TextEncoder();
 export const utf8 = (text: string) => encoder.encode(text);
