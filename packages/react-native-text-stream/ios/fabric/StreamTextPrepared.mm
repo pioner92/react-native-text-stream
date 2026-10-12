@@ -161,12 +161,6 @@ void insertLocked(StreamTextPreparedRef entry) {
   }
 }
 
-// Main thread only: a Yoga pass there (a rotation, a state update) may typeset with CoreText within
-// a small budget; TextKit or more text keeps the view's own height.
-constexpr CFTimeInterval kMainBudget = 0.008;
-CFTimeInterval gMainWindowStart = 0;
-CFTimeInterval gMainSpent = 0;
-
 /** The width measure last asked for: an early start guesses the bubble width from it. */
 std::atomic<Float> gLastWidth{0};
 
@@ -209,36 +203,29 @@ std::shared_ptr<std::promise<StreamTextPreparedRef>> startLocked(const Job &job)
   return promise;
 }
 
-/** Makes the layout (CoreText only on the main thread, within its budget), caches it, settles waiters. */
+/**
+ * Makes the layout, caches it, settles waiters. On the main thread (a rotation, Split View) too:
+ * without one the view lays the text out there anyway, in a text view, which costs more.
+ */
 StreamTextPreparedRef run(Job job, std::shared_ptr<std::promise<StreamTextPreparedRef>> promise, bool main) {
   StreamTextPreparedRef entry;
   CFTimeInterval started = CACurrentMediaTime();
-  bool allowed = true;
-  if (main) {
-    if (started - gMainWindowStart > 0.1) {
-      gMainWindowStart = started;
-      gMainSpent = 0;
-    }
-    allowed = gMainSpent <= kMainBudget;
+  StreamTextPreparedLayout *layout;
+  @autoreleasepool {
+    layout = [[StreamTextPreparedLayout alloc]
+        initWithUtf8:static_cast<const uint8_t *>(job.source->data()) + TSB_HEADER_SIZE
+               count:static_cast<NSInteger>(job.bytes)
+               bytes:job.bytes
+               style:job.textStyle
+               width:job.width];
   }
-  if (allowed) {
-    StreamTextPreparedLayout *layout;
-    @autoreleasepool {
-      layout = [[StreamTextPreparedLayout alloc]
-          initWithUtf8:static_cast<const uint8_t *>(job.source->data()) + TSB_HEADER_SIZE
-                 count:static_cast<NSInteger>(job.bytes)
-                 bytes:job.bytes
-                 style:job.textStyle
-                 width:job.width
-               textKit:!main];
-    }
-    if (main) {
-      gMainSpent += CACurrentMediaTime() - started;
-    }
-    if (layout) {
-      entry = std::make_shared<const StreamTextPreparedHandle>(
-          StreamTextPreparedHandle{job.source, job.hash, job.style, layout, StreamTextPreparedLayout.generation});
-    }
+  if (main) {
+    StreamTextPreparedLayout.mainLayouts += 1;
+    StreamTextPreparedLayout.mainLongest = std::max(StreamTextPreparedLayout.mainLongest, CACurrentMediaTime() - started);
+  }
+  if (layout) {
+    entry = std::make_shared<const StreamTextPreparedHandle>(
+        StreamTextPreparedHandle{job.source, job.hash, job.style, layout, StreamTextPreparedLayout.generation});
   }
   {
     std::lock_guard lock(gMutex);

@@ -58,6 +58,15 @@ export interface StreamTextTesting extends HybridObject<{ ios: 'swift' }> {
   setPreparedLayout(enabled: boolean): void
   /** False: prepared layouts use TextKit even where CoreText could. */
   setPreparedCoreText(enabled: boolean): void
+  /**
+   * Sets the width of the surface holding views `keys`, on the main thread as a rotation or Split
+   * View does (0 restores the window's), then records what the views show, frame by frame, for `ms`:
+   * JSON `{ mainMs, layouts, refused, longestMs, views: { [key]: [{ w, h, mode }] } }`, the first
+   * entry being the first frame after the resize and each next one a change. `layouts`, `refused`
+   * and `longestMs`: prepared layouts made on the main thread during the resize, refused for the
+   * budget, and the longest of them.
+   */
+  resizeSurface(keys: string[], width: number, ms: number): Promise<string>
   /** Forgets every prepared layout, so the next mounts lay out from scratch (a cold start). */
   clearPreparedLayouts(): void
   /** Prepared layouts cached for later mounts. */

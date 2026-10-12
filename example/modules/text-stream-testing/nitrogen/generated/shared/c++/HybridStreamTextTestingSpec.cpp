@@ -22,6 +22,7 @@ namespace margelo::nitro::textstreamtesting {
       prototype.registerHybridMethod("drainTextViewPool", &HybridStreamTextTestingSpec::drainTextViewPool);
       prototype.registerHybridMethod("setPreparedLayout", &HybridStreamTextTestingSpec::setPreparedLayout);
       prototype.registerHybridMethod("setPreparedCoreText", &HybridStreamTextTestingSpec::setPreparedCoreText);
+      prototype.registerHybridMethod("resizeSurface", &HybridStreamTextTestingSpec::resizeSurface);
       prototype.registerHybridMethod("clearPreparedLayouts", &HybridStreamTextTestingSpec::clearPreparedLayouts);
       prototype.registerHybridMethod("preparedCacheCount", &HybridStreamTextTestingSpec::preparedCacheCount);
       prototype.registerHybridMethod("preparedCacheDump", &HybridStreamTextTestingSpec::preparedCacheDump);

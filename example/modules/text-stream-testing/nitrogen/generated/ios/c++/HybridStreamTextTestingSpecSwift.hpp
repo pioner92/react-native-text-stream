@@ -22,11 +22,11 @@ namespace margelo::nitro::textstreamtesting { struct StreamTextSnapshot; }
 #include <NitroModules/ArrayBuffer.hpp>
 #include <NitroModules/ArrayBufferHolder.hpp>
 #include <string>
+#include <NitroModules/Promise.hpp>
+#include <vector>
 #include <unordered_map>
 #include "StreamTextTestStyle.hpp"
 #include <optional>
-#include <NitroModules/Promise.hpp>
-#include <vector>
 #include "StreamTextSnapshot.hpp"
 
 #include "TextStreamTesting-Swift-Cxx-Umbrella.hpp"
@@ -128,6 +128,14 @@ namespace margelo::nitro::textstreamtesting {
       if (__result.hasError()) [[unlikely]] {
         std::rethrow_exception(__result.error());
       }
+    }
+    inline std::shared_ptr<Promise<std::string>> resizeSurface(const std::vector<std::string>& keys, double width, double ms) override {
+      auto __result = _swiftPart.resizeSurface(keys, std::forward<decltype(width)>(width), std::forward<decltype(ms)>(ms));
+      if (__result.hasError()) [[unlikely]] {
+        std::rethrow_exception(__result.error());
+      }
+      auto __value = std::move(__result.value());
+      return __value;
     }
     inline void clearPreparedLayouts() override {
       auto __result = _swiftPart.clearPreparedLayouts();

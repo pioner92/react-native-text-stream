@@ -3,7 +3,8 @@ import UIKit
 
 /// A finished text laid out ahead, off the main thread (in the shadow node's measure, or on a
 /// background queue once a stream finishes), so mounting it on the main thread only draws what is
-/// visible: no text view, no layout. The lines are those the renderer's text view (TextKit 1)
+/// visible: no text view, no layout. A rotation or a resize lays it out again on the main thread,
+/// which is still cheaper than a text view. The lines are those the renderer's text view (TextKit 1)
 /// would make, so swapping one in (for selection, a new width or a new style) keeps every line.
 ///
 /// Two engines: CoreText (several times cheaper) for a fixed line height and a single style, where
@@ -31,6 +32,9 @@ public final class StreamTextPreparedLayout: NSObject {
   @objc public static var cacheCount: (() -> Int)?
   @objc public static var cacheClear: (() -> Void)?
   @objc public static var cacheDump: (() -> String)?
+  /// Tests: layouts made on the main thread (a rotation, a resize) and the longest (s). Main thread.
+  @objc public static var mainLayouts = 0
+  @objc public static var mainLongest: Double = 0
   /// Larger finished texts keep the text view path: they fill over several frames anyway.
   @objc public static let maxBytes: UInt64 = StreamTextLayout.instantFillBytes
 
@@ -48,10 +52,7 @@ public final class StreamTextPreparedLayout: NSObject {
     case coreText(CoreTextLines)
   }
 
-  /// nil only when `textKit` is false and CoreText can't reproduce TextKit's lines for this text
-  /// (the main thread may only afford CoreText).
-  @objc public init?(utf8: UnsafePointer<UInt8>, count: Int, bytes: UInt64, style: StreamTextStyle, width: CGFloat,
-                     textKit: Bool) {
+  @objc public init?(utf8: UnsafePointer<UInt8>, count: Int, bytes: UInt64, style: StreamTextStyle, width: CGFloat) {
     let started = CACurrentMediaTime()
     let string = streamTextDecodeUTF8(utf8, count, atStreamStart: true)
     let attributes = style.attributes()
@@ -61,7 +62,7 @@ public final class StreamTextPreparedLayout: NSObject {
     if Self.coreText, let lines = CoreTextLines(text: text, attributes: attributes, style: style, width: width) {
       engine = .coreText(lines)
       height = lines.height
-    } else if textKit, let lines = TextKitLines(text: text, width: width) {
+    } else if let lines = TextKitLines(text: text, width: width) {
       engine = .textKit(lines)
       height = lines.height
     } else {

@@ -20,10 +20,10 @@ namespace margelo::nitro::textstreamtesting { struct StreamTextSnapshot; }
 
 #include <NitroModules/ArrayBuffer.hpp>
 #include <string>
-#include <unordered_map>
-#include "StreamTextTestStyle.hpp"
 #include <NitroModules/Promise.hpp>
 #include <vector>
+#include <unordered_map>
+#include "StreamTextTestStyle.hpp"
 #include "StreamTextSnapshot.hpp"
 
 namespace margelo::nitro::textstreamtesting {
@@ -65,6 +65,7 @@ namespace margelo::nitro::textstreamtesting {
       virtual void drainTextViewPool() = 0;
       virtual void setPreparedLayout(bool enabled) = 0;
       virtual void setPreparedCoreText(bool enabled) = 0;
+      virtual std::shared_ptr<Promise<std::string>> resizeSurface(const std::vector<std::string>& keys, double width, double ms) = 0;
       virtual void clearPreparedLayouts() = 0;
       virtual double preparedCacheCount() = 0;
       virtual std::string preparedCacheDump() = 0;

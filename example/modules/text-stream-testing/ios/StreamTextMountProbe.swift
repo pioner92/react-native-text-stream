@@ -35,7 +35,7 @@ enum StreamTextMountProbe {
         let begun = CACurrentMediaTime()
         bytes.withUnsafeBufferPointer { buffer in
           _ = StreamTextPreparedLayout(utf8: buffer.baseAddress!, count: buffer.count, bytes: UInt64(buffer.count),
-                                       style: style, width: width, textKit: true)
+                                       style: style, width: width)
         }
         inside = (CACurrentMediaTime() - begun) * 1000
         done.signal()
@@ -306,7 +306,7 @@ enum StreamTextMountProbe {
         bytes.withUnsafeBufferPointer { buffer in
           time("\(name).\(pass)") {
             _ = StreamTextPreparedLayout(utf8: buffer.baseAddress!, count: buffer.count, bytes: UInt64(buffer.count),
-                                         style: style, width: width, textKit: true)
+                                         style: style, width: width)
           }
         }
       }
@@ -324,7 +324,7 @@ enum StreamTextMountProbe {
         let begun = CACurrentMediaTime()
         bytes.withUnsafeBufferPointer { buffer in
           _ = StreamTextPreparedLayout(utf8: buffer.baseAddress!, count: buffer.count, bytes: UInt64(buffer.count),
-                                       style: style, width: width, textKit: true)
+                                       style: style, width: width)
         }
         inside = (CACurrentMediaTime() - begun) * 1000
         done.signal()

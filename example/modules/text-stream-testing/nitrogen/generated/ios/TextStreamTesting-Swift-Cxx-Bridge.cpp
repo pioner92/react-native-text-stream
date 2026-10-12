@@ -55,18 +55,18 @@ namespace margelo::nitro::textstreamtesting::bridge::swift {
     return swiftPart.toUnsafe();
   }
   
-  // pragma MARK: std::function<void(const std::unordered_map<std::string, double>& /* result */)>
-  Func_void_std__unordered_map_std__string__double_ create_Func_void_std__unordered_map_std__string__double_(void* NON_NULL swiftClosureWrapper) noexcept {
-    auto swiftClosure = TextStreamTesting::Func_void_std__unordered_map_std__string__double_::fromUnsafe(swiftClosureWrapper);
-    return [swiftClosure = std::move(swiftClosure)](const std::unordered_map<std::string, double>& result) mutable -> void {
-      swiftClosure.call(result);
-    };
-  }
-  
   // pragma MARK: std::function<void(const std::string& /* result */)>
   Func_void_std__string create_Func_void_std__string(void* NON_NULL swiftClosureWrapper) noexcept {
     auto swiftClosure = TextStreamTesting::Func_void_std__string::fromUnsafe(swiftClosureWrapper);
     return [swiftClosure = std::move(swiftClosure)](const std::string& result) mutable -> void {
+      swiftClosure.call(result);
+    };
+  }
+  
+  // pragma MARK: std::function<void(const std::unordered_map<std::string, double>& /* result */)>
+  Func_void_std__unordered_map_std__string__double_ create_Func_void_std__unordered_map_std__string__double_(void* NON_NULL swiftClosureWrapper) noexcept {
+    auto swiftClosure = TextStreamTesting::Func_void_std__unordered_map_std__string__double_::fromUnsafe(swiftClosureWrapper);
+    return [swiftClosure = std::move(swiftClosure)](const std::unordered_map<std::string, double>& result) mutable -> void {
       swiftClosure.call(result);
     };
   }

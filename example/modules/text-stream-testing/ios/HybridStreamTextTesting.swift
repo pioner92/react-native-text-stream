@@ -40,6 +40,56 @@ class HybridStreamTextTesting: HybridStreamTextTestingSpec {
     StreamTextPreparedLayout.coreText = enabled
   }
 
+  func resizeSurface(keys: [String], width: Double, ms: Double) throws -> Promise<String> {
+    let promise = Promise<String>()
+    DispatchQueue.main.async {
+      let renderers = keys.compactMap { StreamTextRenderer.debugView($0) }
+      // The root view a rotation or Split View resizes: it lays the surface out on the main thread.
+      guard !keys.isEmpty, renderers.count == keys.count, let hostClass = NSClassFromString("RCTSurfaceHostingView"),
+            let host = sequence(first: renderers[0] as UIView, next: { $0.superview }).first(where: { $0.isKind(of: hostClass) })
+      else {
+        promise.reject(withError: RuntimeError.error(withMessage: "No views \(keys) with recordDisplayLog in a surface"))
+        return
+      }
+      var views = [String: [[String: Any]]]()
+      func sample() {
+        for (key, renderer) in zip(keys, renderers) {
+          let entry: [String: Any] = ["w": renderer.bounds.width, "h": renderer.bounds.height, "mode": renderer.debugMode.mode]
+          if let last = views[key]?.last, NSDictionary(dictionary: last).isEqual(to: entry) { continue }
+          views[key, default: []].append(entry)
+        }
+      }
+      StreamTextPreparedLayout.mainLayouts = 0
+      StreamTextPreparedLayout.mainLongest = 0
+      let started = CACurrentMediaTime()
+      host.frame.size.width = width > 0 ? width : (host.superview?.bounds.width ?? host.frame.width)
+      host.setNeedsLayout()
+      host.layoutIfNeeded()
+      let mainMs = (CACurrentMediaTime() - started) * 1000
+      let counters: [String: Any] = ["mainMs": mainMs, "layouts": StreamTextPreparedLayout.mainLayouts,
+                                     "longestMs": StreamTextPreparedLayout.mainLongest * 1000]
+      // Then what each frame shows: right after Core Animation commits it (order 2000000).
+      let until = started + ms / 1000
+      var observer: CFRunLoopObserver?
+      observer = CFRunLoopObserverCreateWithHandler(nil, CFRunLoopActivity.beforeWaiting.rawValue, true, 2_000_001) { _, _ in
+        sample()
+        guard CACurrentMediaTime() >= until else { return }
+        CFRunLoopRemoveObserver(CFRunLoopGetMain(), observer, .commonModes)
+        var result = counters
+        result["views"] = views
+        let data = (try? JSONSerialization.data(withJSONObject: result)) ?? Data()
+        promise.resolve(withResult: String(decoding: data, as: UTF8.self))
+      }
+      CFRunLoopAddObserver(CFRunLoopGetMain(), observer, .commonModes)
+      // Wakes the run loop each frame until the end.
+      let timer = Timer(timeInterval: 1.0 / 60, repeats: true) { timer in
+        if CACurrentMediaTime() >= until + 0.1 { timer.invalidate() }
+      }
+      RunLoop.main.add(timer, forMode: .common)
+    }
+    return promise
+  }
+
   func clearPreparedLayouts() throws {
     StreamTextPreparedLayout.generation += 1
     StreamTextPreparedLayout.cacheClear?()

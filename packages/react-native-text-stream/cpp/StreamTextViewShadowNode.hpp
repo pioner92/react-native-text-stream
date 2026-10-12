@@ -132,7 +132,7 @@ struct StreamTextViewState {
 
 /**
  * A layout of these props' `source` at exactly `width` if it is finished and small: `current` when
- * it still fits, a cached one, or a new one (off the main thread; on it only cheap ones). Else null.
+ * it still fits, a cached one, or a new one. Else null.
  */
 StreamTextPreparedRef
 streamTextPrepare(const StreamTextViewProps &props, Float width, const StreamTextPreparedRef &current);
