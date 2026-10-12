@@ -214,6 +214,18 @@ async function handle(req, res) {
     res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
     return res.end(JSON.stringify({ now: Date.now() }));
   }
+  // streamFetch() tests: what the request carried, and a given status.
+  if (url.pathname === '/echo') {
+    const body = await readBody(req, 64 * 1024);
+    res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8', 'X-Echo-Method': req.method });
+    return res.end(`${req.method} ${req.headers['x-echo'] ?? ''}\n${body}`);
+  }
+  if (url.pathname === '/status') {
+    const code = Number(q.get('code'));
+    if (!Number.isInteger(code) || code < 200 || code > 599) throw new HttpError(400, 'code must be 200..599');
+    res.writeHead(code, { 'Content-Type': 'text/plain; charset=utf-8' });
+    return res.end(`status ${code}`);
+  }
   return stream(req, res, q);
 }
 

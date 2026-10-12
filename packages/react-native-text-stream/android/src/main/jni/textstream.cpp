@@ -4,6 +4,7 @@
 
 #include "../../../../ios/TextStreamBuffer.h"
 #include "StreamTextBuffers.hpp"
+#include "StreamTextFetchAndroid.h"
 #include "StreamTextPreparedAndroid.h"
 #include "StreamTextViewShadowNode.hpp"
 
@@ -212,6 +213,7 @@ JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM *vm, void *) {
   return facebook::jni::initialize(vm, [] {
     facebook::react::JStreamTextSource::registerNatives();
     facebook::react::JStreamTextNative::registerNatives();
+    facebook::react::JStreamTextFetch::registerNatives();
     // Looked up here, with the app's class loader: the prepare threads use it without one.
     facebook::react::JStreamTextPreparedLayout::javaClassStatic();
   });

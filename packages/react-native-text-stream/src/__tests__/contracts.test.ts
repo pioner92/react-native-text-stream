@@ -13,7 +13,8 @@ const read = (file: string) => fs.readFileSync(path.join(root, file), 'utf8')
 const all = (source: string, pattern: RegExp) => [...source.matchAll(pattern)].map((m) => m[1]!)
 
 const shadowNode = read('cpp/StreamTextViewShadowNode.hpp')
-const buffersModule = read('cpp/StreamTextBuffers.hpp') + read('cpp/StreamTextBuffers.cpp')
+// The module's constructor and its streamFetch() methods are in StreamTextFetch.cpp.
+const buffersModule = read('cpp/StreamTextBuffers.hpp') + read('cpp/StreamTextBuffers.cpp') + read('cpp/StreamTextFetch.cpp')
 const componentView = read('ios/fabric/StreamTextComponentView.mm')
 const renderer = read('ios/fabric/StreamTextRenderer.swift')
 const provider = read('ios/fabric/StreamTextBuffersProvider.mm')
@@ -105,6 +106,15 @@ describe('JS ↔ StreamTextBuffers TurboModule', () => {
     expect(pkg.codegenConfig.ios.modulesProvider).toEqual({ StreamTextBuffers: 'StreamTextBuffersProvider' })
     expect(provider).toContain('@interface StreamTextBuffersProvider : NSObject <RCTModuleProvider>')
     expect(provider).toContain('std::make_shared<facebook::react::StreamTextBuffersModule>')
+  })
+
+  it('exposes fetch(url, init, onEvent) and cancel(id), which streamFetch() calls', () => {
+    expect(buffersModule).toMatch(/methodMap_\["fetch"\] = MethodMetadata\{3, fetch\}/)
+    expect(buffersModule).toMatch(/methodMap_\["cancel"\] = MethodMetadata\{1, cancel\}/)
+    // The platforms' requests, built with the module on both.
+    expect(read('ios/fabric/StreamTextFetch.mm')).toContain('streamTextStartFetch(')
+    expect(read('android/src/main/jni/CMakeLists.txt')).toContain('StreamTextFetch.cpp')
+    expect(read('android/src/main/jni/CMakeLists.txt')).toContain('StreamTextFetchAndroid.cpp')
   })
 
   it('is what Android autolinking includes and registers by name', () => {

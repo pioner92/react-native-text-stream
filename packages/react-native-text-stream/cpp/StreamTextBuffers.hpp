@@ -29,21 +29,26 @@ class StreamTextBufferRegistry {
   std::unordered_map<int, std::shared_ptr<jsi::MutableBuffer>> buffers_;
 };
 
+class StreamTextFetchTasks;
+
 /**
- * `put(buffer: ArrayBuffer): number`: keeps a natively-backed buffer for an `attach` command and
- * returns its id, or 0 for a buffer created in JS (it may only be touched on the JS thread).
+ * - `put(buffer: ArrayBuffer): number`: keeps a natively-backed buffer for an `attach` command and
+ *   returns its id, or 0 for a buffer created in JS (it may only be touched on the JS thread).
+ * - `fetch(url, init, onEvent): { id, buffer }` and `cancel(id)`: streamFetch() (StreamTextFetch.hpp).
  */
 class StreamTextBuffersModule : public TurboModule {
  public:
   static constexpr auto kModuleName = "StreamTextBuffers";
 
-  explicit StreamTextBuffersModule(std::shared_ptr<CallInvoker> jsInvoker)
-      : TurboModule(kModuleName, std::move(jsInvoker)) {
-    methodMap_["put"] = MethodMetadata{1, put};
-  }
+  explicit StreamTextBuffersModule(std::shared_ptr<CallInvoker> jsInvoker);
+  ~StreamTextBuffersModule() override;
 
  private:
   static jsi::Value put(jsi::Runtime &runtime, TurboModule &module, const jsi::Value *args, size_t count);
+  static jsi::Value fetch(jsi::Runtime &runtime, TurboModule &module, const jsi::Value *args, size_t count);
+  static jsi::Value cancel(jsi::Runtime &runtime, TurboModule &module, const jsi::Value *args, size_t count);
+
+  std::shared_ptr<StreamTextFetchTasks> fetches_;
 };
 
 } // namespace facebook::react

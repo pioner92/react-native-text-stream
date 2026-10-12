@@ -16,6 +16,7 @@ import type {
   StreamTextStatus,
 } from './types'
 import { bufferText, committedBytes, TSB_HEADER_SIZE } from './buffer'
+import { isTextStream, type TextStream } from './fetch'
 
 // `generation`: which source the event is about (see `sourceGeneration`).
 type StatusEvent = NativeSyntheticEvent<{ status: StreamTextStatus; bytes: number; generation: number }>
@@ -77,10 +78,11 @@ let nextGeneration = 1
 
 export interface StreamTextProps extends ViewProps {
   /**
-   * A TSB1 buffer, e.g. `res.nativeBuffer` from the patched nitro-fetch. The view reads new bytes
-   * from it on every frame and grows with the text, without JS. Or hand it over with `ref.attach()`.
+   * A stream from `streamFetch()`, or a TSB1 buffer (e.g. `res.nativeBuffer` from the patched
+   * nitro-fetch). The view reads new bytes on every frame and grows with the text, without JS. Or
+   * hand it over with `ref.attach()`.
    */
-  source?: ArrayBuffer | null
+  source?: ArrayBuffer | TextStream | null
   fontSize?: number
   /** A font family or PostScript name, e.g. "Menlo"; defaults to the system font. */
   fontFamily?: string
@@ -104,8 +106,8 @@ export interface StreamTextProps extends ViewProps {
 
 /** What `<StreamText ref={…} />` gives you. */
 export interface StreamTextHandle {
-  /** Starts rendering `buffer` without a React render; `undefined` clears the view. */
-  attach(buffer: ArrayBuffer | undefined): void
+  /** Starts rendering `buffer` (or a stream's) without a React render; `undefined` clears the view. */
+  attach(buffer: ArrayBuffer | TextStream | undefined): void
   /** Same as `attach(undefined)`. */
   clear(): void
   /** The stream's state, read synchronously. */
@@ -124,9 +126,11 @@ const IDLE: StreamTextState = { status: 'idle', bytes: 0 }
  * it keeps growing while the JS thread is busy.
  */
 export const StreamText = forwardRef<StreamTextHandle, StreamTextProps>(function StreamText(
-  { source, onStatusChange, ...props },
+  { source: sourceProp, onStatusChange, ...props },
   ref
 ) {
+  // The native view takes the buffer itself (its props parser reads a raw ArrayBuffer).
+  const source = toBuffer(sourceProp)
   const native = useRef<HostInstance | null>(null)
   // Whichever was set last, the `source` prop or `attach()`; read by getStatus/getText.
   const current = useRef<ArrayBuffer | null>(source ?? null)
@@ -183,7 +187,8 @@ export const StreamText = forwardRef<StreamTextHandle, StreamTextProps>(function
   useImperativeHandle(
     ref,
     () => {
-      const attach = (buffer: ArrayBuffer | undefined) => {
+      const attach = (input: ArrayBuffer | TextStream | undefined) => {
+        const buffer = toBuffer(input)
         const gen = nextGeneration++
         current.current = buffer ?? null
         generation.current = gen
@@ -231,9 +236,9 @@ export type StreamTextRef = React.RefObject<StreamTextHandle | null> & StreamTex
 export function useStreamTextRef(): StreamTextRef {
   const ref = useRef<StreamTextRef | null>(null)
   if (ref.current == null) {
-    let pendingBuffer: { buffer: ArrayBuffer | undefined } | null = null
+    let pendingBuffer: { buffer: ArrayBuffer | TextStream | undefined } | null = null
     let handle: StreamTextHandle | null = null
-    const attach = (buffer: ArrayBuffer | undefined) => {
+    const attach = (buffer: ArrayBuffer | TextStream | undefined) => {
       if (handle) handle.attach(buffer)
       else pendingBuffer = { buffer }
     }
@@ -256,4 +261,8 @@ export function useStreamTextRef(): StreamTextRef {
     }
   }
   return ref.current
+}
+
+function toBuffer(source: ArrayBuffer | TextStream | null | undefined): ArrayBuffer | null | undefined {
+  return isTextStream(source) ? source.buffer : source
 }

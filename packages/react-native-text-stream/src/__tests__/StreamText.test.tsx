@@ -44,6 +44,15 @@ describe('StreamText', () => {
     expect(host().props.selectable).toBe(false)
   })
 
+  it('takes a stream from streamFetch(): the view gets its buffer, as the prop and through attach()', async () => {
+    const buffer = tsbBuffer('hi')
+    const stream = { buffer, response: Promise.resolve(), done: Promise.resolve(), abort: () => {}, text: () => 'hi' }
+    const { ref } = await renderStream({ source: stream as never })
+    expect(host().props.source).toBe(buffer)
+    ref.current!.attach(stream as never)
+    expect(mockBuffers.put).toHaveBeenLastCalledWith(buffer)
+  })
+
   it('always subscribes to status events, even without onStatusChange', async () => {
     await renderStream()
     expect(typeof host().props.onStatusChange).toBe('function')
