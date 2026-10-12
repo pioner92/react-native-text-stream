@@ -204,6 +204,8 @@ class StreamTextViewShadowNode final : public ConcreteViewShadowNode<
     auto prepared = viewHeightWins() ? nullptr : streamTextPrepare(getConcreteProps(), width, getStateData().prepared);
     if (prepared) {
       measured_[measuredNext_++ % measured_.size()] = prepared;
+    } else {
+      measuredWithout_ = true;
     }
     return constraints.clamp(Size{width, prepared ? streamTextPreparedHeight(prepared) : getStateData().height});
   }
@@ -230,6 +232,13 @@ class StreamTextViewShadowNode final : public ConcreteViewShadowNode<
       }
       if (!prepared) {
         prepared = streamTextPrepare(props, width, nullptr);
+        // Measured while the stream was still open, and it finished since: this frame has the
+        // state's height, not this layout's. The view, taking the state's layout for the frame's,
+        // would never report its height; it lays the text out itself instead.
+        if (prepared && measuredWithout_ &&
+            std::fabs(streamTextPreparedHeight(prepared) - getLayoutMetrics().getContentFrame().size.height) > 0.5) {
+          prepared = nullptr;
+        }
       }
     }
     auto next = state;
@@ -255,6 +264,8 @@ class StreamTextViewShadowNode final : public ConcreteViewShadowNode<
   /** The layouts measure produced (Yoga may measure at a few widths), for layout() to pick from. */
   mutable std::array<StreamTextPreparedRef, 3> measured_;
   mutable size_t measuredNext_{0};
+  /** Measure gave the state's height, without a layout (the stream was open, or the view's height won). */
+  mutable bool measuredWithout_{false};
 
   bool viewHeightWins() const {
     const auto &state = getStateData();

@@ -197,6 +197,7 @@ private final class TextKitLines {
     container = NSTextContainer(size: CGSize(width: width, height: StreamTextLayout.textViewHeight))
     container.lineFragmentPadding = 0
     layoutManager.allowsNonContiguousLayout = false
+    layoutManager.usesFontLeading = false
     storage.addLayoutManager(layoutManager)
     layoutManager.addTextContainer(container)
     storage.setAttributedString(text)

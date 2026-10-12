@@ -536,6 +536,8 @@ private final class StreamTextView: UITextView {
     // An explicit TextKit 1 stack (see StreamTextRenderer); the container follows the view's size.
     let storage = NSTextStorage()
     let layoutManager = NSLayoutManager()
+    // As <Text>: a fallback font's leading (emoji) doesn't make its lines taller.
+    layoutManager.usesFontLeading = false
     storage.addLayoutManager(layoutManager)
     let container = NSTextContainer(size: .zero)
     container.widthTracksTextView = true
