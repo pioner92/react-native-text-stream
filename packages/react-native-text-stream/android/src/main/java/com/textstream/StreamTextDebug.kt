@@ -135,6 +135,23 @@ object StreamTextDebug {
     return out
   }
 
+  /**
+   * Tests: the display lists of every view in a window, `[bytes, blocks, canvases, out of sight
+   * with blocks]`. Main thread.
+   */
+  @JvmStatic
+  fun blockMemory(): LongArray {
+    val out = LongArray(4)
+    for (view in StreamTextView.attachedViews) {
+      val (count, bytes, hidden) = view.debugBlocks()
+      out[0] += bytes
+      out[1] += count
+      if (view.debugMode == "canvas") out[2]++
+      if (hidden == 1L && count > 0) out[3]++
+    }
+    return out
+  }
+
   /** Off: finished sources are laid out by the view at mount, as before prepared layouts. */
   @JvmStatic
   fun setPreparedLayout(enabled: Boolean) {

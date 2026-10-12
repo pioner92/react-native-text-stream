@@ -65,6 +65,7 @@ class StreamTextPreparedLayout private constructor(
           @Suppress("DEPRECATION")
           if (level >= ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW && level != ComponentCallbacks2.TRIM_MEMORY_UI_HIDDEN) {
             StreamTextNative.clearPreparedCache(false)
+            StreamTextView.trimAllMemory()
           }
         }
 
@@ -73,6 +74,7 @@ class StreamTextPreparedLayout private constructor(
         @Deprecated("Deprecated in Java")
         override fun onLowMemory() {
           StreamTextNative.clearPreparedCache(false)
+          StreamTextView.trimAllMemory()
         }
       })
     }

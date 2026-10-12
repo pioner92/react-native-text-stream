@@ -30,6 +30,22 @@ internal class StreamTextBlocks {
   val count: Int
     get() = nodes.indices.count { it < recorded.size && recorded[it] && nodes[it].hasDisplayList() }
 
+  /** Bytes the display lists held take, about. */
+  val bytes: Long
+    get() = nodes.indices.sumOf {
+      if (it < recorded.size && recorded[it] && nodes[it].hasDisplayList()) nodes[it].computeApproximateMemoryUsage() else 0L
+    }
+
+  /** Drops the display lists of the blocks outside `keep`. */
+  fun keepOnly(keep: IntRange) {
+    for (i in recorded.indices) {
+      if (recorded[i] && i !in keep) {
+        nodes[i].discardDisplayList()
+        recorded[i] = false
+      }
+    }
+  }
+
   fun markDirty(block: Int) {
     dirtyFrom = min(dirtyFrom, max(block, 0))
   }

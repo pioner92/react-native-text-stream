@@ -150,7 +150,12 @@ class StreamTextView(context: Context) : ReactViewGroup(context) {
   private val toWindow = Matrix()
   private val fromWindow = Matrix()
   private val viewportRect = RectF()
-  private val scrollListener = ViewTreeObserver.OnScrollChangedListener { if (needsRedraw()) invalidate() }
+  private val scrollListener = ViewTreeObserver.OnScrollChangedListener {
+    aheadPaused = false
+    if (needsRedraw()) invalidate()
+  }
+  /** After a memory trim, nothing is drawn ahead of the screen until it scrolls. */
+  private var aheadPaused = false
 
   /** False while ReactViewGroup's constructor runs, before the fields above are set. */
   private var initialized = false
@@ -399,6 +404,7 @@ class StreamTextView(context: Context) : ReactViewGroup(context) {
 
   override fun onAttachedToWindow() {
     super.onAttachedToWindow()
+    attachedViews.add(this)
     scrollAncestor = generateSequence(parent) { it.parent }.firstOrNull {
       it is ScrollView || it is HorizontalScrollView
     } as? View
@@ -411,6 +417,7 @@ class StreamTextView(context: Context) : ReactViewGroup(context) {
 
   override fun onDetachedFromWindow() {
     super.onDetachedFromWindow()
+    attachedViews.remove(this)
     if (blocks != null) viewTreeObserver.removeOnScrollChangedListener(scrollListener)
     scrollAncestor = null
     stopTicking()
@@ -743,7 +750,7 @@ class StreamTextView(context: Context) : ReactViewGroup(context) {
       canvas.translate(0f, y.toFloat())
       if (sectionBlocks != null && blocked && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
         sectionBlocks.draw(
-            canvas, layout, lines, nearScreen(layout, lines, y, AHEAD_DP), nearScreen(layout, lines, y, KEEP_DP))
+            canvas, layout, lines, nearScreen(layout, lines, y, aheadDp), nearScreen(layout, lines, y, keepDp))
       } else {
         // Without display lists (before API 29): the lines this section shows.
         canvas.clipRect(0, 0, layout.width, layout.getLineTop(lines))
@@ -767,13 +774,42 @@ class StreamTextView(context: Context) : ReactViewGroup(context) {
     var redraw = false
     val check = { layout: Layout, lines: Int, y: Int, sectionBlocks: StreamTextBlocks? ->
       if (sectionBlocks != null && !redraw) {
-        val near = nearScreen(layout, lines, y, AHEAD_DP)
+        val near = nearScreen(layout, lines, y, aheadDp)
         redraw = if (near.isEmpty()) sectionBlocks.drawnLast >= sectionBlocks.drawnFirst
         else near.first != sectionBlocks.drawnFirst || near.last != sectionBlocks.drawnLast
       }
     }
     forEachShownSection(check)
     return redraw
+  }
+
+  private val aheadDp: Float
+    get() = if (aheadPaused) 0f else AHEAD_DP
+  private val keepDp: Float
+    get() = if (aheadPaused) 0f else KEEP_DP
+
+  /**
+   * Memory is short: all but the blocks on screen go, and none is drawn ahead until a scroll. (A
+   * hidden window's display lists HWUI frees itself, and those of views it no longer draws.)
+   */
+  private fun trimMemory() {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return
+    aheadPaused = true
+    forEachShownSection { layout, lines, y, sectionBlocks -> sectionBlocks?.keepOnly(nearScreen(layout, lines, y, 0f)) }
+    // The next draw draws the screen only, so a scroll after it draws ahead again.
+    invalidate()
+  }
+
+  /** Tests: the display lists held, `[count, bytes]`, and whether the view is out of sight. Main thread. */
+  internal fun debugBlocks(): LongArray {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return longArrayOf(0, 0, 0)
+    var count = 0L
+    var bytes = 0L
+    forEachShownSection { _, _, _, sectionBlocks ->
+      count += sectionBlocks?.count ?: 0
+      bytes += sectionBlocks?.bytes ?: 0L
+    }
+    return longArrayOf(count, bytes, if (isShown && windowVisibility == VISIBLE) 0 else 1)
   }
 
   /** The canvas, or the sections of the text laid out here: (layout, lines shown, y of its top, blocks). */
@@ -963,7 +999,15 @@ class StreamTextView(context: Context) : ReactViewGroup(context) {
         .toString()
   }
 
-  private companion object {
+  internal companion object {
+    /** Views in a window: those a memory trim reaches. Main thread. */
+    val attachedViews = HashSet<StreamTextView>()
+
+    /** A memory trim (StreamTextPreparedLayout's callbacks). Main thread. */
+    fun trimAllMemory() {
+      for (view in attachedViews) view.trimMemory()
+    }
+
     const val TAG = "StreamText"
     const val SLICE_BYTES = 16 * 1024
     /** Main-thread time per frame we allow for append + layout (a 60 Hz frame is ~16.7 ms). */

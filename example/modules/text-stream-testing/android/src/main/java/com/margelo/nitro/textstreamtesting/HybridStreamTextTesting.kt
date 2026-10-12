@@ -1,15 +1,21 @@
 package com.margelo.nitro.textstreamtesting
 
+import android.app.ActivityOptions
 import android.app.Application
 import android.content.ComponentCallbacks2
+import android.content.Intent
+import android.os.Debug
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
+import android.view.Choreographer
 import android.view.View
 import android.view.ViewGroup
 import android.view.ViewTreeObserver
-import com.facebook.react.ReactRootView
-import com.facebook.react.uimanager.PixelUtil
 import com.facebook.proguard.annotations.DoNotStrip
+import com.facebook.react.ReactRootView
+import com.facebook.react.bridge.ReactContext
+import com.facebook.react.uimanager.PixelUtil
 import com.margelo.nitro.NitroModules
 import com.margelo.nitro.core.ArrayBuffer
 import com.margelo.nitro.core.Promise
@@ -181,9 +187,58 @@ class HybridStreamTextTesting : HybridStreamTextTestingSpec() {
     return promise
   }
 
-  override fun tileMemory(): Promise<String> = unsupported()
+  override fun tileMemory(): Promise<String> {
+    val promise = Promise<String>()
+    main.post {
+      // Display lists (StreamTextBlocks) stand for iOS's image tiles.
+      val (bytes, blocks, canvases, offWindow) = StreamTextDebug.blockMemory()
+      promise.resolve(JSONObject()
+          .put("bytes", bytes).put("tiles", blocks).put("canvases", canvases).put("offWindow", offWindow)
+          .put("footprintMB", Debug.getPss() / 1024.0)
+          .toString())
+    }
+    return promise
+  }
 
-  override fun cover(shown: Boolean): Promise<Double> = unsupported()
+  override fun cover(shown: Boolean): Promise<Double> {
+    val promise = Promise<Double>()
+    main.post {
+      val host = (NitroModules.applicationContext as? ReactContext)?.currentActivity
+      if (host == null || host is CoverActivity) {
+        promise.reject(IllegalStateException("No app activity to cover"))
+        return@post
+      }
+      val started = System.nanoTime()
+      if (shown) {
+        host.startActivity(
+            Intent(host, CoverActivity::class.java),
+            ActivityOptions.makeCustomAnimation(host, 0, 0).toBundle())
+      } else {
+        CoverActivity.current?.let {
+          it.finish()
+          @Suppress("DEPRECATION")
+          it.overridePendingTransition(0, 0)
+        }
+      }
+      // Resolves once the app's window is hidden, or shown and drawn again.
+      val decor = host.window.decorView
+      val deadline = SystemClock.uptimeMillis() + 3000
+      fun check() {
+        val visible = decor.windowVisibility == View.VISIBLE
+        if (visible == !shown || SystemClock.uptimeMillis() > deadline) {
+          Choreographer.getInstance().postFrameCallback {
+            Choreographer.getInstance().postFrameCallback {
+              main.post { promise.resolve((System.nanoTime() - started) / 1e6) }
+            }
+          }
+        } else {
+          main.postDelayed({ check() }, 16)
+        }
+      }
+      check()
+    }
+    return promise
+  }
 
   override fun measureMount(text: String, width: Double): Promise<Map<String, Double>> = unsupported()
 
