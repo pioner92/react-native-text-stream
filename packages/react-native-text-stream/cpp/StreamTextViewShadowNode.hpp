@@ -158,6 +158,10 @@ Float streamTextPreparedHeight(const StreamTextPreparedRef &prepared);
 Float streamTextPreparedWidth(const StreamTextPreparedRef &prepared);
 /** `prepared` is of these props' text and style, at `width` give or take Yoga's pixel rounding. */
 bool streamTextPreparedFits(const StreamTextPreparedRef &prepared, const StreamTextViewProps &props, Float width);
+#ifdef RN_SERIALIZABLE_STATE
+/** Android: the widths measure asks for, which a view knows only in whole pixels. */
+void streamTextNoteMeasureWidth(Float width);
+#endif
 
 class StreamTextViewShadowNode final : public ConcreteViewShadowNode<
                                            StreamTextViewComponentName,
@@ -194,6 +198,9 @@ class StreamTextViewShadowNode final : public ConcreteViewShadowNode<
     // Fills the available width; the height is that of a prepared layout, or else whatever the
     // native view last laid out.
     Float width = std::isfinite(constraints.maximumSize.width) ? constraints.maximumSize.width : 0;
+#ifdef RN_SERIALIZABLE_STATE
+    streamTextNoteMeasureWidth(width);
+#endif
     auto prepared = viewHeightWins() ? nullptr : streamTextPrepare(getConcreteProps(), width, getStateData().prepared);
     if (prepared) {
       measured_[measuredNext_++ % measured_.size()] = prepared;

@@ -9,6 +9,8 @@ import com.facebook.react.uimanager.ViewManager
 class StreamTextPackage : ReactPackage {
   override fun createNativeModules(reactContext: ReactApplicationContext): List<NativeModule> = emptyList()
 
-  override fun createViewManagers(reactContext: ReactApplicationContext): List<ViewManager<*, *>> =
-      listOf(StreamTextViewManager())
+  override fun createViewManagers(reactContext: ReactApplicationContext): List<ViewManager<*, *>> {
+    StreamTextPreparedLayout.init(reactContext)
+    return listOf(StreamTextViewManager())
+  }
 }

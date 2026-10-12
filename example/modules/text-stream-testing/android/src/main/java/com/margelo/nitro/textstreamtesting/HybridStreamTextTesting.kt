@@ -98,18 +98,24 @@ class HybridStreamTextTesting : HybridStreamTextTestingSpec() {
     }
   }
 
-  // Not on Android yet: the features they test come later (prepared layouts, selection, ...).
+  // No text view pool on Android: views lay out their own text.
   override fun drainTextViewPool() {}
 
-  override fun setPreparedLayout(enabled: Boolean) {}
+  // Not on Android yet: the features they test come later (selection, tiles, ...).
+
+  override fun setPreparedLayout(enabled: Boolean) {
+    StreamTextDebug.setPreparedLayout(enabled)
+  }
 
   override fun setPreparedCoreText(enabled: Boolean) {}
 
-  override fun clearPreparedLayouts() {}
+  override fun clearPreparedLayouts() {
+    StreamTextDebug.clearPreparedLayouts()
+  }
 
-  override fun preparedCacheCount(): Double = 0.0
+  override fun preparedCacheCount(): Double = StreamTextDebug.preparedCacheCount().toDouble()
 
-  override fun preparedCacheDump(): String = ""
+  override fun preparedCacheDump(): String = StreamTextDebug.preparedCacheDump()
 
   override fun compareEngines(text: String, style: StreamTextTestStyle, width: Double): Map<String, Double> = emptyMap()
 

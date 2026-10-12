@@ -94,7 +94,7 @@ class HybridFrameMonitor : HybridFrameMonitorSpec() {
 
   override fun streamTextTotals(reset: Boolean): DoubleArray = DoubleArray(0)
 
-  override fun streamTextPhases(reset: Boolean): Map<String, Double> = emptyMap()
+  override fun streamTextPhases(reset: Boolean): Map<String, Double> = StreamTextDebug.phases(reset)
 
   /** The app's proportional set size, the closest to iOS's footprint. */
   override fun memoryFootprintMb(): Double = Debug.getPss() / 1024.0

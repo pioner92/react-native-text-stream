@@ -1,5 +1,5 @@
 import React from 'react';
-import { ScrollView, Text, View } from 'react-native';
+import { Platform, ScrollView, Text, View } from 'react-native';
 import { afterEach, beforeEach, describe, expect, it, render, waitFor } from 'react-native-harness';
 import { StreamText } from 'react-native-text-stream';
 import { createFrameMonitor } from 'text-stream-testing';
@@ -18,7 +18,7 @@ import {
   utf8,
   waitForSnapshot,
   waitForText,
-  describeIOS,
+  itIOS,
 } from './helpers';
 
 // A finished `source` prop is laid out in the shadow node (CoreText where it can) and drawn on a
@@ -26,7 +26,14 @@ import {
 
 const monitor = createFrameMonitor();
 const prepares = (phases: Record<string, number>) =>
-  (phases['prepare.coreText.count'] ?? 0) + (phases['prepare.textKit.count'] ?? 0);
+  (phases['prepare.coreText.count'] ?? 0) + (phases['prepare.textKit.count'] ?? 0) +
+  (phases['prepare.staticLayout.count'] ?? 0);
+
+// The canvas's engine: iOS lays out with CoreText where it reproduces TextKit, else TextKit;
+// Android with a StaticLayout.
+const ENGINE = Platform.OS === 'ios'
+  ? { fast: 'coreText', fallback: 'textKit' }
+  : { fast: 'staticLayout', fallback: 'staticLayout' };
 
 const LONG = 'Streaming text straight from the network into a native view, every token lands in a buffer.\n\n'.repeat(60);
 
@@ -51,12 +58,11 @@ async function mountFinished(text: string, props: Record<string, unknown> = TEXT
   return { key, s, heights, view };
 }
 
-// Not on Android yet: prepared layouts.
-describeIOS('StreamText: prepared layouts', () => {
+describe('StreamText: prepared layouts', () => {
   it('draws a finished source on a canvas, at the height the text view would have', async () => {
     const prepared = await mountFinished(PARAGRAPHS);
     expect(prepared.s.mode).toBe('canvas');
-    expect(prepared.s.engine).toBe('coreText');
+    expect(prepared.s.engine).toBe(ENGINE.fast);
     expect(prepared.s.tiles).toBeGreaterThan(0);
     expect(prepared.s.accessibilityValue).toBe(PARAGRAPHS);
     prepared.view.unmount();
@@ -90,7 +96,7 @@ describeIOS('StreamText: prepared layouts', () => {
     ] as const) {
       const { s, view } = await mountFinished(text, props);
       expect(s.mode).toBe('canvas');
-      expect(s.engine).toBe('textKit');
+      expect(s.engine).toBe(ENGINE.fallback);
       view.unmount();
     }
   });
@@ -241,7 +247,8 @@ describeIOS('StreamText: prepared layouts', () => {
     await waitFor(() => expect(testing.preparedCacheCount()).toBe(0), { timeout: 2000 });
   });
 
-  it('a tall text keeps tiles only near the screen as it scrolls', async () => {
+  // Not on Android yet: tiles near the screen.
+  itIOS('a tall text keeps tiles only near the screen as it scrolls', async () => {
     const key = newKey();
     let scroll: ScrollView | null = null;
     let contentHeight = 0;
@@ -267,7 +274,8 @@ describeIOS('StreamText: prepared layouts', () => {
     expect(middle.tiles).toBeLessThanOrEqual(10);
   });
 
-  it('VoiceOver reads the lines on screen, and every line by number', async () => {
+  // Not on Android yet: reading line by line.
+  itIOS('VoiceOver reads the lines on screen, and every line by number', async () => {
     const key = newKey();
     let scroll: ScrollView | null = null;
     await render(
@@ -372,7 +380,8 @@ describeIOS('StreamText: prepared layouts', () => {
     });
   }
 
-  it('selects text on the canvas itself, no text view', async () => {
+  // Not on Android yet: selection.
+  itIOS('selects text on the canvas itself, no text view', async () => {
     const { key, s } = await mountFinished(PARAGRAPHS);
     expect(s.mode).toBe('canvas');
     // First line, a few points in: the first word.
@@ -384,7 +393,8 @@ describeIOS('StreamText: prepared layouts', () => {
     expect((await snapshot(key)).mode).toBe('canvas');
   });
 
-  it('selects right-to-left text on the canvas the way the text view does', async () => {
+  // Not on Android yet: selection.
+  itIOS('selects right-to-left text on the canvas the way the text view does', async () => {
     // Hebrew over a few lines, a Latin word inside it, an Arabic paragraph: TextKit canvas, bidi runs.
     const hebrew = 'שלום עולם, זה טקסט בעברית שנכתב מימין לשמאל וממשיך לשורה הבאה. ';
     const text = hebrew.repeat(2) + 'Hello ' + hebrew + '\n' + 'مرحبا بالعالم، هذا نص عربي.';
@@ -442,7 +452,8 @@ describeIOS('StreamText: prepared layouts', () => {
     expect(onCanvas[3]).toMatchObject({ rtl: true, rects: [{ rtl: true }] });
   });
 
-  it('bubbles mounted below the screen draw once scrolled to, and let go of tiles far away', async () => {
+  // Not on Android yet: tiles near the screen.
+  itIOS('bubbles mounted below the screen draw once scrolled to, and let go of tiles far away', async () => {
     const keys = Array.from({ length: 20 }, newKey);
     const texts = keys.map((_, i) => `bubble ${i} ` + 'some words in a chat message. '.repeat(12));
     let scroll: ScrollView | null = null;

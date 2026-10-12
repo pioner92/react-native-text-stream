@@ -48,6 +48,57 @@ object StreamTextDebug {
     }
   }
 
+  /** Phases are timed once [phases] was asked for (benchmarks). */
+  @Volatile private var timingPhases = false
+  private val phases = HashMap<String, DoubleArray>()
+
+  /** Benchmarks: one run of a named phase. Any thread. */
+  internal fun addPhase(name: String, nanos: Long) {
+    if (!timingPhases) return
+    synchronized(phases) {
+      val phase = phases.getOrPut(name) { DoubleArray(2) }
+      phase[0] += 1.0
+      phase[1] += nanos / 1e6
+    }
+  }
+
+  internal val timing: Boolean
+    get() = timingPhases
+
+  /** `{"<phase>.count": n, "<phase>.ms": total}` since the last reset; turns timing on. */
+  @JvmStatic
+  fun phases(reset: Boolean): Map<String, Double> {
+    if (!enabled) return emptyMap()
+    timingPhases = true
+    return synchronized(phases) {
+      val out = HashMap<String, Double>()
+      for ((name, value) in phases) {
+        out["$name.count"] = value[0]
+        out["$name.ms"] = value[1]
+      }
+      if (reset) phases.clear()
+      out
+    }
+  }
+
+  /** Off: finished sources are laid out by the view at mount, as before prepared layouts. */
+  @JvmStatic
+  fun setPreparedLayout(enabled: Boolean) {
+    if (this.enabled) StreamTextNative.setPreparedEnabled(enabled)
+  }
+
+  /** Forgets every prepared layout, so the next mounts lay out from scratch (a cold start). */
+  @JvmStatic
+  fun clearPreparedLayouts() {
+    if (enabled) StreamTextNative.clearPreparedCache(true)
+  }
+
+  @JvmStatic
+  fun preparedCacheCount(): Int = if (enabled) StreamTextNative.preparedCacheCount() else 0
+
+  @JvmStatic
+  fun preparedCacheDump(): String = if (enabled) StreamTextNative.preparedCacheDump() else ""
+
   /** `[wallClockMs, bytesShown, ...]` for the view with this key. Any thread. */
   @JvmStatic
   fun log(key: String): DoubleArray =

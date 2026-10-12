@@ -4,6 +4,7 @@
 
 #include "../../../../ios/TextStreamBuffer.h"
 #include "StreamTextBuffers.hpp"
+#include "StreamTextPreparedAndroid.h"
 #include "StreamTextViewShadowNode.hpp"
 
 #include <fbjni/ByteBuffer.h>
@@ -18,26 +19,6 @@ std::shared_ptr<TurboModule> textstream_ModuleProvider(
   return nullptr;
 }
 
-// No prepared layouts on Android yet: the view lays the text out and reports its height.
-void streamTextPrepareEarly(const StreamTextViewProps & /*props*/) {}
-
-StreamTextPreparedRef
-streamTextPrepare(const StreamTextViewProps & /*props*/, Float /*width*/, const StreamTextPreparedRef & /*current*/) {
-  return nullptr;
-}
-
-Float streamTextPreparedHeight(const StreamTextPreparedRef & /*prepared*/) {
-  return 0;
-}
-
-Float streamTextPreparedWidth(const StreamTextPreparedRef & /*prepared*/) {
-  return 0;
-}
-
-bool streamTextPreparedFits(const StreamTextPreparedRef & /*prepared*/, const StreamTextViewProps & /*props*/, Float /*width*/) {
-  return false;
-}
-
 namespace {
 
 using StreamTextConcreteState = StreamTextViewShadowNode::ConcreteState;
@@ -49,6 +30,10 @@ class JStreamTextSource : public jni::HybridClass<JStreamTextSource> {
 
   static jni::local_ref<javaobject> create(std::shared_ptr<jsi::MutableBuffer> buffer) {
     return newObjectCxxArgs(std::move(buffer));
+  }
+
+  const std::shared_ptr<jsi::MutableBuffer> &buffer() const {
+    return buffer_;
   }
 
   static void registerNatives() {
@@ -133,6 +118,50 @@ struct JStreamTextNative : jni::JavaClass<JStreamTextNative> {
         EventQueue::UpdateMode::unstable_Immediate);
   }
 
+  /** The layout the shadow node prepared for this state's `source`, if any. */
+  static jni::local_ref<JStreamTextPreparedLayout::javaobject> statePrepared(
+      jni::alias_ref<jclass>,
+      jni::alias_ref<jobject> stateWrapper) {
+    auto state = stateOf(stateWrapper);
+    return state ? streamTextPreparedLayoutOf(state->getData().prepared, state->getData().source) : nullptr;
+  }
+
+  /** Lays `source` out in the background for its next mount (a view leaving that streamed it). */
+  static void prepareInBackground(
+      jni::alias_ref<jclass>,
+      jni::alias_ref<JStreamTextSource::javaobject> source,
+      jfloat width,
+      jfloat fontSize,
+      jni::alias_ref<jstring> fontFamily,
+      jni::alias_ref<jstring> fontWeight,
+      jfloat lineHeight,
+      jfloat letterSpacing,
+      jni::alias_ref<jstring> textAlign) {
+    if (!source) {
+      return;
+    }
+    auto text = [](jni::alias_ref<jstring> value) { return value ? value->toStdString() : std::string(); };
+    streamTextPrepareInBackground(
+        source->cthis()->buffer(), width, fontSize, text(fontFamily), text(fontWeight), lineHeight, letterSpacing,
+        text(textAlign));
+  }
+
+  static void setPreparedEnabled(jni::alias_ref<jclass>, jboolean enabled) {
+    streamTextPreparedSetEnabled(enabled);
+  }
+
+  static void clearPreparedCache(jni::alias_ref<jclass>, jboolean invalidate) {
+    streamTextPreparedCacheClear(invalidate);
+  }
+
+  static jint preparedCacheCount(jni::alias_ref<jclass>) {
+    return streamTextPreparedCacheCount();
+  }
+
+  static jni::local_ref<jstring> preparedCacheDump(jni::alias_ref<jclass>) {
+    return jni::make_jstring(streamTextPreparedCacheDump());
+  }
+
   /** A valid TSB1 header that fits in `size` bytes. */
   static jboolean isValid(jni::alias_ref<jclass>, jlong base, jlong size) {
     if (size < TSB_HEADER_SIZE) {
@@ -161,6 +190,12 @@ struct JStreamTextNative : jni::JavaClass<JStreamTextNative> {
         makeNativeMethod("stateSource", JStreamTextNative::stateSource),
         makeNativeMethod("stateGeneration", JStreamTextNative::stateGeneration),
         makeNativeMethod("updateHeight", JStreamTextNative::updateHeight),
+        makeNativeMethod("statePrepared", JStreamTextNative::statePrepared),
+        makeNativeMethod("setPreparedEnabled", JStreamTextNative::setPreparedEnabled),
+        makeNativeMethod("prepareInBackground", JStreamTextNative::prepareInBackground),
+        makeNativeMethod("clearPreparedCache", JStreamTextNative::clearPreparedCache),
+        makeNativeMethod("preparedCacheCount", JStreamTextNative::preparedCacheCount),
+        makeNativeMethod("preparedCacheDump", JStreamTextNative::preparedCacheDump),
         makeNativeMethod("isValid", JStreamTextNative::isValid),
         makeNativeMethod("capacity", JStreamTextNative::capacity),
         makeNativeMethod("committed", JStreamTextNative::committed),
@@ -177,5 +212,7 @@ JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM *vm, void *) {
   return facebook::jni::initialize(vm, [] {
     facebook::react::JStreamTextSource::registerNatives();
     facebook::react::JStreamTextNative::registerNatives();
+    // Looked up here, with the app's class loader: the prepare threads use it without one.
+    facebook::react::JStreamTextPreparedLayout::javaClassStatic();
   });
 }

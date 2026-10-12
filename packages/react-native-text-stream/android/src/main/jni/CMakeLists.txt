@@ -11,6 +11,7 @@ add_library(
   SHARED
   ${LIB_ROOT_DIR}/cpp/StreamTextBuffers.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/textstream.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/StreamTextPreparedAndroid.cpp
 )
 
 target_include_directories(

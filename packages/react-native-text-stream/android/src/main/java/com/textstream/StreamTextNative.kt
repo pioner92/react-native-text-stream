@@ -22,6 +22,31 @@ internal object StreamTextNative {
   /** Commits the view's text height (dp) on the calling (main) thread, without the JS thread. */
   @JvmStatic external fun updateHeight(stateWrapper: Any, height: Float, revision: Int)
 
+  /** The layout the shadow node prepared for this state's `source`, or null. */
+  @JvmStatic external fun statePrepared(stateWrapper: Any): StreamTextPreparedLayout?
+
+  /** Lays a finished `source` out in the background for its next mount, `widthDp` wide. */
+  @JvmStatic external fun prepareInBackground(
+      source: StreamTextSource,
+      widthDp: Float,
+      fontSize: Float,
+      fontFamily: String?,
+      fontWeight: String?,
+      lineHeight: Float,
+      letterSpacing: Float,
+      textAlign: String?,
+  )
+
+  /** Tests and benchmarks: off, finished sources are laid out by the view, as streams are. */
+  @JvmStatic external fun setPreparedEnabled(enabled: Boolean)
+
+  /** Forgets every prepared layout; `invalidate` also those in use (a cold start). */
+  @JvmStatic external fun clearPreparedCache(invalidate: Boolean)
+
+  @JvmStatic external fun preparedCacheCount(): Int
+
+  @JvmStatic external fun preparedCacheDump(): String
+
   @JvmStatic external fun isValid(base: Long, size: Long): Boolean
 
   @JvmStatic external fun capacity(base: Long): Long
