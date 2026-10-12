@@ -1,6 +1,7 @@
 package com.margelo.nitro.textstreamtesting
 
 import android.hardware.display.DisplayManager
+import android.os.Build
 import android.os.Debug
 import android.view.Display
 import com.margelo.nitro.NitroModules
@@ -36,8 +37,45 @@ class HybridFrameMonitor : HybridFrameMonitorSpec() {
   private val callback = object : Choreographer.FrameCallback {
     override fun doFrame(frameTimeNanos: Long) {
       if (!running) return
-      tick(frameTimeNanos)
+      tick(frameTimeNanos, 0)
       Choreographer.getInstance().postFrameCallback(this)
+    }
+  }
+
+  /**
+   * API 33+: the vsync period of each frame, as CADisplayLink's target timestamp gives it. The
+   * display switches between 60 and 120 Hz; a 60 Hz frame is on time then, not a hitch.
+   */
+  private val vsyncCallback: Any? =
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        object : Choreographer.VsyncCallback {
+          override fun onVsync(data: Choreographer.FrameData) {
+            if (!running) return
+            val timelines = data.frameTimelines
+            val period = if (timelines.size >= 2) {
+              timelines[1].expectedPresentationTimeNanos - timelines[0].expectedPresentationTimeNanos
+            } else 0L
+            tick(data.frameTimeNanos, period)
+            Choreographer.getInstance().postVsyncCallback(this)
+          }
+        }
+      } else null
+
+  private fun postCallback() {
+    val vsync = vsyncCallback
+    if (vsync != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+      Choreographer.getInstance().postVsyncCallback(vsync as Choreographer.VsyncCallback)
+    } else {
+      Choreographer.getInstance().postFrameCallback(callback)
+    }
+  }
+
+  private fun removeCallback() {
+    val vsync = vsyncCallback
+    if (vsync != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+      Choreographer.getInstance().removeVsyncCallback(vsync as Choreographer.VsyncCallback)
+    } else {
+      Choreographer.getInstance().removeFrameCallback(callback)
     }
   }
 
@@ -53,7 +91,7 @@ class HybridFrameMonitor : HybridFrameMonitorSpec() {
     main.post {
       if (running) return@post
       running = true
-      Choreographer.getInstance().postFrameCallback(callback)
+      postCallback()
     }
   }
 
@@ -61,7 +99,7 @@ class HybridFrameMonitor : HybridFrameMonitorSpec() {
     val promise = Promise<FrameStats>()
     onNextFrame {
       running = false
-      Choreographer.getInstance().removeFrameCallback(callback)
+      removeCallback()
       promise.resolve(snapshot())
     }
     return promise
@@ -90,7 +128,7 @@ class HybridFrameMonitor : HybridFrameMonitorSpec() {
   override fun streamTextDisplayLog(key: String): DoubleArray = StreamTextDebug.log(key)
 
   // Not recorded on Android yet.
-  override fun streamTextRenderStats(key: String): DoubleArray = DoubleArray(0)
+  override fun streamTextRenderStats(key: String): DoubleArray = StreamTextDebug.renderStats(key)
 
   override fun streamTextTotals(reset: Boolean): DoubleArray = DoubleArray(0)
 
@@ -115,9 +153,9 @@ class HybridFrameMonitor : HybridFrameMonitorSpec() {
         )
       }
 
-  private fun tick(frameTimeNanos: Long) {
+  private fun tick(frameTimeNanos: Long, periodNanos: Long) {
     UiThreadUtil.assertOnUiThread()
-    val budget = (1e9 / displayRefreshRate()).toLong()
+    val budget = if (periodNanos > 0) periodNanos else (1e9 / displayRefreshRate()).toLong()
     var onTime = true
     synchronized(lock) {
       if (lastFrameNanos > 0 && budget > 0) {

@@ -209,6 +209,11 @@ async function handle(req, res) {
     return res.end(JSON.stringify(log));
   }
   if (url.pathname === '/results' && req.method === 'POST') return saveResults(req, res, q);
+  // The send logs' clock, for a device that doesn't share it (a phone): see example/src/bench/clock.ts.
+  if (url.pathname === '/time') {
+    res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+    return res.end(JSON.stringify({ now: Date.now() }));
+  }
   return stream(req, res, q);
 }
 

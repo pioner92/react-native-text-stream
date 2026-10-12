@@ -14,6 +14,7 @@ import {
   LAYOUT,
   TAG,
 } from './config';
+import { clockOffset } from './clock';
 import { startJsLoad, startJsProbe } from './probes';
 import { latencyStats, median, type LatencyStats, type Point } from './stats';
 import { BlockFrame, ChatFrame, VARIANT_COMPONENTS, type VariantResult } from './variants';
@@ -26,6 +27,9 @@ export interface RunMetrics extends LatencyStats {
   scenario: string;
   variant: VariantId;
   rep: number;
+  /** Server clock minus the device's, and the round trip it was measured with (see clock.ts). */
+  clockOffsetMs: number;
+  clockRttMs: number;
   completed: boolean;
   error?: string;
   totalBytes: number;
@@ -83,6 +87,8 @@ export function BenchScreen({
     const runId = `${s.id}-${variant}-${rep}-${Date.now()}`;
     const url = streamUrl(s, runId);
 
+    // Latency compares the server's send log with when this device showed the bytes.
+    const clock = await clockOffset();
     const memBeforeMb = monitor.current.memoryFootprintMb();
     const stopProbe = startJsProbe();
     const stopLoad = s.jsLoad ? startJsLoad(s.jsLoad.busyMs, s.jsLoad.everyMs) : () => {};
@@ -124,12 +130,14 @@ export function BenchScreen({
     const log: { total: number; events: Point[] } = await (
       await globalThis.fetch(`${SERVER}/log?id=${encodeURIComponent(runId)}`)
     ).json();
-    const shown = result?.shown ?? [];
+    const shown: Point[] = (result?.shown ?? []).map(([at, bytes]) => [at + clock.offsetMs, bytes]);
     const lat = latencyStats(log.events, shown, log.total);
     return {
       scenario: s.id,
       variant,
       rep,
+      clockOffsetMs: Math.round(clock.offsetMs * 10) / 10,
+      clockRttMs: clock.rttMs,
       completed: lat.complete,
       error: result?.error ?? (result ? undefined : `timeout ${RUN_TIMEOUT_MS / 1000}s`),
       totalBytes: log.total,
@@ -140,7 +148,7 @@ export function BenchScreen({
       uiHitches: ui.hitches,
       uiDroppedFrames: ui.droppedFrames,
       uiMaxFrameMs: Math.round(ui.maxFrameMs),
-      uiIdleMs: idleAt != null && log.events.length ? Math.round(idleAt - log.events[0][0]) : null,
+      uiIdleMs: idleAt != null && log.events.length ? Math.round(idleAt + clock.offsetMs - log.events[0][0]) : null,
       teardownMs: Math.round(teardownMs),
       render: result?.render,
       memBeforeMb: Math.round(memBeforeMb),
