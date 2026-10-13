@@ -1,29 +1,45 @@
-# react-native-text-stream
+# StreamText
 
-A native React Native text view that renders a streamed response as it arrives, without JS per chunk.
+**Native text streaming for React Native.** Render plain-text AI answers, logs, and transcripts
+without sending each chunk through JavaScript.
 
 ```tsx
-// The view makes the request; each piece of the body is on screen in the next frame.
-<StreamText request={{ url, method: 'POST', headers, body }} />
+import { StreamText } from 'react-native-text-stream';
 
-// Or by an id the request and the view share, in any order (lists, stores):
-streamFetch(url, { streamId: message.id, method: 'POST', body })
-<StreamText streamId={message.id} />
+export function Answer({ url }: { url: string }) {
+  return <StreamText request={{ url }} fontSize={16} lineHeight={24} />;
+}
 ```
 
-## Requirements
+The request writes to a native buffer using URLSession on iOS or React Native's OkHttp client on
+Android. The native view consumes the text and updates its layout. No additional fetch library,
+Nitro Modules, or Reanimated dependency is required.
 
-- React Native 0.86 or higher, with the New Architecture
-- iOS 15.1 or higher
-- Android 7.0 (API 24) or higher
+## Status and installation
 
-## Status
+**Experimental preview; not yet published to npm.** Build the library workspace and install a local
+package archive. Follow the [installation guide](https://github.com/pioner92/react-native-text-stream/blob/master/docs/getting-started.md)
+for the complete steps. The repository root is a workspace wrapper, not the installable library.
 
-Experimental, not yet on npm.
+## Compatibility
 
-Usage, API, how it works and benchmarks: see the
-[repository README](https://github.com/alexshumihin/react-native-text-stream#readme).
+- Developed and tested with **React Native 0.86.0**, with the **New Architecture**.
+- The example targets **iOS 15.1+**; the podspec follows React Native's minimum deployment target.
+- **Android API 24+**; viewport drawing optimizations require API 29+.
+- Custom native build required. Expo Go, the old architecture, and web are unsupported;
+  Expo integration has not been validated.
+
+StreamText currently renders raw UTF-8 text. Native SSE/NDJSON parsing and Markdown rendering
+are planned, not available features.
+
+## Documentation
+
+- [Overview and performance](https://github.com/pioner92/react-native-text-stream#readme)
+- [Usage and lifecycle guides](https://github.com/pioner92/react-native-text-stream/blob/master/docs/usage.md)
+- [API reference](https://github.com/pioner92/react-native-text-stream/blob/master/docs/api.md)
+- [Example app](https://github.com/pioner92/react-native-text-stream/blob/master/example/README.md)
+- [Report an issue](https://github.com/pioner92/react-native-text-stream/issues)
 
 ## License
 
-MIT
+[MIT](LICENSE) © Alex Shumihin

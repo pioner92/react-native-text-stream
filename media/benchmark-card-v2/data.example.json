@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "meta": {
+    "environment": "iOS Simulator · Release",
+    "releaseLabel": "median of 3 runs",
+    "sample": "Plain-text input",
+    "sourceLabel": "github.com/pioner92/react-native-text-stream",
+    "punchline": null
+  },
+  "rows": [
+    {"name": "StreamText", "qualifier": "Native view · no JS chunks", "values": {"shortReplyP95Ms": null, "longReplyP95Ms": null, "busyJsP95Ms": null, "busyJsHitches": null, "mountMs": null}},
+    {"name": "React <Text>", "qualifier": "Every update", "values": {"shortReplyP95Ms": null, "longReplyP95Ms": null, "busyJsP95Ms": null, "busyJsHitches": null, "mountMs": null}},
+    {"name": "React <Text>", "qualifier": "Once per frame", "values": {"shortReplyP95Ms": null, "longReplyP95Ms": null, "busyJsP95Ms": null, "busyJsHitches": null, "mountMs": null}},
+    {"name": "Reanimated", "qualifier": "TextInput", "values": {"shortReplyP95Ms": null, "longReplyP95Ms": null, "busyJsP95Ms": null, "busyJsHitches": null, "mountMs": null}},
+    {"name": "streamdown*", "qualifier": "Markdown", "values": {"shortReplyP95Ms": null, "longReplyP95Ms": null, "busyJsP95Ms": null, "busyJsHitches": null, "mountMs": null}}
+  ],
+  "caveat": "UI-marker timings are estimates. streamdown includes Markdown parsing; methodology is linked separately."
+}

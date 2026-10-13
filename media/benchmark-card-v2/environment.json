@@ -1,0 +1,58 @@
+{
+  "device": "iPhone 17 Pro Max Simulator",
+  "os": "iOS 26.5",
+  "build": "Release, arm64 simulator; JS bundle --dev false",
+  "host": "Apple M3 Max, 96 GiB RAM",
+  "head": "23757421367b5f014007a59a14276799b6c7a57b",
+  "versions": {
+    "react": "19.2.3",
+    "react-native": "0.86.0",
+    "react-native-reanimated": "4.7.1",
+    "react-native-streamdown": "0.3.0",
+    "react-native-worklets": "0.13.0",
+    "react-native-enriched-markdown": "1.1.1"
+  },
+  "binary_sha256": "c87956d4f71eb0b975f057eab4770645ff11cd8d2c8ed052d07ba60a529940a7",
+  "bundle_sha256": "7ace4199c916b24dbc3e9d49b174262b5ebbc93b4c8486a97de85a2f0721c982",
+  "source_sha256": {
+    "example/src/bench/BenchScreen.tsx": "8d60a20a72f040489ad87c8049ccb5548bb30ef898af19e9e363475f3a47ab36",
+    "example/src/bench/variants.tsx": "1e857a618eedef2da1e4c1ff8c4474053335ed1441143d0051df4b4ff6eb8ef8",
+    "example/src/bench/clock.ts": "1ceb2da556563bed818f86d15367d32c1de8e561985e327cd81b83ee1d9aa767",
+    "example/src/bench/stats.ts": "ed2b84d8b6be9c1a93bc35530a8cdbe3f7899395f885ca3aab2947fc643d2681",
+    "example/src/bench/SocialMountBench.tsx": "02ee4b78713bf4692a03863c49a4c982a690e49738d7a0c936f6e3cc7f331835",
+    "example/src/js-stream.ts": "6fcf1a57a28312506bf3d85f4ed6f8a17740780d2bce2ac8de53932960c85932",
+    "example/index.social.js": "0ea7add422235fe467d900ff9834bd5bc8d8ec4b43718c8193644e0169351566",
+    "scripts/build-social-bench-ios.py": "8ceb4af85a7fec8a0d065aa34b042948f70ab9aa08f2bbd04dc4ce286deb426c",
+    "server/stream-server.mjs": "aff4a98a8c4b4ab45889a34ed6fe3ae732482c6abe3b8c70ffae4777a1b674bb"
+  },
+  "streaming_config": {
+    "scenarios": [
+      "S1",
+      "S2",
+      "S4"
+    ],
+    "variants": [
+      "A1",
+      "A2",
+      "B1",
+      "B2",
+      "D"
+    ],
+    "reps": 3,
+    "layout": "bubble",
+    "tag": "social-ios-v2"
+  },
+  "transport": {
+    "StreamText": "native streamFetch",
+    "JS variants": "React Native XMLHttpRequest progress"
+  },
+  "measurement": "Instrumented UI timing estimates; not photon/pixel timestamps. Simulator and local server share host clock; offset sampled per run.",
+  "conditions": [
+    "Same binary for streaming and mount.",
+    "Native inverted chat ScrollView keeps streaming answer in viewport.",
+    "Mount uses 20 ready messages in plain View, no list virtualization.",
+    "No manual UI inspection during timed runs.",
+    "Benchmark frame helper and installed native devtools instrumentation are present.",
+    "Other host workloads and simulator display refresh were not experimentally locked."
+  ]
+}

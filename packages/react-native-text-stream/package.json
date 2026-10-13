@@ -34,11 +34,11 @@
     "*.podspec",
     "README.md"
   ],
-  "repository": "https://github.com/alexshumihin/react-native-text-stream.git",
+  "repository": "https://github.com/pioner92/react-native-text-stream.git",
   "author": "Alex Shumihin",
   "license": "MIT",
-  "bugs": "https://github.com/alexshumihin/react-native-text-stream/issues",
-  "homepage": "https://github.com/alexshumihin/react-native-text-stream#readme",
+  "bugs": "https://github.com/pioner92/react-native-text-stream/issues",
+  "homepage": "https://github.com/pioner92/react-native-text-stream#readme",
   "publishConfig": {
     "access": "public",
     "registry": "https://registry.npmjs.org/"

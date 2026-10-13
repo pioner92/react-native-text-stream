@@ -366,13 +366,20 @@ export function BlockFrame({ children }: { children: React.ReactNode }) {
 /** A chat list whose last bubble holds the variant; the bubble grows with the text. */
 export function ChatFrame({ children }: { children: React.ReactNode }) {
   return (
-    <ScrollView style={StyleSheet.absoluteFill} contentContainerStyle={styles.chat}>
-      {HISTORY.map((m, i) => (
-        <View key={i} style={[styles.bubble, m.mine ? styles.mine : styles.theirs]}>
-          <Text style={styles.text}>{m.text}</Text>
-        </View>
-      ))}
-      <View style={[styles.bubble, styles.theirs, styles.answer]}>{children}</View>
+    <ScrollView
+      style={[StyleSheet.absoluteFill, styles.inverted]}
+      contentContainerStyle={styles.chat}
+    >
+      {/* Identical native bottom anchoring for every variant. The incoming text stays visible,
+          including while JS is busy, without JS onContentSizeChange/scrollToEnd callbacks. */}
+      <View style={[styles.inverted, styles.chatMessages]}>
+        {HISTORY.map((m, i) => (
+          <View key={i} style={[styles.bubble, m.mine ? styles.mine : styles.theirs]}>
+            <Text style={styles.text}>{m.text}</Text>
+          </View>
+        ))}
+        <View style={[styles.bubble, styles.theirs, styles.answer]}>{children}</View>
+      </View>
     </ScrollView>
   );
 }
@@ -381,7 +388,9 @@ const styles = StyleSheet.create({
   content: { paddingHorizontal: 12, paddingTop: 14, paddingBottom: 40 },
   text: { color: TEXT_COLOR, fontSize: 14, lineHeight: 21 },
   bubbleInput: { padding: 0 },
-  chat: { padding: 12, gap: 10 },
+  chat: { padding: 12, flexGrow: 1, justifyContent: 'flex-end' },
+  chatMessages: { gap: 10 },
+  inverted: { transform: [{ scaleY: -1 }] },
   block: { padding: 12 },
   bubble: { maxWidth: '85%', borderRadius: 18, paddingHorizontal: 14, paddingVertical: 10 },
   mine: { alignSelf: 'flex-end', backgroundColor: '#8B5CF6' },

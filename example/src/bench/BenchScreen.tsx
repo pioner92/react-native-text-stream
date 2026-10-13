@@ -179,6 +179,7 @@ export function BenchScreen({
             setStatus(`${s.id} · ${variant} · rep ${rep}/${REPS}`);
             const m = await runOnce(s, variant, rep);
             all.push(m);
+            console.info(`STREAM_BENCH_RESULT ${JSON.stringify(m)}`);
             setResults([...all]);
             await sleep(COOLDOWN_MS);
           }

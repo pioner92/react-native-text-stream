@@ -1,0 +1,81 @@
+{
+  "schemaVersion": 1,
+  "meta": {
+    "environment": "iOS Simulator · Release",
+    "releaseLabel": "median of 3 runs",
+    "sample": "Plain text",
+    "sourceLabel": "github.com/pioner92/react-native-text-stream",
+    "punchline": null,
+    "device": "iPhone 17 Pro Max · iOS 26.5",
+    "host": "Apple M3 Max · 96 GB",
+    "date": "13 Oct 2026"
+  },
+  "rows": [
+    {
+      "name": "StreamText",
+      "qualifier": "Native view · no JS chunks",
+      "values": {
+        "shortReplyP95Ms": 12.49139404296875,
+        "longReplyP95Ms": 10.2681640625,
+        "busyJsP95Ms": 9.10997314453125,
+        "mountMs": 67,
+        "mountMaxFrameMs": 17,
+        "busyJsHitches": 0,
+        "busyJsMaxFrameMs": 17
+      }
+    },
+    {
+      "name": "React <Text>",
+      "qualifier": "Every update",
+      "values": {
+        "shortReplyP95Ms": 49.449365234374945,
+        "longReplyP95Ms": 786.0982666015624,
+        "busyJsP95Ms": 758.4612670898438,
+        "mountMs": 150,
+        "mountMaxFrameMs": 86,
+        "busyJsHitches": 22,
+        "busyJsMaxFrameMs": 976
+      }
+    },
+    {
+      "name": "React <Text>",
+      "qualifier": "Once per frame",
+      "values": {
+        "shortReplyP95Ms": 67.53404541015614,
+        "longReplyP95Ms": 768.4454956054686,
+        "busyJsP95Ms": 854.1691162109373,
+        "mountMs": 150,
+        "mountMaxFrameMs": 86,
+        "busyJsHitches": 20,
+        "busyJsMaxFrameMs": 1067
+      }
+    },
+    {
+      "name": "Reanimated",
+      "qualifier": "TextInput",
+      "values": {
+        "shortReplyP95Ms": 75.03691406249995,
+        "longReplyP95Ms": 1176.6078002929687,
+        "busyJsP95Ms": 1155.106494140625,
+        "mountMs": 134,
+        "mountMaxFrameMs": 139,
+        "busyJsHitches": 30,
+        "busyJsMaxFrameMs": 642
+      }
+    },
+    {
+      "name": "streamdown*",
+      "qualifier": "Markdown",
+      "values": {
+        "shortReplyP95Ms": 46.39208984375,
+        "longReplyP95Ms": 631.5001586914062,
+        "busyJsP95Ms": 545.9493652343749,
+        "mountMs": 167,
+        "mountMaxFrameMs": 174,
+        "busyJsHitches": 57,
+        "busyJsMaxFrameMs": 408
+      }
+    }
+  ],
+  "caveat": "*Markdown; optimistic completion marker. Timing estimates."
+}

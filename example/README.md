@@ -1,97 +1,92 @@
-This is a new [**React Native**](https://reactnative.dev) project, bootstrapped using [`@react-native-community/cli`](https://github.com/react-native-community/cli).
+# StreamText example
 
-# Getting Started
+This app demonstrates native text streaming beside a conventional JavaScript
+implementation. It is also the home of the repeatable benchmark and native
+test harnesses used by this repository.
 
-> **Note**: Make sure you have completed the [Set Up Your Environment](https://reactnative.dev/docs/set-up-your-environment) guide before proceeding.
+## Run it
 
-## Step 1: Start Metro
-
-First, you will need to run **Metro**, the JavaScript build tool for React Native.
-
-To start the Metro dev server, run the following command from the root of your React Native project:
+From the repository root, install the workspace dependencies:
 
 ```sh
-# Using npm
-npm start
+bun install
 
-# OR using Yarn
-yarn start
+# iOS only, on macOS
+bun run --cwd example pod
 ```
 
-## Step 2: Build and run your app
-
-With Metro running, open a new terminal window/pane from the root of your React Native project, and use one of the following commands to build and run your Android or iOS app:
-
-### Android
+Keep each of the following commands in its own terminal, all opened at the
+repository root:
 
 ```sh
-# Using npm
-npm run android
-
-# OR using Yarn
-yarn android
+# Terminal 1 — local response server on port 9877
+bun run --cwd example stream-server
 ```
-
-### iOS
-
-For iOS, remember to install CocoaPods dependencies (this only needs to be run on first clone or after updating native deps).
-
-The first time you create a new project, run the Ruby bundler to install CocoaPods itself:
 
 ```sh
-bundle install
+# Terminal 2 — Metro on port 8081
+bun run --cwd example start
 ```
-
-Then, and every time you update your native dependencies, run:
 
 ```sh
-bundle exec pod install
+# Terminal 3 — choose one platform
+bun run --cwd example ios
 ```
 
-For more information, please visit [CocoaPods Getting Started guide](https://guides.cocoapods.org/using/getting-started.html).
+For Android, reverse the two local ports before starting the app so the
+device's `localhost` reaches the development machine:
 
 ```sh
-# Using npm
-npm run ios
-
-# OR using Yarn
-yarn ios
+adb reverse tcp:8081 tcp:8081
+adb reverse tcp:9877 tcp:9877
+bun run --cwd example android
 ```
 
-If everything is set up correctly, you should see your new app running in the Android Emulator, iOS Simulator, or your connected device.
+The app needs a simulator, emulator, or connected device and the normal React
+Native platform toolchain. The workspace uses Node 22.11 or newer.
 
-This is one way to run your app — you can also build it directly from Android Studio or Xcode.
+## Explore the demo
 
-## Step 3: Modify your app
+The home screen streams the same response through two paths:
 
-Now that you have successfully run the app, let's make changes!
+- **StreamText** sends the request and renders text natively.
+- **JavaScript baseline** receives chunks with `XMLHttpRequest`, updates state,
+  and re-renders `<Text>`.
 
-Open `App.tsx` in your text editor of choice and make some changes. When you save, your app will automatically update and reflect these changes — this is powered by [Fast Refresh](https://reactnative.dev/docs/fast-refresh).
+Start a response, then choose **Freeze JS · 5s**. The control deliberately
+blocks JavaScript so the difference between the two paths is visible. **Chat**
+uses the same native stream in a growing list bubble.
 
-When you want to forcefully reload, for example to reset the state of your app, you can perform a full reload:
+## Run benchmarks
 
-- **Android**: Press the <kbd>R</kbd> key twice or select **"Reload"** from the **Dev Menu**, accessed via <kbd>Ctrl</kbd> + <kbd>M</kbd> (Windows/Linux) or <kbd>Cmd ⌘</kbd> + <kbd>M</kbd> (macOS).
-- **iOS**: Press <kbd>R</kbd> in iOS Simulator.
+Open **Benchmarks** in a Release build, keep the local streaming server running,
+and use **Run all**, **Mount**, or **History**. Result JSON is saved under
+[`../bench-results/`](../bench-results/).
 
-## Congratulations! :tada:
+Timed measurements must run without UI automation, accessibility inspection,
+view-tree snapshots, or screenshots: inspecting a long text view can itself
+stall the UI thread and invalidate the run. The benchmark screen reports when a
+run is complete; inspect the saved result afterwards.
 
-You've successfully run and modified your React Native App. :partying_face:
+For the scenarios, build commands, measurement definitions, and how to compare
+runs, read the [benchmark guide](../docs/benchmarks.md).
 
-### Now what?
+## Test harnesses
 
-- If you want to add this new React Native code to an existing application, check out the [Integration guide](https://reactnative.dev/docs/integration-with-existing-apps).
-- If you're curious to learn more about React Native, check out the [docs](https://reactnative.dev/docs/getting-started).
+The in-app harnesses exercise the native renderer and request lifecycle. From
+the repository root:
 
-# Troubleshooting
+```sh
+bun run test:harness            # iOS simulator
+bun run --cwd example test:harness:android
+```
 
-If you're having issues getting the above steps to work, see the [Troubleshooting](https://reactnative.dev/docs/troubleshooting) page.
+The focused lifecycle and fetch suites start their own fixture servers and
+configure Android port reversal themselves:
 
-# Learn More
+```sh
+bash scripts/test-stream-fetch-harness.sh ios all
+bash scripts/test-stream-fetch-harness.sh android all
+```
 
-To learn more about React Native, take a look at the following resources:
-
-- [React Native Website](https://reactnative.dev) - learn more about React Native.
-- [Getting Started](https://reactnative.dev/docs/environment-setup) - an **overview** of React Native and how setup your environment.
-- [Learn the Basics](https://reactnative.dev/docs/getting-started) - a **guided tour** of the React Native **basics**.
-- [Blog](https://reactnative.dev/blog) - read the latest official React Native **Blog** posts.
-- [`@facebook/react-native`](https://github.com/facebook/react-native) - the Open Source; GitHub **repository** for React Native.
+See [CONTRIBUTING.md](../CONTRIBUTING.md) for the full validation matrix.
