@@ -1,0 +1,26 @@
+example/__tests__/helpers.tsx(17,21): error TS2304: Cannot find name 'TextEncoder'.
+example/__tests__/helpers.tsx(60,74): error TS2345: Argument of type '(value: unknown) => void' is not assignable to parameter of type '() => void'.
+  Target signature provides too few arguments. Expected 1 or more, but got 0.
+example/__tests__/ref.harness.tsx(97,41): error TS2345: Argument of type '(value: unknown) => void' is not assignable to parameter of type '() => void'.
+  Target signature provides too few arguments. Expected 1 or more, but got 0.
+example/__tests__/review-repro.harness.tsx(287,22): error TS2554: Expected 0 arguments, but got 1.
+example/src/bench/BenchScreen.tsx(62,61): error TS2345: Argument of type '(value: unknown) => void' is not assignable to parameter of type '() => void'.
+  Target signature provides too few arguments. Expected 1 or more, but got 0.
+example/src/bench/HistoryBench.tsx(53,59): error TS2345: Argument of type '(value: unknown) => void' is not assignable to parameter of type '() => void'.
+  Target signature provides too few arguments. Expected 1 or more, but got 0.
+example/src/bench/MountBench.tsx(45,61): error TS2345: Argument of type '(value: unknown) => void' is not assignable to parameter of type '() => void'.
+  Target signature provides too few arguments. Expected 1 or more, but got 0.
+example/src/bench/MountBench.tsx(79,14): error TS2304: Cannot find name 'TextEncoder'.
+example/src/bench/MountBench.tsx(86,20): error TS2304: Cannot find name 'TextEncoder'.
+example/src/bench/MountBench.tsx(146,29): error TS2304: Cannot find name 'performance'.
+example/src/bench/MountBench.tsx(150,30): error TS2304: Cannot find name 'performance'.
+example/src/LiveChatDemo.tsx(52,44): error TS2304: Cannot find name 'performance'.
+example/src/LiveChatDemo.tsx(69,27): error TS2304: Cannot find name 'performance'.
+example/src/LiveChatDemo.tsx(71,20): error TS2304: Cannot find name 'performance'.
+example/src/LiveChatDemo.tsx(74,56): error TS2304: Cannot find name 'performance'.
+example/src/LiveChatDemo.tsx(375,5): error TS2345: Argument of type '{ screen: { flex: number; backgroundColor: string; paddingHorizontal: number; }; header: { paddingTop: number; paddingBottom: number; }; brandTop: { flexDirection: "row"; alignItems: "center"; justifyContent: "space-between"; marginBottom: number; }; ... 30 more ...; note: { ...; }; }' is not assignable to parameter of type '{ screen: { flex: number; backgroundColor: string; paddingHorizontal: number; }; header: { paddingTop: number; paddingBottom: number; }; brandTop: { flexDirection: "row"; alignItems: "center"; justifyContent: "space-between"; marginBottom: number; }; ... 30 more ...; note: { ...; }; } & NamedStyles<...>'.
+  Property 'replyText' is incompatible with index signature.
+    Object literal may only specify known properties, and 'textBreakStrategy' does not exist in type 'ViewStyle | TextStyle | ImageStyle'.
+example/src/PromoDemo.tsx(103,27): error TS2304: Cannot find name 'performance'.
+example/src/PromoDemo.tsx(105,20): error TS2304: Cannot find name 'performance'.
+example/src/PromoDemo.tsx(108,45): error TS2304: Cannot find name 'performance'.

@@ -1,0 +1,44 @@
+diff --git a/packages/react-native-text-stream/ios/fabric/StreamTextPreparedLayout.swift b/packages/react-native-text-stream/ios/fabric/StreamTextPreparedLayout.swift
+--- a/packages/react-native-text-stream/ios/fabric/StreamTextPreparedLayout.swift
++++ b/packages/react-native-text-stream/ios/fabric/StreamTextPreparedLayout.swift
+@@ -693,4 +693,9 @@ final class StreamTextCanvas: UIView {
+       }
+     }
+     updateTiles()
++    #if STREAMTEXT_RACE_PROOF
++    // TSan-only probe. It schedules the production updateTiles → drawAhead and cancelDrawing
++    // paths on a tall, visible canvas; neither path is replaced or reimplemented here.
++    DispatchQueue.main.async { [weak self] in self?.runRaceProofIfEligible() }
++    #endif
+   }
+@@ -767,6 +772,30 @@ final class StreamTextCanvas: UIView {
+     }
+   }
++
++  #if STREAMTEXT_RACE_PROOF
++  private static var raceProofRunning = false
++
++  /// Repeatedly queues the real background tile draw, then cancels it on the main thread.  This
++  /// only runs for a canvas that would normally draw ahead, so the two accesses to DrawToken are
++  /// the same `drawAhead` read and `cancelDrawing` write used in production.
++  private func runRaceProofIfEligible() {
++    let visible = visibleRect()
++    guard !Self.raceProofRunning, !visible.isNull, layout.height > visible.maxY + Self.tileHeight else { return }
++    Self.raceProofRunning = true
++    runRaceProofPasses(4_000)
++  }
++
++  private func runRaceProofPasses(_ remaining: Int) {
++    updateTiles()
++    cancelDrawing()
++    guard remaining > 0 else {
++      Self.raceProofRunning = false
++      return
++    }
++    DispatchQueue.main.async { [weak self] in self?.runRaceProofPasses(remaining - 1) }
++  }
++  #endif
+ 
+   private func install(_ row: Int, image: CGImage?) {
+     let tile = CALayer()
+     tile.frame = tileRect(row)

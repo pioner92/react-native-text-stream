@@ -7,9 +7,7 @@ import {
   Text,
   View,
 } from 'react-native';
-import { fetch } from 'react-native-nitro-fetch';
-import { TextDecoder } from 'react-native-nitro-text-decoder';
-import { StreamText, type StreamTextStatus } from 'react-native-text-stream';
+import { StreamText, streamFetch, type StreamTextStatus } from 'react-native-text-stream';
 import { createFrameMonitor, type FrameStats } from 'text-stream-testing';
 import { SERVER, TAG } from './config';
 import { median } from './stats';
@@ -52,28 +50,24 @@ interface Item {
   bytes: number;
 }
 
-const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
+const sleep = (ms: number) => new Promise<void>(r => setTimeout(r, ms));
 const frame = () => new Promise<number>(r => requestAnimationFrame(r));
 const round = (v: number | null) =>
   v == null ? null : Math.round(v * 10) / 10;
 
 async function load(count: number): Promise<Item[]> {
-  const decoder = new TextDecoder('utf-8');
   const items: Item[] = [];
   for (let i = 0; i < count; i += 8) {
     const batch = await Promise.all(
       Array.from({ length: Math.min(8, count - i) }, async (_, k) => {
-        const bytes = SIZES[(i + k) % SIZES.length];
-        const res = await fetch(
-          `${SERVER}/?fmt=raw&bytes=${bytes}&chunk=65536&tps=0`,
-          { stream: true, nativeBuffer: true },
-        );
-        const buffer = res.nativeBuffer as ArrayBuffer;
-        const header = new DataView(buffer, 0, 64);
-        while (header.getUint32(24, true) === 0) await sleep(20);
-        const committed = header.getUint32(8, true);
-        const text = decoder.decode(new Uint8Array(buffer, 64, committed));
-        return { id: `m${i + k}`, buffer, text, bytes: committed };
+        const requestedBytes = SIZES[(i + k) % SIZES.length];
+        const stream = streamFetch(`${SERVER}/?fmt=raw&bytes=${requestedBytes}&chunk=65536&tps=0`);
+        const result = await stream.done;
+        if (result.status !== 'done') throw new Error(result.error ?? `history fetch ${result.status}`);
+        const text = stream.text();
+        const header = new DataView(stream.buffer, 0, 64);
+        const committedBytes = header.getUint32(8, true) + header.getUint32(12, true) * 2 ** 32;
+        return { id: `m${i + k}`, buffer: stream.buffer, text, bytes: committedBytes };
       }),
     );
     items.push(...batch);
@@ -566,9 +560,9 @@ function StreamingBubble({
 }) {
   const [buffer, setBuffer] = useState<ArrayBuffer>();
   React.useEffect(() => {
-    fetch(url, { stream: true, nativeBuffer: true }).then(res =>
-      setBuffer(res.nativeBuffer),
-    );
+    const stream = streamFetch(url);
+    setBuffer(stream.buffer);
+    return () => stream.abort();
   }, [url]);
   return (
     <View style={styles.bubble}>

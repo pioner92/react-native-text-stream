@@ -1,0 +1,26 @@
+HARNESS Preparing to run tests using ios runner
+
+HARNESS Reusing Metro cache for ios
+
+HARNESS Using booted iOS simulator TextStream Review 17 Pro Max...
+HARNESS Runner ios ready
+
+FAIL __tests__/review-repro.harness.tsx
+  ● review regressions: native source ownership › R9: late writes from the old id cannot repopulate an empty or removed id
+
+    expected 'old prefix late tail' to be 'old prefix' // Object.is equality
+
+      [0m [90m 56 |[39m
+       [90m 57 |[39m [36mexport[39m [36mconst[39m waitForText [33m=[39m (key[33m:[39m string[33m,[39m text[33m:[39m string[33m,[39m timeout[33m?[39m[33m:[39m number) [33m=>[39m
+      [31m[1m>[22m[39m[90m 58 |[39m   waitForSnapshot(key[33m,[39m (s) [33m=>[39m expect(s[33m.[39mtext)[33m.[39mtoBe(text)[33m,[39m timeout)[33m;[39m
+       [90m    |[39m                                                  [31m[1m^[22m[39m
+       [90m 59 |[39m
+       [90m 60 |[39m [36mexport[39m [36mconst[39m sleep [33m=[39m (ms[33m:[39m number) [33m=>[39m [36mnew[39m [33mPromise[39m((resolve) [33m=>[39m setTimeout(resolve[33m,[39m ms))[33m;[39m
+       [90m 61 |[39m[0m
+
+Test Suites: 1 failed, 1 total
+Tests:       1 failed, 10 passed, 11 total
+Snapshots:   0 total
+Time:        17.954 s, estimated 60 s
+Ran all test suites matching review-repro.harness.
+Test results written to: ../reviews/2026-10-13/fixes/ios-review.json

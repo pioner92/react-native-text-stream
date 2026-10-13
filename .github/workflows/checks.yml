@@ -46,3 +46,6 @@ jobs:
 
       - name: Example unit tests
         run: bun run --cwd example test
+
+      - name: Example and in-app test types
+        run: bun x --no-install tsc --noEmit --project example/tsconfig.json --ignoreDeprecations 6.0

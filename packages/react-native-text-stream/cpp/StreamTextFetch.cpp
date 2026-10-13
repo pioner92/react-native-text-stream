@@ -9,6 +9,9 @@
 #include <cstring>
 #include <atomic>
 #include <cmath>
+#ifdef STREAMTEXT_TESTING
+#include <jsi/instrumentation.h>
+#endif
 
 namespace facebook::react {
 
@@ -76,7 +79,27 @@ StreamTextBuffersModule::StreamTextBuffersModule(std::shared_ptr<CallInvoker> js
   methodMap_["hasStream"] = MethodMetadata{3, hasStream};
   methodMap_["watchStream"] = MethodMetadata{2, watchStream};
   methodMap_["unwatchStream"] = MethodMetadata{1, unwatchStream};
+#ifdef STREAMTEXT_TESTING
+  methodMap_["registryStats"] = MethodMetadata{0, registryStats};
+  methodMap_["collectGarbageForTesting"] = MethodMetadata{0, collectGarbageForTesting};
+#endif
 }
+
+#ifdef STREAMTEXT_TESTING
+jsi::Value StreamTextBuffersModule::registryStats(jsi::Runtime &rt, TurboModule &, const jsi::Value *, size_t) {
+  const auto [entries, bytes] = StreamTextBufferRegistry::shared().stats();
+  auto result = jsi::Object(rt);
+  result.setProperty(rt, "entries", static_cast<double>(entries));
+  result.setProperty(rt, "bytes", static_cast<double>(bytes));
+  return result;
+}
+
+jsi::Value StreamTextBuffersModule::collectGarbageForTesting(
+    jsi::Runtime &rt, TurboModule &, const jsi::Value *, size_t) {
+  rt.instrumentation().collectGarbage("StreamText handoff regression");
+  return jsi::Value::undefined();
+}
+#endif
 
 StreamTextBuffersModule::~StreamTextBuffersModule() {
   // The runtime is going away (a reload): nothing may write for it any more.
@@ -142,7 +165,9 @@ jsi::Value StreamTextBuffersModule::fetch(
       replaced->cancel();
     }
     // Views showing this id switch to the new buffer.
-    StreamTextStreams::shared().publish(streamId, buffer, stringProperty(rt, init, "requestKey", ""), module.owner_);
+    const bool retainEvictedRequest = request.method != "GET" && request.method != "HEAD";
+    StreamTextStreams::shared().publish(
+        streamId, buffer, stringProperty(rt, init, "requestKey", ""), module.owner_, retainEvictedRequest);
   }
   auto listener = std::make_shared<JSFetchListener>(
       AsyncCallback<>(rt, args[2].getObject(rt).getFunction(rt), module.jsInvoker_), tasks, id);

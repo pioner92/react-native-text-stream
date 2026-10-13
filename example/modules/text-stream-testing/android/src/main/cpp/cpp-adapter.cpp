@@ -8,7 +8,7 @@ namespace {
 
 using namespace facebook;
 
-/** `TsbWriter` (Kotlin): writes TSB1 buffers the way nitro-fetch does. */
+/** `TsbWriter` (Kotlin): writes TSB1 buffers the way streamFetch does. */
 struct JTsbWriter : jni::JavaClass<JTsbWriter> {
   static constexpr auto kJavaDescriptor = "Lcom/margelo/nitro/textstreamtesting/TsbWriter;";
 

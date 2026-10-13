@@ -1,0 +1,13 @@
+HARNESS Preparing to run tests using android runner
+
+HARNESS Reusing Metro cache for android
+
+HARNESS Runner android ready
+
+
+Test Suites: 1 skipped, 10 passed, 10 of 11 total
+Tests:       27 skipped, 73 passed, 100 total
+Snapshots:   0 total
+Time:        64.096 s
+Ran all test suites matching (engines|flow|lifecycle|prepared|ref|resize|smoke|status|text|tiles|utf8)\.harness.
+Test results written to: ../reviews/2026-10-13/fixes/android-renderer.json

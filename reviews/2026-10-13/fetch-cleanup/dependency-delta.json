@@ -1,0 +1,8 @@
+{
+  "added": [],
+  "removed": [
+    "react-native-nitro-fetch@workspace:packages/react-native-nitro-fetch",
+    "react-native-nitro-text-decoder@0.1.2",
+    "web-streams-polyfill@4.3.0"
+  ]
+}

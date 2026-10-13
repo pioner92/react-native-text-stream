@@ -1,7 +1,7 @@
 // Seam (contract) tests: each boundary between the layers has two sides written in different
 // languages, kept in sync only by hand. These read both sides and fail when one changes alone:
 // a renamed prop, event, command or module, a status the JS types don't know, or a TSB1 header
-// that no longer matches what the producer writes.
+// that no longer matches what streamFetch writes.
 import fs from 'node:fs'
 import path from 'node:path'
 import { headerStatus, TSB_HEADER_SIZE } from '../buffer'
@@ -20,6 +20,8 @@ const renderer = read('ios/fabric/StreamTextRenderer.swift')
 const provider = read('ios/fabric/StreamTextBuffersProvider.mm')
 const tsbHeader = read('ios/TextStreamBuffer.h')
 const types = read('src/types.ts')
+const androidFetcher = read('android/src/main/jni/StreamTextFetchAndroid.cpp')
+const androidFetcherKotlin = read('android/src/main/java/com/textstream/StreamTextFetch.kt')
 
 const { configs } = jest.requireMock('react-native/Libraries/NativeComponent/NativeComponentRegistry')
 const commands = jest.requireMock('react-native/Libraries/Utilities/codegenNativeCommands').default()
@@ -152,11 +154,16 @@ function headerLayout(source: string) {
   return { offsets, size: offset }
 }
 
-describe('TSB1 buffer: producer (nitro-fetch) ↔ renderer (Swift) ↔ JS', () => {
-  const producerHeader = fs.readFileSync(path.join(root, '../react-native-nitro-fetch/ios/NitroTextStreamBuffer.h'), 'utf8')
-
-  it('the producer and the renderer use the same header', () => {
-    expect(producerHeader).toBe(tsbHeader)
+describe('TSB1 buffer: streamFetch ↔ renderer (Swift) ↔ JS', () => {
+  it('every native streamFetch implementation uses the renderer’s canonical header', () => {
+    expect(read('cpp/StreamTextFetch.cpp')).toContain('#include "../ios/TextStreamBuffer.h"')
+    expect(read('ios/fabric/StreamTextFetch.mm')).toContain('#include "../TextStreamBuffer.h"')
+    expect(androidFetcher).toContain('#include "../../../../ios/TextStreamBuffer.h"')
+    expect(read('ios/fabric/StreamTextFetch.mm')).toContain('tsb_append(')
+    // Android writes through the ByteBuffer in Kotlin, then C++ release-publishes committed bytes.
+    expect(androidFetcherKotlin).toContain('data.put(scratch, 0, read)')
+    expect(androidFetcherKotlin).toContain('events.publish(handle, committed.toLong())')
+    expect(androidFetcher).toContain('__atomic_store_n(&static_cast<TSBHeader *>(base)->committed, committed, __ATOMIC_RELEASE)')
   })
 
   it('the header is 64 bytes, with committed and status where JS reads them', () => {

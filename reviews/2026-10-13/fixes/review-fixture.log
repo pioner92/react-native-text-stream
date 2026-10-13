@@ -1,0 +1,11 @@
+device proof fixture ready on http://127.0.0.1:19878
+EFFECT key=review-r4-strict-post-1791882296918-11 count=1
+EFFECT key=review-r5-post-effect-1791882297570-13 count=1
+EFFECT key=review-r5-post-effect-1791882297570-13 count=2
+device proof fixture ready on http://127.0.0.1:19878
+EFFECT key=review-r4-strict-post-1791882468953-12 count=1
+EFFECT key=review-r5-post-effect-1791882469588-14 count=1
+EFFECT key=review-r5-post-effect-1791882469588-14 count=2
+EFFECT key=review-r4-strict-post-1791882541206-12 count=1
+EFFECT key=review-r5-post-effect-1791882541843-14 count=1
+EFFECT key=review-r5-post-effect-1791882541843-14 count=2

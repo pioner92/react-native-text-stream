@@ -74,6 +74,7 @@ namespace margelo::nitro::textstreamtesting {
     std::shared_ptr<Promise<std::string>> selectWordAt(const std::string& key, double x, double y) override;
     std::shared_ptr<Promise<std::string>> selectionGeometry(const std::string& key, double location, double length) override;
     std::shared_ptr<Promise<std::string>> accessibility(const std::string& key, const std::vector<double>& lines) override;
+    std::shared_ptr<Promise<std::string>> stopSurface(const std::string& key) override;
     std::shared_ptr<Promise<StreamTextSnapshot>> snapshot(const std::string& key) override;
 
   private:

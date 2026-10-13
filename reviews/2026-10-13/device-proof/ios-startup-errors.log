@@ -1,0 +1,4 @@
+Timestamp               Ty Process[PID:TID]
+2026-10-13 09:54:15.858 F  TextStreamExample[260:1b10858] [com.apple.runtime-issues:UIKit App Config] `UIScene` lifecycle will soon be required. Failure to adopt will result in an assert in the future.
+2026-10-13 09:54:15.961 E  TextStreamExample[260:1b1089f] [com.apple.app_launch_measurement:General] Failed to send CA Event for app launch measurements for ca_event_type: 0 event_name: com.apple.app_launch_measurement.FirstFramePresentationMetric
+2026-10-13 09:54:16.089 E  TextStreamExample[260:1b108a4] [com.apple.app_launch_measurement:General] Failed to send CA Event for app launch measurements for ca_event_type: 1 event_name: com.apple.app_launch_measurement.ExtendedLaunchMetrics

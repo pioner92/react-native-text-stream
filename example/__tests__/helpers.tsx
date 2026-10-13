@@ -57,7 +57,7 @@ export async function waitForSnapshot(
 export const waitForText = (key: string, text: string, timeout?: number) =>
   waitForSnapshot(key, (s) => expect(s.text).toBe(text), timeout);
 
-export const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+export const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 /** Blocks the JS thread. */
 export function busyWait(ms: number) {

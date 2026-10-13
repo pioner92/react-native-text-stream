@@ -1,0 +1,89 @@
+INSTRUMENTATION_STATUS: class=com.textstream.StreamTextReadingSupplementaryDeviceTest
+INSTRUMENTATION_STATUS: current=1
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=2
+INSTRUMENTATION_STATUS: stream=
+com.textstream.StreamTextReadingSupplementaryDeviceTest:
+INSTRUMENTATION_STATUS: test=previousWordReadsOneSupplementaryLetterAsOneWord
+INSTRUMENTATION_STATUS_CODE: 1
+INSTRUMENTATION_STATUS: class=com.textstream.StreamTextReadingSupplementaryDeviceTest
+INSTRUMENTATION_STATUS: current=1
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=2
+INSTRUMENTATION_STATUS: stack=java.lang.AssertionError: TalkBack previous-word must retain the complete surrogate pair: actual array was null
+	at org.junit.Assert.fail(Assert.java:89)
+	at org.junit.internal.ComparisonCriteria.arrayEquals(ComparisonCriteria.java:49)
+	at org.junit.internal.ComparisonCriteria.arrayEquals(ComparisonCriteria.java:28)
+	at org.junit.Assert.internalArrayEquals(Assert.java:534)
+	at org.junit.Assert.assertArrayEquals(Assert.java:418)
+	at com.textstream.StreamTextReadingSupplementaryDeviceTest.previousWordReadsOneSupplementaryLetterAsOneWord(StreamTextReadingSupplementaryDeviceTest.kt:34)
+
+INSTRUMENTATION_STATUS: stream=
+Error in previousWordReadsOneSupplementaryLetterAsOneWord(com.textstream.StreamTextReadingSupplementaryDeviceTest):
+java.lang.AssertionError: TalkBack previous-word must retain the complete surrogate pair: actual array was null
+	at org.junit.Assert.fail(Assert.java:89)
+	at org.junit.internal.ComparisonCriteria.arrayEquals(ComparisonCriteria.java:49)
+	at org.junit.internal.ComparisonCriteria.arrayEquals(ComparisonCriteria.java:28)
+	at org.junit.Assert.internalArrayEquals(Assert.java:534)
+	at org.junit.Assert.assertArrayEquals(Assert.java:418)
+	at com.textstream.StreamTextReadingSupplementaryDeviceTest.previousWordReadsOneSupplementaryLetterAsOneWord(StreamTextReadingSupplementaryDeviceTest.kt:34)
+
+INSTRUMENTATION_STATUS: test=previousWordReadsOneSupplementaryLetterAsOneWord
+INSTRUMENTATION_STATUS_CODE: -2
+INSTRUMENTATION_STATUS: class=com.textstream.StreamTextReadingSupplementaryDeviceTest
+INSTRUMENTATION_STATUS: current=2
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=2
+INSTRUMENTATION_STATUS: stream=
+INSTRUMENTATION_STATUS: test=nextWordReadsOneSupplementaryLetterAsOneWord
+INSTRUMENTATION_STATUS_CODE: 1
+INSTRUMENTATION_STATUS: class=com.textstream.StreamTextReadingSupplementaryDeviceTest
+INSTRUMENTATION_STATUS: current=2
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=2
+INSTRUMENTATION_STATUS: stack=java.lang.AssertionError: TalkBack next-word must retain the complete surrogate pair: actual array was null
+	at org.junit.Assert.fail(Assert.java:89)
+	at org.junit.internal.ComparisonCriteria.arrayEquals(ComparisonCriteria.java:49)
+	at org.junit.internal.ComparisonCriteria.arrayEquals(ComparisonCriteria.java:28)
+	at org.junit.Assert.internalArrayEquals(Assert.java:534)
+	at org.junit.Assert.assertArrayEquals(Assert.java:418)
+	at com.textstream.StreamTextReadingSupplementaryDeviceTest.nextWordReadsOneSupplementaryLetterAsOneWord(StreamTextReadingSupplementaryDeviceTest.kt:23)
+
+INSTRUMENTATION_STATUS: stream=
+Error in nextWordReadsOneSupplementaryLetterAsOneWord(com.textstream.StreamTextReadingSupplementaryDeviceTest):
+java.lang.AssertionError: TalkBack next-word must retain the complete surrogate pair: actual array was null
+	at org.junit.Assert.fail(Assert.java:89)
+	at org.junit.internal.ComparisonCriteria.arrayEquals(ComparisonCriteria.java:49)
+	at org.junit.internal.ComparisonCriteria.arrayEquals(ComparisonCriteria.java:28)
+	at org.junit.Assert.internalArrayEquals(Assert.java:534)
+	at org.junit.Assert.assertArrayEquals(Assert.java:418)
+	at com.textstream.StreamTextReadingSupplementaryDeviceTest.nextWordReadsOneSupplementaryLetterAsOneWord(StreamTextReadingSupplementaryDeviceTest.kt:23)
+
+INSTRUMENTATION_STATUS: test=nextWordReadsOneSupplementaryLetterAsOneWord
+INSTRUMENTATION_STATUS_CODE: -2
+INSTRUMENTATION_RESULT: stream=
+
+Time: 0.018
+There were 2 failures:
+1) previousWordReadsOneSupplementaryLetterAsOneWord(com.textstream.StreamTextReadingSupplementaryDeviceTest)
+java.lang.AssertionError: TalkBack previous-word must retain the complete surrogate pair: actual array was null
+	at org.junit.Assert.fail(Assert.java:89)
+	at org.junit.internal.ComparisonCriteria.arrayEquals(ComparisonCriteria.java:49)
+	at org.junit.internal.ComparisonCriteria.arrayEquals(ComparisonCriteria.java:28)
+	at org.junit.Assert.internalArrayEquals(Assert.java:534)
+	at org.junit.Assert.assertArrayEquals(Assert.java:418)
+	at com.textstream.StreamTextReadingSupplementaryDeviceTest.previousWordReadsOneSupplementaryLetterAsOneWord(StreamTextReadingSupplementaryDeviceTest.kt:34)
+2) nextWordReadsOneSupplementaryLetterAsOneWord(com.textstream.StreamTextReadingSupplementaryDeviceTest)
+java.lang.AssertionError: TalkBack next-word must retain the complete surrogate pair: actual array was null
+	at org.junit.Assert.fail(Assert.java:89)
+	at org.junit.internal.ComparisonCriteria.arrayEquals(ComparisonCriteria.java:49)
+	at org.junit.internal.ComparisonCriteria.arrayEquals(ComparisonCriteria.java:28)
+	at org.junit.Assert.internalArrayEquals(Assert.java:534)
+	at org.junit.Assert.assertArrayEquals(Assert.java:418)
+	at com.textstream.StreamTextReadingSupplementaryDeviceTest.nextWordReadsOneSupplementaryLetterAsOneWord(StreamTextReadingSupplementaryDeviceTest.kt:23)
+
+FAILURES!!!
+Tests run: 2,  Failures: 2
+
+
+INSTRUMENTATION_CODE: -1

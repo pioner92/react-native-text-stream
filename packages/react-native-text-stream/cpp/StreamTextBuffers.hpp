@@ -3,20 +3,25 @@
 // through the StreamTextBuffers TurboModule and then sends the view an `attach` command with its id.
 #pragma once
 
+#ifndef STREAMTEXT_NATIVE_TESTING
 #include <ReactCommon/TurboModule.h>
+#endif
 #include <jsi/jsi.h>
 #include <memory>
 #include <mutex>
 #include <unordered_map>
 #include <atomic>
 #include <string>
+#include <utility>
 
 namespace facebook::react {
 
 /**
- * Buffers waiting for their `attach` command; each id is taken once. Defined out of line
- * (StreamTextBuffers.cpp): on Android the module and the view live in different libraries, which
- * must share one registry.
+ * Buffers waiting for their `attach` command; each id is taken once. The registry deliberately
+ * keeps a weak reference: JS already retains the buffer as the component's current/pending source.
+ * If Fabric drops a command while tearing down a surface, that JS owner can go away and the global
+ * handoff cannot pin the buffer forever. Defined out of line (StreamTextBuffers.cpp): on Android
+ * the module and the view live in different libraries, which must share one registry.
  */
 class StreamTextBufferRegistry {
  public:
@@ -25,12 +30,18 @@ class StreamTextBufferRegistry {
   int put(std::shared_ptr<jsi::MutableBuffer> buffer);
   std::shared_ptr<jsi::MutableBuffer> take(int id);
 
+#ifdef STREAMTEXT_TESTING
+  /** Test builds only: live JS-owned handoffs still awaiting a Fabric `attach` and their bytes. */
+  std::pair<size_t, size_t> stats();
+#endif
+
  private:
   std::mutex mutex_;
   int lastId_{0};
-  std::unordered_map<int, std::shared_ptr<jsi::MutableBuffer>> buffers_;
+  std::unordered_map<int, std::weak_ptr<jsi::MutableBuffer>> buffers_;
 };
 
+#ifndef STREAMTEXT_NATIVE_TESTING
 class StreamTextFetchTasks;
 
 /**
@@ -58,11 +69,16 @@ class StreamTextBuffersModule : public TurboModule {
   static jsi::Value hasStream(jsi::Runtime &runtime, TurboModule &module, const jsi::Value *args, size_t count);
   static jsi::Value watchStream(jsi::Runtime &runtime, TurboModule &module, const jsi::Value *args, size_t count);
   static jsi::Value unwatchStream(jsi::Runtime &runtime, TurboModule &module, const jsi::Value *args, size_t count);
+#ifdef STREAMTEXT_TESTING
+  static jsi::Value registryStats(jsi::Runtime &runtime, TurboModule &module, const jsi::Value *args, size_t count);
+  static jsi::Value collectGarbageForTesting(jsi::Runtime &runtime, TurboModule &module, const jsi::Value *args, size_t count);
+#endif
 
   std::shared_ptr<StreamTextFetchTasks> fetches_;
   uint64_t owner_;
   struct Watch { std::string id; std::shared_ptr<std::atomic<bool>> active; };
   std::unordered_map<uint64_t, Watch> watches_;
 };
+#endif // STREAMTEXT_NATIVE_TESTING
 
 } // namespace facebook::react

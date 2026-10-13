@@ -11,9 +11,8 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
-import { fetch } from 'react-native-nitro-fetch';
-import { StreamText, useStreamTextRef, type StreamTextStatus } from 'react-native-text-stream';
-import { createUtf8StreamDecoder } from './src/utf8';
+import { StreamText, streamFetch, useStreamTextRef, type StreamTextStatus, type TextStream } from 'react-native-text-stream';
+import { streamTextOverXhr, type JsTextStream } from './src/js-stream';
 import { BenchScreen } from './src/bench/BenchScreen';
 import { HistoryBench } from './src/bench/HistoryBench';
 import { MountBench } from './src/bench/MountBench';
@@ -80,9 +79,24 @@ function Demo({
   const [jsState, setJsState] = useState<'idle' | 'live' | 'done'>('idle');
   const [frozen, setFrozen] = useState(false);
   const runId = useRef(0);
+  const nativeStream = useRef<TextStream | null>(null);
+  const jsStream = useRef<JsTextStream | null>(null);
+
+  useEffect(
+    () => () => {
+      runId.current++;
+      nativeStream.current?.abort();
+      jsStream.current?.abort();
+    },
+    [],
+  );
 
   const reset = useCallback(() => {
     runId.current++;
+    nativeStream.current?.abort();
+    nativeStream.current = null;
+    jsStream.current?.abort();
+    jsStream.current = null;
     streamRef.clear();
     setJsText('');
     setJsBytes(0);
@@ -90,35 +104,41 @@ function Demo({
     setJsState('idle');
   }, [streamRef]);
 
-  const start = useCallback(async () => {
+  const start = useCallback(() => {
     reset();
     const run = runId.current;
 
-    // Native: URLSession / Cronet -> TSB1 buffer -> StreamText. JS only hands the buffer over.
-    fetch(STREAM_URL, { stream: true, nativeBuffer: true })
-      .then((res) => run === runId.current && streamRef.attach(res.nativeBuffer))
-      .catch((e) => console.warn('native stream failed', e));
-
-    // Baseline: every chunk crosses into JS, gets decoded and re-rendered.
+    // Native: URLSession / OkHttp -> TSB1 buffer -> StreamText. JS only hands the stream over.
     try {
-      const res = await fetch(STREAM_URL, { stream: true });
-      const reader = (res as any).body.getReader();
-      const decode = createUtf8StreamDecoder();
-      setJsState('live');
-      for (;;) {
-        const { value, done } = await reader.read();
-        if (run !== runId.current) return reader.cancel();
-        if (done) break;
-        const piece = decode(value);
-        setJsText((t) => t + piece);
-        setJsBytes((b) => b + value.byteLength);
-        setJsCallbacks((n) => n + 1);
-      }
-      setJsState('done');
-    } catch (e) {
-      console.warn('JS stream failed', e);
+      const stream = streamFetch(STREAM_URL);
+      nativeStream.current = stream;
+      streamRef.attach(stream);
+      void stream.done.then((result) => {
+        if (run === runId.current && result.status === 'error')
+          console.warn('native stream failed', result.error);
+      });
+    } catch (error) {
+      console.warn('native stream failed', error);
     }
-  }, [reset]);
+
+    // Baseline: every React Native XHR progress callback crosses into JS and re-renders.
+    setJsState('live');
+    const js = streamTextOverXhr(STREAM_URL, (piece, bytes) => {
+      if (run !== runId.current) return;
+      setJsText((text) => text + piece);
+      setJsBytes((total) => total + bytes);
+      setJsCallbacks((count) => count + 1);
+    });
+    jsStream.current = js;
+    void js.done.then(
+      () => {
+        if (run === runId.current) setJsState('done');
+      },
+      (error) => {
+        if (run === runId.current) console.warn('JS stream failed', error);
+      },
+    );
+  }, [reset, streamRef]);
 
   const freezeJs = useCallback(() => {
     setFrozen(true);
@@ -138,7 +158,7 @@ function Demo({
       <SafeAreaView style={styles.screen} edges={['top', 'bottom']}>
         <View style={styles.header}>
           <View style={styles.eyebrowRow}>
-            <Text style={styles.eyebrow}>REACT NATIVE · NITRO</Text>
+            <Text style={styles.eyebrow}>REACT NATIVE · STREAMTEXT</Text>
             <View style={styles.links}>
               <Pressable onPress={onOpenChat} hitSlop={12}>
                 <Text style={styles.benchLink}>Chat ›</Text>
@@ -150,7 +170,7 @@ function Demo({
           </View>
           <Text style={styles.title}>Native Text Streaming</Text>
           <Text style={styles.subtitle}>
-            fetch → ArrayBuffer → native view.{'\n'}Zero JS on the hot path.
+            streamFetch → TSB1 buffer → native view.{'\n'}Zero JS on the hot path.
           </Text>
           <View style={styles.threads}>
             <ThreadPulse label="UI thread" color={C.done} driver="native" />
@@ -162,7 +182,7 @@ function Demo({
           badge="NATIVE"
           badgeColor={C.native}
           title="StreamText"
-          caption={`${Platform.OS === 'ios' ? 'URLSession' : 'Cronet'} → TSB1 buffer → StreamText · 0 JS callbacks`}
+          caption={`${Platform.OS === 'ios' ? 'URLSession' : 'OkHttp'} → TSB1 buffer → StreamText · 0 JS callbacks`}
         >
           {/* Inverted: offset 0 is the bottom, so the newest text stays in view without JS. */}
           <ScrollView
@@ -190,7 +210,7 @@ function Demo({
           badge="JS"
           badgeColor={C.js}
           title="setState + <Text>"
-          caption="ReadableStream → decode → React re-render per chunk"
+          caption="RN XHR progress → React re-render"
         >
           <JsStreamView text={jsText} />
           <StatusPill

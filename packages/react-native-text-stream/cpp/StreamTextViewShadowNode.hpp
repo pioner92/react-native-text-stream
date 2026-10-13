@@ -74,6 +74,7 @@ class StreamTextViewProps final : public ViewProps {
         selectionColor(convertRawProp(context, rawProps, "selectionColor", sourceProps.selectionColor, SharedColor{})),
         recordDisplayLog(convertRawProp(context, rawProps, "recordDisplayLog", sourceProps.recordDisplayLog, false)),
         sourceGeneration(convertRawProp(context, rawProps, "sourceGeneration", sourceProps.sourceGeneration, 0)),
+        sourceOwner(convertRawProp(context, rawProps, "sourceOwner", sourceProps.sourceOwner, 0)),
         streamId(convertRawProp(context, rawProps, "streamId", sourceProps.streamId, {})) {
     // Always look the key up: the parser only forwards keys that the constructor asks for.
     bool hasSource = false;
@@ -83,10 +84,12 @@ class StreamTextViewProps final : public ViewProps {
         hasSource = source != nullptr;
       }
     }
-    // A stream by id: its buffer as of now, looked up only when the id changes (a later request
-    // under it reaches the view directly). A finished one is then laid out ahead, like a source.
-    if (!hasSource && streamId != sourceProps.streamId) {
-      source = streamId.empty() ? nullptr : StreamTextStreams::shared().find(streamId);
+    // A source identity change must discard the prior buffer even when the new prop is null. In
+    // named mode, immediately use the current registry entry; later publications wake the view.
+    const bool identityChanged = sourceGeneration != sourceProps.sourceGeneration ||
+        sourceOwner != sourceProps.sourceOwner || streamId != sourceProps.streamId;
+    if (identityChanged && !hasSource) {
+      source = sourceOwner == 2 && !streamId.empty() ? StreamTextStreams::shared().find(streamId) : nullptr;
     }
     if (source && source != sourceProps.source) {
       streamTextPrepareEarly(*this);
@@ -107,6 +110,8 @@ class StreamTextViewProps final : public ViewProps {
   bool recordDisplayLog{false};
   /** Set by the JS wrapper with each new `source`; status events carry it back. */
   int sourceGeneration{0};
+  /** 0 = no source, 1 = explicit source prop, 2 = named stream. */
+  int sourceOwner{0};
   /** A stream from `streamFetch(url, { streamId })` (StreamTextStreams.hpp). */
   std::string streamId;
 };
@@ -148,6 +153,7 @@ struct StreamTextViewState {
    */
   std::shared_ptr<jsi::MutableBuffer> source;
   int sourceGeneration{0};
+  int sourceOwner{0};
 
   StreamTextViewState() = default;
   StreamTextViewState(Float height, int revision, const void *propSource, StreamTextPreparedRef prepared)
@@ -262,9 +268,11 @@ class StreamTextViewShadowNode final : public ConcreteViewShadowNode<
       changed = true;
     }
 #ifdef RN_SERIALIZABLE_STATE
-    if (state.source != props.source || state.sourceGeneration != props.sourceGeneration) {
+    if (state.source != props.source || state.sourceGeneration != props.sourceGeneration ||
+        state.sourceOwner != props.sourceOwner) {
       next.source = props.source;
       next.sourceGeneration = props.sourceGeneration;
+      next.sourceOwner = props.sourceOwner;
       changed = true;
     }
 #endif

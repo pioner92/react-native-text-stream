@@ -1,0 +1,97 @@
+HARNESS Preparing to run tests using ios runner
+
+HARNESS Reusing Metro cache for ios
+
+HARNESS Using booted iOS simulator TextStream Review 17 Pro Max...
+HARNESS Runner ios ready
+
+FAIL __tests__/review-repro.harness.tsx
+  ● review regressions: native source ownership › R1: a late named publication cannot replace a buffer attached through the ref
+
+    expected 'late publication' to be 'manual winner' // Object.is equality
+
+      [0m [90m 143 |[39m     [36mawait[39m evidence([32m'R1 attach then named publication'[39m[33m,[39m viewKey[33m,[39m ref[33m,[39m events)[33m;[39m
+       [90m 144 |[39m
+      [31m[1m>[22m[39m[90m 145 |[39m     expect(([36mawait[39m snapshot(viewKey))[33m.[39mtext)[33m.[39mtoBe([32m'manual winner'[39m)[33m;[39m
+       [90m     |[39m                                                [31m[1m^[22m[39m
+       [90m 146 |[39m     [36mawait[39m expect(ref[33m.[39mcurrent[33m![39m[33m.[39mgetText())[33m.[39mresolves[33m.[39mtoBe([32m'manual winner'[39m)[33m;[39m
+       [90m 147 |[39m   })[33m;[39m
+       [90m 148 |[39m[0m
+
+  ● review regressions: native source ownership › R1: clear remains idle when its old streamId publishes afterwards
+
+    expected [ 'must stay cleared', 'done', 21 ] to deeply equal [ '', 'idle', +0 ]
+
+      [0m [90m 172 |[39m
+       [90m 173 |[39m     [36mconst[39m s [33m=[39m [36mawait[39m snapshot(viewKey)[33m;[39m
+      [31m[1m>[22m[39m[90m 174 |[39m     expect([s[33m.[39mtext[33m,[39m s[33m.[39mstatus[33m,[39m s[33m.[39mheight])[33m.[39mtoEqual([[32m''[39m[33m,[39m [32m'idle'[39m[33m,[39m [35m0[39m])[33m;[39m
+       [90m     |[39m                                                 [31m[1m^[22m[39m
+       [90m 175 |[39m     expect(ref[33m.[39mcurrent[33m![39m[33m.[39mgetStatus())[33m.[39mtoEqual({ status[33m:[39m [32m'idle'[39m[33m,[39m bytes[33m:[39m [35m0[39m })[33m;[39m
+       [90m 176 |[39m   })[33m;[39m
+       [90m 177 |[39m[0m
+
+  ● review regressions: native source ownership › R1: an explicit source stays the single owner when the same streamId publishes
+
+    expected 'named replacement' to be 'explicit source' // Object.is equality
+
+      [0m [90m 196 |[39m     [36mawait[39m evidence([32m'R1 explicit source plus named publication'[39m[33m,[39m viewKey[33m,[39m ref[33m,[39m events)[33m;[39m
+       [90m 197 |[39m
+      [31m[1m>[22m[39m[90m 198 |[39m     expect(([36mawait[39m snapshot(viewKey))[33m.[39mtext)[33m.[39mtoBe([32m'explicit source'[39m)[33m;[39m
+       [90m     |[39m                                                [31m[1m^[22m[39m
+       [90m 199 |[39m     [36mawait[39m expect(ref[33m.[39mcurrent[33m![39m[33m.[39mgetText())[33m.[39mresolves[33m.[39mtoBe([32m'explicit source'[39m)[33m;[39m
+       [90m 200 |[39m   })[33m;[39m
+       [90m 201 |[39m[0m
+
+  ● review regressions: native source ownership › R2: removing source immediately shows the already-published named stream
+
+    expected '' to be 'named buffer' // Object.is equality
+
+      [0m [90m 232 |[39m     [36mawait[39m evidence([32m'R2 remove explicit source'[39m[33m,[39m viewKey[33m,[39m ref[33m,[39m events)[33m;[39m
+       [90m 233 |[39m
+      [31m[1m>[22m[39m[90m 234 |[39m     expect(([36mawait[39m snapshot(viewKey))[33m.[39mtext)[33m.[39mtoBe([32m'named buffer'[39m)[33m;[39m
+       [90m     |[39m                                                [31m[1m^[22m[39m
+       [90m 235 |[39m     [36mawait[39m expect(ref[33m.[39mcurrent[33m![39m[33m.[39mgetText())[33m.[39mresolves[33m.[39mtoBe([32m'named buffer'[39m)[33m;[39m
+       [90m 236 |[39m   })[33m;[39m
+       [90m 237 |[39m[0m
+
+  ● review regressions: native source ownership › R9: switching from a filled id to an empty id clears the native screen immediately
+
+    expected [ 'previous message', 'done', 21 ] to deeply equal [ '', 'idle', +0 ]
+
+      [0m [90m 270 |[39m
+       [90m 271 |[39m     [36mconst[39m switched [33m=[39m [36mawait[39m snapshot(viewKey)[33m;[39m
+      [31m[1m>[22m[39m[90m 272 |[39m     expect([switched[33m.[39mtext[33m,[39m switched[33m.[39mstatus[33m,[39m switched[33m.[39mheight])[33m.[39mtoEqual([[32m''[39m[33m,[39m [32m'idle'[39m[33m,[39m [35m0[39m])[33m;[39m
+       [90m     |[39m                                                                      [31m[1m^[22m[39m
+       [90m 273 |[39m     expect(ref[33m.[39mcurrent[33m![39m[33m.[39mgetStatus())[33m.[39mtoEqual({ status[33m:[39m [32m'idle'[39m[33m,[39m bytes[33m:[39m [35m0[39m })[33m;[39m
+       [90m 274 |[39m     [36mawait[39m expect(ref[33m.[39mcurrent[33m![39m[33m.[39mgetText())[33m.[39mresolves[33m.[39mtoBe([32m''[39m)[33m;[39m
+       [90m 275 |[39m[0m
+
+  ● review regressions: declarative request lifecycle › R3: an already-aborted owned request reaches the renderer as cancelled once
+
+    expected '' to be 'cancelled' // Object.is equality
+
+      [0m [90m 302 |[39m     [36mawait[39m evidence([32m'R3 owned pre-abort'[39m[33m,[39m viewKey[33m,[39m ref[33m,[39m events)[33m;[39m
+       [90m 303 |[39m
+      [31m[1m>[22m[39m[90m 304 |[39m     expect(([36mawait[39m snapshot(viewKey))[33m.[39mstatus)[33m.[39mtoBe([32m'cancelled'[39m)[33m;[39m
+       [90m     |[39m                                                  [31m[1m^[22m[39m
+       [90m 305 |[39m     expect(ref[33m.[39mcurrent[33m![39m[33m.[39mgetStatus())[33m.[39mtoEqual({ status[33m:[39m [32m'cancelled'[39m[33m,[39m bytes[33m:[39m [35m0[39m })[33m;[39m
+       [90m 306 |[39m     expect(events)[33m.[39mtoEqual([[[32m'cancelled'[39m[33m,[39m [35m0[39m]])[33m;[39m
+       [90m 307 |[39m   })[33m;[39m[0m
+
+  ● review regressions: declarative request lifecycle › R5: after native eviction, a named POST is still never reissued without releaseStream
+
+    expected 2 to be 1 // Object.is equality
+
+      [0m [90m 422 |[39m     [36mawait[39m evidence([32m'R5 remount after native tombstone pressure'[39m[33m,[39m viewKey[33m,[39m ref[33m,[39m events[33m,[39m { effectCount[33m:[39m ([36mawait[39m count(effectKey))[33m.[39mcount })[33m;[39m
+       [90m 423 |[39m
+      [31m[1m>[22m[39m[90m 424 |[39m     expect(([36mawait[39m count(effectKey))[33m.[39mcount)[33m.[39mtoBe([35m1[39m)[33m;[39m
+       [90m     |[39m                                                [31m[1m^[22m[39m
+       [90m 425 |[39m   })[33m;[39m
+       [90m 426 |[39m })[33m;[39m
+       [90m 427 |[39m[0m
+
+Test Suites: 1 failed, 1 total
+Tests:       7 failed, 1 passed, 8 total
+Snapshots:   0 total
+Time:        36.768 s, estimated 47 s
+Ran all test suites matching review-repro.harness.

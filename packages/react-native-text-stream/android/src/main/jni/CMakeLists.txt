@@ -33,6 +33,9 @@ target_link_libraries(
 )
 
 target_compile_reactnative_options(${LIB_TARGET_NAME} PUBLIC)
+if(STREAMTEXT_TESTING)
+  target_compile_definitions(${LIB_TARGET_NAME} PRIVATE STREAMTEXT_TESTING=1)
+endif()
 # 32-bit x86 aligns a struct's uint64_t to 4 bytes, so clang can't prove TSBHeader.committed is
 # 8-aligned; it is (the header starts the buffer, a page-aligned mapping).
 target_compile_options(${LIB_TARGET_NAME} PRIVATE -Wno-atomic-alignment)

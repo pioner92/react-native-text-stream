@@ -74,7 +74,6 @@ internal class StreamTextReading(val text: String, lineStarts: IntArray) {
   // MARK: - Characters and words
 
   private val characters: BreakIterator by lazy { BreakIterator.getCharacterInstance(Locale.getDefault()).also { it.setText(text) } }
-  private val words: BreakIterator by lazy { BreakIterator.getWordInstance(Locale.getDefault()).also { it.setText(text) } }
 
   private fun breakFollowing(iterator: BreakIterator, from: Int): IntArray? {
     var start = from
@@ -99,32 +98,54 @@ internal class StreamTextReading(val text: String, lineStarts: IntArray) {
   }
 
   private fun wordFollowing(from: Int): IntArray? {
-    var start = from
-    while (!isLetterOrDigit(start) && !isWordStart(start)) {
-      start = words.following(start)
-      if (start == BreakIterator.DONE) return null
-    }
-    val end = words.following(start)
-    if (end == BreakIterator.DONE || !isWordEnd(end)) return null
+    // Accessibility offsets are UTF-16 code-unit offsets.  A client is allowed to leave the
+    // cursor between the halves of a supplementary character; start at that character rather
+    // than treating its low surrogate as punctuation.
+    var start = wordStartOffset(from)
+    while (start < text.length && !isLetterOrDigit(start)) start = nextCodePointOffset(start)
+    if (start >= text.length) return null
+    var end = nextCodePointOffset(start)
+    while (end < text.length && isLetterOrDigit(end)) end = nextCodePointOffset(end)
     return intArrayOf(start, end)
   }
 
   private fun wordPreceding(to: Int): IntArray? {
-    var end = to
-    while (end > 0 && !isLetterOrDigit(end - 1) && !isWordEnd(end)) {
-      end = words.preceding(end)
-      if (end == BreakIterator.DONE) return null
-    }
-    val start = words.preceding(end)
-    if (start == BreakIterator.DONE || !isWordStart(start)) return null
+    // As above, a cursor between a pair belongs after the supplementary code point when walking
+    // backwards.  codePointBefore then sees the complete scalar rather than a high surrogate.
+    var end = wordEndOffset(to)
+    while (end > 0 && !isLetterOrDigitBefore(end)) end = previousCodePointOffset(end)
+    if (end <= 0) return null
+    var start = previousCodePointOffset(end)
+    while (start > 0 && isLetterOrDigitBefore(start)) start = previousCodePointOffset(start)
     return intArrayOf(start, end)
   }
 
-  private fun isWordStart(i: Int) = isLetterOrDigit(i) && (i == 0 || !isLetterOrDigit(i - 1))
+  /** A code point beginning at [i].  If [i] is inside a surrogate pair, it begins at its high surrogate. */
+  private fun isLetterOrDigit(i: Int): Boolean {
+    if (i < 0 || i >= text.length) return false
+    val start = wordStartOffset(i)
+    return Character.isLetterOrDigit(text.codePointAt(start))
+  }
 
-  private fun isWordEnd(i: Int) = i > 0 && isLetterOrDigit(i - 1) && (i == text.length || !isLetterOrDigit(i))
+  /** A code point ending at [end], with UTF-16's codePointBefore semantics. */
+  private fun isLetterOrDigitBefore(end: Int): Boolean {
+    if (end <= 0 || end > text.length) return false
+    return Character.isLetterOrDigit(text.codePointBefore(wordEndOffset(end)))
+  }
 
-  private fun isLetterOrDigit(i: Int) = i >= 0 && i < text.length && Character.isLetterOrDigit(text.codePointAt(i))
+  private fun wordStartOffset(offset: Int): Int {
+    if (offset <= 0 || offset >= text.length) return offset
+    return if (Character.isLowSurrogate(text[offset]) && Character.isHighSurrogate(text[offset - 1])) offset - 1 else offset
+  }
+
+  private fun wordEndOffset(offset: Int): Int {
+    if (offset <= 0 || offset >= text.length) return offset
+    return if (Character.isLowSurrogate(text[offset]) && Character.isHighSurrogate(text[offset - 1])) offset + 1 else offset
+  }
+
+  private fun nextCodePointOffset(offset: Int) = offset + Character.charCount(text.codePointAt(offset))
+
+  private fun previousCodePointOffset(offset: Int) = offset - Character.charCount(text.codePointBefore(offset))
 
   // MARK: - Paragraphs
 

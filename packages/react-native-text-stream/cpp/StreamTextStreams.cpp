@@ -11,7 +11,7 @@ StreamTextStreams &StreamTextStreams::shared() {
 }
 
 void StreamTextStreams::publish(const std::string &id, std::shared_ptr<StreamTextMappedBuffer> buffer,
-                               std::string requestKey, uint64_t owner) {
+                               std::string requestKey, uint64_t owner, bool retainEvictedRequest) {
   std::vector<std::shared_ptr<Listener>> listeners;
   {
     std::lock_guard lock(mutex_);
@@ -19,7 +19,9 @@ void StreamTextStreams::publish(const std::string &id, std::shared_ptr<StreamTex
     entry.buffer = std::move(buffer);
     entry.requestKey = std::move(requestKey);
     entry.owner = owner;
+    entry.retainEvictedRequest = retainEvictedRequest;
     entry.lastUse = ++clock_;
+    retainedEvicted_.erase(id);
     evicted_.erase(id);
     for (const auto &[token, listener] : entry.listeners) {
       listeners.push_back(listener);
@@ -41,6 +43,10 @@ bool StreamTextStreams::matches(const std::string &id, const std::string &reques
   if (!includeEvicted) {
     return false;
   }
+  auto retained = retainedEvicted_.find(id);
+  if (retained != retainedEvicted_.end()) {
+    return retained->second.keyHash == std::hash<std::string>{}(requestKey);
+  }
   auto evicted = evicted_.find(id);
   return evicted != evicted_.end() && evicted->second.keyHash == std::hash<std::string>{}(requestKey);
 }
@@ -61,6 +67,7 @@ void StreamTextStreams::releaseOwner(uint64_t owner) {
       ++it;
     }
   }
+  std::erase_if(retainedEvicted_, [owner](const auto &entry) { return entry.second.owner == owner; });
   std::erase_if(evicted_, [owner](const auto &entry) { return entry.second.owner == owner; });
 }
 
@@ -101,6 +108,7 @@ void StreamTextStreams::unlisten(const std::string &id, uint64_t token) {
 
 void StreamTextStreams::release(const std::string &id) {
   std::lock_guard lock(mutex_);
+  retainedEvicted_.erase(id);
   evicted_.erase(id);
   auto it = entries_.find(id);
   if (it == entries_.end()) {
@@ -118,6 +126,7 @@ void StreamTextStreams::release(const std::string &id) {
 void StreamTextStreams::clear() {
   std::lock_guard lock(mutex_);
   entries_.clear();
+  retainedEvicted_.clear();
   evicted_.clear();
 }
 
@@ -142,7 +151,12 @@ void StreamTextStreams::evictLocked() {
     const auto &entry = entries_.at(id);
     bytes -= tsb_committed(entry.buffer->data()) + TSB_HEADER_SIZE + entry.requestKey.size();
     if (!entry.requestKey.empty()) {
-      evicted_[id] = Evicted{std::hash<std::string>{}(entry.requestKey), entry.owner, entry.lastUse};
+      auto tombstone = Evicted{std::hash<std::string>{}(entry.requestKey), entry.owner, entry.lastUse};
+      if (entry.retainEvictedRequest) {
+        retainedEvicted_[id] = tombstone;
+      } else {
+        evicted_[id] = tombstone;
+      }
     }
     evicted.push_back(id);
   }

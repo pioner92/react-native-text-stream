@@ -27,7 +27,13 @@ android {
   defaultConfig {
     minSdkVersion getExtOrDefault('minSdkVersion', 24)
     targetSdkVersion getExtOrDefault('targetSdkVersion', 36)
+    testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
     buildConfigField 'boolean', 'STREAMTEXT_TESTING', streamTextTesting.toString()
+    externalNativeBuild {
+      cmake {
+        if (streamTextTesting) arguments '-DSTREAMTEXT_TESTING=ON'
+      }
+    }
   }
 
   buildFeatures {
@@ -52,4 +58,6 @@ repositories {
 dependencies {
   implementation 'com.facebook.react:react-android'
   testImplementation 'junit:junit:4.13.2'
+  androidTestImplementation 'androidx.test:runner:1.6.2'
+  androidTestImplementation 'androidx.test.ext:junit:1.2.1'
 }

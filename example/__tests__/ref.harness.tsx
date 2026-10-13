@@ -94,7 +94,7 @@ describe('StreamText: ref', () => {
     for (let i = 0; i < 20; i++) ref.attach(buffer(`buffer ${i}`, i % 2 ? TSB.done : TSB.open));
     await waitForText(key, 'buffer 19');
     // No other buffer's text is left behind.
-    await new Promise((r) => setTimeout(r, 200));
+    await new Promise<void>((r) => setTimeout(r, 200));
     expect((await snapshot(key)).text).toBe('buffer 19');
   });
 

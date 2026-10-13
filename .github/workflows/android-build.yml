@@ -14,8 +14,9 @@ on:
       - 'patches/**'
       - 'scripts/**'
       - 'packages/react-native-text-stream/**'
-      - 'packages/react-native-nitro-fetch/**'
       - 'example/package.json'
+      - 'example/App.tsx'
+      - 'example/src/**'
       - 'example/react-native.config.js'
       - 'example/android/**'
       - 'example/__tests__/**'
@@ -30,8 +31,9 @@ on:
       - 'patches/**'
       - 'scripts/**'
       - 'packages/react-native-text-stream/**'
-      - 'packages/react-native-nitro-fetch/**'
       - 'example/package.json'
+      - 'example/App.tsx'
+      - 'example/src/**'
       - 'example/react-native.config.js'
       - 'example/android/**'
       - 'example/__tests__/**'
@@ -84,7 +86,7 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
 
-      - name: streamFetch in-app regressions
+      - name: Fetch, renderer and lifecycle in-app regressions
         uses: reactivecircus/android-emulator-runner@v2
         env:
           HARNESS_ANDROID_AVD: stream-fetch-ci
@@ -94,7 +96,21 @@ jobs:
           arch: x86_64
           avd-name: stream-fetch-ci
           disable-animations: true
-          script: bash scripts/test-stream-fetch-harness.sh android
+          script: |
+            bash scripts/test-stream-fetch-harness.sh android all
+            cd example/android && ./gradlew :react-native-text-stream:connectedDebugAndroidTest --no-daemon
+
+
+      - name: Upload native test results and platform skips
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-native-regressions
+          path: |
+            ${{ runner.temp }}/streamtext-harness-android
+            packages/react-native-text-stream/android/build/reports
+            packages/react-native-text-stream/android/build/test-results
+          if-no-files-found: warn
 
       - name: Stop Gradle daemon
         if: always()

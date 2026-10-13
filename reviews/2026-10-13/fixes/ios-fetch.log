@@ -1,0 +1,14 @@
+HARNESS Preparing to run tests using ios runner
+
+HARNESS Reusing Metro cache for ios
+
+HARNESS Using booted iOS simulator TextStream Review 17 Pro Max...
+HARNESS Runner ios ready
+
+
+Test Suites: 5 passed, 5 total
+Tests:       49 passed, 49 total
+Snapshots:   0 total
+Time:        30.942 s
+Ran all test suites matching (fetch|streamid|seams|js-stream).*harness.
+Test results written to: ../reviews/2026-10-13/fixes/ios-fetch.json

@@ -1,0 +1,13 @@
+$ bun run --cwd packages/react-native-text-stream build
+$ bun run typecheck && bob build
+$ tsc --noEmit -p tsconfig.build.json && tsc --noEmit
+ℹ [commonjs] Cleaning up previous build at lib/commonjs
+ℹ [module] Cleaning up previous build at lib/module
+ℹ [typescript] Cleaning up previous build at lib/typescript
+ℹ [typescript] Generating type definitions with tsc
+⚠ [typescript] Failed to locate tsc in the workspace. Falling back to the binary found in PATH at /Users/alex/WebstormProjects/react-native-text-stream/node_modules/.bin/tsc. Consider adding typescript to your devDependencies or specifying the tsc option for the typescript target.
+ℹ [commonjs] Compiling 7 files in src with babel
+ℹ [module] Compiling 7 files in src with babel
+✔ [module] Wrote files to lib/module
+✔ [commonjs] Wrote files to lib/commonjs
+✔ [typescript] Wrote definition files to lib/typescript

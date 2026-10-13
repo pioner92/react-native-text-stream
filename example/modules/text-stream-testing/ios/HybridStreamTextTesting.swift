@@ -8,7 +8,7 @@ import NitroModules
 @_spi(Testing) import TextStream
 import UIKit
 
-/// Tests only: writes TSB1 buffers like the nitro-fetch producer, and reads StreamTextViews.
+/// Tests only: writes TSB1 buffers like streamFetch, and reads StreamTextViews.
 class HybridStreamTextTesting: HybridStreamTextTestingSpec {
   private static let producerQueue = DispatchQueue(label: "StreamText.testProducer")
   /// Buffers this object created, by data address: a buffer coming back from JS is looked up here,
@@ -248,6 +248,12 @@ class HybridStreamTextTesting: HybridStreamTextTestingSpec {
       }
       promise.resolve(withResult: renderer.debugAccessibility(lines: lines.map { Int($0) }))
     }
+    return promise
+  }
+
+  func stopSurface(key: String) throws -> Promise<String> {
+    let promise = Promise<String>()
+    promise.reject(withError: RuntimeError.error(withMessage: "stopSurface is an Android Fabric teardown probe"))
     return promise
   }
 

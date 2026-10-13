@@ -1,0 +1,12 @@
+HARNESS Preparing to run tests using android runner
+
+HARNESS Reusing Metro cache for android
+
+HARNESS Runner android ready
+
+
+Test Suites: 5 passed, 5 total
+Tests:       49 passed, 49 total
+Snapshots:   0 total
+Time:        29.244 s
+Ran all test suites matching (fetch|streamid|seams|js-stream).*harness.

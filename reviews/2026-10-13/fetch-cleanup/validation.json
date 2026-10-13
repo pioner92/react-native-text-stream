@@ -1,0 +1,36 @@
+{
+  "scope": "Remove nitro-fetch and unused nitro-text-decoder; migrate demos and benchmarks",
+  "package_jest": {
+    "passed": 117,
+    "log": "package-jest.log"
+  },
+  "example_jest": {
+    "passed": 10,
+    "log": "example-jest-final.log"
+  },
+  "ios_harness": {
+    "passed": 49,
+    "log": "ios-harness.log",
+    "latest_helper_recheck": {
+      "passed": 3,
+      "log": "ios-js-stream-final.log"
+    }
+  },
+  "android_harness": {
+    "passed": 49,
+    "log": "android-harness-final.log",
+    "initial_failure": "Android XHR progress loaded=0; fixed using delivered UTF-8 text bytes. Initial run also lost its bridge; cause unproven."
+  },
+  "builds": [
+    "package typechecks and build",
+    "iOS Debug",
+    "Android Debug",
+    "iOS and Android standard JS bundles",
+    "LiveChatDemo and PromoDemo iOS JS bundles"
+  ],
+  "frozen_install": "Bun 1.4.2 passed, no dependency version additions",
+  "limitations": [
+    "Full example typecheck still has pre-existing TextEncoder/performance, frame callback and textBreakStrategy errors; new helper/test callback type errors were corrected."
+  ],
+  "historical_evidence": "Existing review and benchmark artifacts intentionally preserved."
+}

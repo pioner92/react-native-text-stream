@@ -5,6 +5,7 @@ import android.view.accessibility.AccessibilityNodeInfo.MOVEMENT_GRANULARITY_LIN
 import android.view.accessibility.AccessibilityNodeInfo.MOVEMENT_GRANULARITY_PARAGRAPH
 import android.view.accessibility.AccessibilityNodeInfo.MOVEMENT_GRANULARITY_WORD
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
 
@@ -53,6 +54,22 @@ class StreamTextReadingTest {
   @Test fun characters() {
     val emoji = StreamTextReading("a🚀b", intArrayOf(0))
     assertEquals(listOf("a", "🚀", "b"), walk(emoji, MOVEMENT_GRANULARITY_CHARACTER).first)
+  }
+
+  @Test fun wordsKeepSupplementaryLettersAndDigitsWholeAtUtf16Offsets() {
+    // Deseret is supplementary-plane and has letters and digits.  Accessibility reports UTF-16
+    // indices, including a cursor between surrogate halves, so every range must retain the pair.
+    val letter = "\uD801\uDC00" // U+10400 DESERET CAPITAL LETTER LONG I
+    val digit = "\uD801\uDCA5" // U+104A5 OSMANYA DIGIT FIVE
+    val text = "$letter$digit 7$letter"
+    val reading = StreamTextReading(text, intArrayOf(0))
+
+    assertArrayEquals(intArrayOf(0, 4), reading.following(MOVEMENT_GRANULARITY_WORD, 0))
+    assertArrayEquals(intArrayOf(0, 4), reading.following(MOVEMENT_GRANULARITY_WORD, 1))
+    assertArrayEquals(intArrayOf(0, 2), reading.preceding(MOVEMENT_GRANULARITY_WORD, 1))
+    assertArrayEquals(intArrayOf(0, 4), reading.preceding(MOVEMENT_GRANULARITY_WORD, 4))
+    assertArrayEquals(intArrayOf(5, 8), reading.following(MOVEMENT_GRANULARITY_WORD, 5))
+    assertArrayEquals(intArrayOf(5, 8), reading.preceding(MOVEMENT_GRANULARITY_WORD, 7))
   }
 
   @Test fun aTailReadsItsEllipsisWithTheFirstLine() {

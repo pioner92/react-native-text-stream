@@ -1,0 +1,70 @@
+HARNESS Preparing to run tests using android runner
+
+HARNESS Reusing Metro cache for android
+
+HARNESS Runner android ready
+
+FAIL __tests__/js-stream.harness.tsx
+  ● XHR JS streaming baseline › delivers a delta before completion and preserves UTF-8 text and byte count
+
+    expected +0 to be 728 // Object.is equality
+
+      [0m [90m 29 |[39m     [36mconst[39m result [33m=[39m [36mawait[39m request[33m.[39mdone[33m;[39m
+       [90m 30 |[39m     expect(chunks[33m.[39mjoin([32m''[39m))[33m.[39mtoBe(result[33m.[39mtext)[33m;[39m
+      [31m[1m>[22m[39m[90m 31 |[39m     expect(result[33m.[39mbytes)[33m.[39mtoBe(utf8ByteLength(result[33m.[39mtext))[33m;[39m
+       [90m    |[39m                              [31m[1m^[22m[39m
+       [90m 32 |[39m     expect(result[33m.[39mtext)[33m.[39mtoContain([32m'⚡️'[39m)[33m;[39m
+       [90m 33 |[39m   })[33m;[39m
+       [90m 34 |[39m[0m
+
+FAIL __tests__/streamid.harness.tsx
+  ● Test suite failed to run
+
+    The app bridge disconnected during test execution. This can happen if the app was killed, crashed, reloaded, or restarted while the test file was running.
+
+FAIL __tests__/fetch.harness.tsx
+  ● Test suite failed to run
+
+    SubprocessError: Command failed with exit code 1: /Users/alex/Library/Android/sdk/platform-tools/adb -s emulator-5554 shell am force-stop com.textstreamexample
+
+      at checkFailure (file:/Users/alex/WebstormProjects/react-native-text-stream/node_modules/nano-spawn/source/result.js:40:9)
+      at getResult (file:/Users/alex/WebstormProjects/react-native-text-stream/node_modules/nano-spawn/source/result.js:17:3)
+      at async Module.stopApp (file:/Users/alex/WebstormProjects/react-native-text-stream/node_modules/@react-native-harness/platform-android/dist/adb.js:169:5)
+      at async file:/Users/alex/WebstormProjects/react-native-text-stream/node_modules/@react-native-harness/platform-android/dist/app-session.js:193:9
+      at async disposeCurrentAppSession (file:/Users/alex/WebstormProjects/react-native-text-stream/node_modules/@react-native-harness/jest/dist/harness-session.js:448:17)
+      at async Object.performRestart [as restart] (file:/Users/alex/WebstormProjects/react-native-text-stream/node_modules/@react-native-harness/jest/dist/harness-session.js:673:13)
+      at async Object.resetEnvironment (file:/Users/alex/WebstormProjects/react-native-text-stream/node_modules/@react-native-harness/jest/dist/harness-session.js:734:17)
+      at async executeRun (file:/Users/alex/WebstormProjects/react-native-text-stream/node_modules/@react-native-harness/jest/dist/execute-run.js:184:25)
+      at async JestHarness.runTests (file:/Users/alex/WebstormProjects/react-native-text-stream/node_modules/@react-native-harness/jest/dist/index.js:34:13)
+
+FAIL __tests__/fetch-regressions.harness.tsx
+  ● Test suite failed to run
+
+    SubprocessError: Command failed with exit code 1: /Users/alex/Library/Android/sdk/platform-tools/adb -s emulator-5554 shell am force-stop com.textstreamexample
+
+      at checkFailure (file:/Users/alex/WebstormProjects/react-native-text-stream/node_modules/nano-spawn/source/result.js:40:9)
+      at getResult (file:/Users/alex/WebstormProjects/react-native-text-stream/node_modules/nano-spawn/source/result.js:17:3)
+      at async Module.stopApp (file:/Users/alex/WebstormProjects/react-native-text-stream/node_modules/@react-native-harness/platform-android/dist/adb.js:169:5)
+      at async Object.createAppSession (file:/Users/alex/WebstormProjects/react-native-text-stream/node_modules/@react-native-harness/platform-android/dist/instance.js:165:13)
+      at async restartAppSession (file:/Users/alex/WebstormProjects/react-native-text-stream/node_modules/@react-native-harness/jest/dist/harness-session.js:454:29)
+      at async startAttempt (file:/Users/alex/WebstormProjects/react-native-text-stream/node_modules/@react-native-harness/jest/dist/harness-session.js:137:13)
+      at async waitForMetroBackedAppReady (file:/Users/alex/WebstormProjects/react-native-text-stream/node_modules/@react-native-harness/bundler-metro/dist/startup.js:184:13)
+      at async waitForAppReady (file:/Users/alex/WebstormProjects/react-native-text-stream/node_modules/@react-native-harness/jest/dist/harness-session.js:128:12)
+      at async ensureAppReady (file:/Users/alex/WebstormProjects/react-native-text-stream/node_modules/@react-native-harness/jest/dist/harness-session.js:658:17)
+
+Test Suites: 4 failed, 1 passed, 5 total
+Tests:       1 failed, 6 passed, 7 total
+Snapshots:   0 total
+Time:        17.581 s
+Ran all test suites matching (fetch|streamid|seams|js-stream).*harness.
+SubprocessError: Command failed with exit code 1: /Users/alex/Library/Android/sdk/platform-tools/adb -s emulator-5554 shell am force-stop com.textstreamexample
+    at checkFailure (file:///Users/alex/WebstormProjects/react-native-text-stream/node_modules/nano-spawn/source/result.js:40:9)
+    at getResult (file:///Users/alex/WebstormProjects/react-native-text-stream/node_modules/nano-spawn/source/result.js:17:3)
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async Module.stopApp (file:///Users/alex/WebstormProjects/react-native-text-stream/node_modules/@react-native-harness/platform-android/dist/adb.js:169:5)
+    at async Object.dispose (file:///Users/alex/WebstormProjects/react-native-text-stream/node_modules/@react-native-harness/platform-android/dist/instance.js:182:13)
+    at async Promise.allSettled (index 1)
+    at async disposeOnce (file:///Users/alex/WebstormProjects/react-native-text-stream/node_modules/@react-native-harness/jest/dist/harness-session.js:588:43)
+    at async Object.dispose (file:///Users/alex/WebstormProjects/react-native-text-stream/node_modules/@react-native-harness/jest/dist/harness-session.js:814:21)
+    at async JestHarness.runTests (file:///Users/alex/WebstormProjects/react-native-text-stream/node_modules/@react-native-harness/jest/dist/index.js:44:17)
+    at async TestScheduler.scheduleTests (/Users/alex/WebstormProjects/react-native-text-stream/node_modules/@jest/core/build/index.js:1138:15)

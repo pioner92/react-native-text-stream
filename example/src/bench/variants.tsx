@@ -1,13 +1,12 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import Animated, { useAnimatedProps, useSharedValue } from 'react-native-reanimated';
-import { fetch } from 'react-native-nitro-fetch';
-import { TextDecoder } from 'react-native-nitro-text-decoder';
-import { StreamText, type StreamTextRequest, type StreamTextStatus } from 'react-native-text-stream';
+import { StreamText, streamFetch, type StreamTextRequest, type StreamTextStatus } from 'react-native-text-stream';
 import { createFrameMonitor } from 'text-stream-testing';
 import { StreamdownText } from 'react-native-streamdown';
 import { pairs, type Point } from './stats';
 import { LAYOUT, type VariantId } from './config';
+import { streamTextOverXhr } from '../js-stream';
 
 // Bubble and block: the text sizes itself; box: each variant scrolls inside a fixed area.
 const BUBBLE = LAYOUT !== 'box';
@@ -18,7 +17,7 @@ export interface VariantResult {
    * work for those bytes (FrameMonitor.markPainted for JS, the view's own log for C).
    */
   shown: Point[];
-  /** Network chunks that reached JS (0 for the native path). */
+  /** XHR progress callbacks that reached JS (0 for the native streamFetch paths). */
   jsChunks: number;
   error?: string;
   /** C only: StreamTextView main-thread stats, see FrameMonitor.streamTextRenderStats. */
@@ -34,18 +33,19 @@ export interface VariantProps {
 
 const TEXT_COLOR = '#ECECF1';
 
-/** Reads the body through JS: stock nitro-fetch ReadableStream + simdutf TextDecoder. */
+/**
+ * Reads the body through JS: React Native's supported incremental XHR progress callbacks.
+ * These are JS transport callbacks, not a proxy for TCP packet boundaries.
+ */
 async function readJs(url: string, onChunk: (text: string, bytes: number) => void, isCancelled: () => boolean) {
-  const res = await fetch(url, { stream: true });
-  const reader = (res as any).body.getReader();
-  const decoder = new TextDecoder('utf-8');
   let chunks = 0;
-  for (;;) {
-    const { value, done } = await reader.read();
-    if (done || isCancelled()) break;
-    chunks++;
-    onChunk(decoder.decode(value, { stream: true }), value.byteLength);
-  }
+  const request = streamTextOverXhr(url, (text, bytes) => {
+    if (!isCancelled()) {
+      chunks++;
+      onChunk(text, bytes);
+    }
+  });
+  await request.done;
   return chunks;
 }
 
@@ -244,16 +244,23 @@ function NativeStream({ url, onFinish }: VariantProps) {
   const [buffer, setBuffer] = useState<ArrayBuffer>();
 
   useEffect(() => {
-    fetch(url, { stream: true, nativeBuffer: true })
-      .then((res) => setBuffer(res.nativeBuffer))
-      .catch((e) => onFinish({ shown: [], jsChunks: 0, error: String(e) }));
+    try {
+      const stream = streamFetch(url);
+      setBuffer(stream.buffer);
+      stream.done.then((result) => {
+        if (result.status === 'error') onFinish({ shown: [], jsChunks: 0, error: result.error ?? 'streamFetch failed' });
+      });
+      return () => stream.abort();
+    } catch (error) {
+      onFinish({ shown: [], jsChunks: 0, error: String(error) });
+    }
   }, [url, onFinish]);
 
   return <NativeStreamView buffer={buffer} url={url} onFinish={onFinish} />;
 }
 
-// D: the same view, declaratively: <StreamText request> makes the request itself (streamFetch, no
-// nitro-fetch) and is woken by every write. No ref, no state; the end comes from onStatusChange.
+// D: the same view, declaratively: <StreamText request> makes the request itself and is woken by
+// every write. No ref, no state; the end comes from onStatusChange.
 function OwnFetchStream({ url, onFinish }: VariantProps) {
   const logKey = url;
   const request = useMemo(() => ({ url }), [url]);

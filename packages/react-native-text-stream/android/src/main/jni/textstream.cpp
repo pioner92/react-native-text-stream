@@ -156,6 +156,11 @@ struct JStreamTextNative : jni::JavaClass<JStreamTextNative> {
     return state ? state->getData().sourceGeneration : 0;
   }
 
+  static jint stateSourceOwner(jni::alias_ref<jclass>, jni::alias_ref<jobject> stateWrapper) {
+    auto state = stateOf(stateWrapper);
+    return state ? state->getData().sourceOwner : 0;
+  }
+
   /**
    * The view's height for what it shows now, applied on this (main) thread: the default mode
    * would wait for the JS thread. It wins until the `source` prop changes.
@@ -251,6 +256,7 @@ struct JStreamTextNative : jni::JavaClass<JStreamTextNative> {
         makeNativeMethod("unlistenStream", JStreamTextNative::unlistenStream),
         makeNativeMethod("stateSource", JStreamTextNative::stateSource),
         makeNativeMethod("stateGeneration", JStreamTextNative::stateGeneration),
+        makeNativeMethod("stateSourceOwner", JStreamTextNative::stateSourceOwner),
         makeNativeMethod("updateHeight", JStreamTextNative::updateHeight),
         makeNativeMethod("statePrepared", JStreamTextNative::statePrepared),
         makeNativeMethod("setPreparedEnabled", JStreamTextNative::setPreparedEnabled),

@@ -1,0 +1,20 @@
+R6 Android device proof — explanatory excerpt; primary records are
+android-r6-raw-harness.log and android-r6-logcat.log.
+
+Device: textstream_review_api35 (emulator-5554)
+
+Harness: example/__tests__/registry-retention.harness.tsx
+Result: failed as intended. A public ref.attach() put a real 4 MiB native buffer in the registry;
+the test then stopped the actual Fabric surface before its attach command mounted. The registry did
+not return to its baseline after 500 ms.
+
+HARNESS
+FAIL __tests__/registry-retention.harness.tsx
+expected { entries: 1, bytes: 4194368 } to deeply equal { entries: +0, bytes: +0 }
+
+LOGCAT
+E/unknown:SurfaceMountingManager: Stopping surface [1]
+E/unknown:SurfaceMountingManager: Surface [1] was stopped on SurfaceMountingManager.
+I/ReactNativeJS: R6_REGISTRY {"surfaceId":"1","before":{"entries":0,"bytes":0},"queued":{"entries":1,"bytes":4194368},"after":{"entries":1,"bytes":4194368}}
+E/unknown:IntBufferBatchMountItem: Skipping batch of MountItems; was stopped [1].
+E/unknown:IntBufferBatchMountItem: Skipping batch of MountItems; was stopped [1].

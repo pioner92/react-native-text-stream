@@ -1,7 +1,7 @@
 const { getDefaultConfig, mergeConfig } = require('@react-native/metro-config');
 const { getBundleModeMetroConfig } = require('react-native-worklets/bundleMode');
 const path = require('path');
-// Workspace packages (text-stream, vendored nitro-fetch) are symlinked from the root node_modules.
+// Workspace packages are symlinked from the root node_modules.
 const root = path.resolve(__dirname, '..');
 
 /**

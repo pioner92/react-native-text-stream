@@ -1,0 +1,8 @@
+$ bun run --cwd packages/react-native-text-stream test "--watchman=false" --runInBand
+$ jest "--watchman=false" --runInBand
+
+Test Suites: 5 passed, 5 total
+Tests:       117 passed, 117 total
+Snapshots:   0 total
+Time:        2.636 s
+Ran all test suites.

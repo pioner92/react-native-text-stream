@@ -1,5 +1,6 @@
 #include "StreamTextFetch.hpp"
 #include "StreamTextFetchTasks.hpp"
+#include "StreamTextBuffers.hpp"
 #include "StreamTextStreams.hpp"
 #include "TextStreamBuffer.h"
 #include <cassert>
@@ -51,9 +52,9 @@ int main() {
   streams.clear();
 
   // Eviction remembers the request (by key hash): only an explicit release or reload forgets it.
-  auto publishFinished = [&](const std::string &id, uint64_t owner) {
+  auto publishFinished = [&](const std::string &id, uint64_t owner, bool retainEvictedRequest = false) {
     auto buffer = StreamTextMappedBuffer::create(1);
-    streams.publish(id, buffer, "key-" + id, owner);
+    streams.publish(id, buffer, "key-" + id, owner, retainEvictedRequest);
     buffer->finish(TSB_STATUS_DONE);
   };
   for (size_t i = 0; i <= StreamTextStreams::kKeptFinished + 1; ++i) publishFinished(std::to_string(i), 3);
@@ -73,6 +74,28 @@ int main() {
   auto newest = "t" + std::to_string(total - StreamTextStreams::kKeptFinished - 1);
   assert(streams.matches(newest, "key-" + newest, true) && !streams.find(newest));
   streams.clear();
+
+  // A mutation must not become a fresh request simply because more than 4096 other entries were
+  // evicted. Its tombstone survives until the caller explicitly releases this stream id.
+  for (size_t i = 0; i < StreamTextStreams::kKeptEvictedKeys + 65; ++i)
+    publishFinished("post" + std::to_string(i), 5, true);
+  assert(streams.matches("post0", "key-post0", true) && !streams.find("post0"));
+  streams.release("post0");
+  assert(!streams.matches("post0", "key-post0", true));
+  streams.clear();
+
+  // The registry is a handoff, not an additional owner. A dropped Fabric command must not keep a
+  // buffer alive after JS releases its current/pending source; a live JS owner still transfers it.
+  auto &handoff = StreamTextBufferRegistry::shared();
+  auto handoffBuffer = StreamTextMappedBuffer::create(16);
+  auto handoffId = handoff.put(handoffBuffer);
+  assert(handoff.take(handoffId) == handoffBuffer);
+  auto droppedBuffer = StreamTextMappedBuffer::create(16);
+  std::weak_ptr<facebook::jsi::MutableBuffer> droppedWeak = droppedBuffer;
+  auto droppedId = handoff.put(droppedBuffer);
+  droppedBuffer.reset();
+  assert(droppedWeak.expired());
+  assert(!handoff.take(droppedId));
 
   assert(!StreamTextMappedBuffer::create(0));
   assert(!StreamTextMappedBuffer::create(kStreamTextMaxCapacity + 1));

@@ -1,8 +1,7 @@
 import React from 'react';
 import { Platform, Text } from 'react-native';
 import { afterEach, describe, expect, it, render, waitFor } from 'react-native-harness';
-import { fetch as nitroFetch } from 'react-native-nitro-fetch';
-import { StreamText, useStreamTextRef, type StreamTextRef, type StreamTextStatus } from 'react-native-text-stream';
+import { StreamText, streamFetch, useStreamTextRef, type StreamTextRef, type StreamTextStatus } from 'react-native-text-stream';
 import { bufferText, committedBytes, headerStatus } from 'text-stream-testing';
 import { arrayBuffer, buffer, Column, expectLinesHeight, layouts, newKey, snapshot, TEXT_STYLE, testing, TSB, utf8, waitForSnapshot } from './helpers';
 
@@ -70,7 +69,7 @@ describe('seams', () => {
     expect(events.at(-1)).toEqual(['cancelled', 300]);
   });
 
-  it('nitro-fetch (the real producer) ↔ renderer: what the server sent is what the view shows', async () => {
+  it('streamFetch (the real producer) ↔ renderer ↔ JS reader: what the server sent is what every layer sees', async () => {
     const reachable = await globalThis.fetch(`${SERVER}/?fmt=raw&bytes=10&tps=0`).then(
       (r) => r.ok,
       () => false,
@@ -79,12 +78,15 @@ describe('seams', () => {
 
     const url = `${SERVER}/?fmt=raw&bytes=6000&chunk=7&tps=400`;
     const expected = await (await globalThis.fetch(url)).text();
-    const res = await nitroFetch(url, { stream: true, nativeBuffer: true });
+    const stream = streamFetch(url);
     const key = newKey();
-    await render(<Column><StreamText source={res.nativeBuffer} nativeID={key} recordDisplayLog {...TEXT_STYLE} /></Column>);
+    await render(<Column><StreamText source={stream} nativeID={key} recordDisplayLog {...TEXT_STYLE} /></Column>);
     const s = await waitForSnapshot(key, (x) => expect(x.status).toBe('done'), 15000);
+    expect((await stream.response).ok).toBe(true);
+    expect(await stream.done).toEqual({ status: 'done' });
     expect(s.text).toBe(expected);
-    expect(bufferText(res.nativeBuffer as ArrayBuffer)).toBe(expected);
-    expect(committedBytes(res.nativeBuffer as ArrayBuffer)).toBe(utf8(expected).length);
+    expect(stream.text()).toBe(expected);
+    expect(bufferText(stream.buffer)).toBe(expected);
+    expect(committedBytes(stream.buffer)).toBe(utf8(expected).length);
   });
 });

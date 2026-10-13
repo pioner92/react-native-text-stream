@@ -2,7 +2,7 @@ import React from 'react'
 import { fireEvent, render, screen } from '@testing-library/react-native'
 import { StreamText, type StreamTextHandle } from '../StreamText'
 import { releaseStream, streamFetch } from '../fetch'
-import { tsbBuffer } from './tsb'
+import { TSB_STATUS, tsbBuffer } from './tsb'
 
 // The native module is mocked in jest.setup.js.
 const mockBuffers = require('react-native/Libraries/TurboModule/TurboModuleRegistry').buffers
@@ -31,6 +31,8 @@ beforeEach(() => {
       bytes: header.getUint32(8, true),
     }
   })
+  mockBuffers.put.mockImplementation(() => id++)
+  mockBuffers.cancelledBuffer.mockImplementation(() => tsbBuffer('', { status: TSB_STATUS.cancelled }))
   mockBuffers.fetch.mockImplementation((_url: string, init: { streamId?: string; requestKey?: string }) => {
     const buffer = tsbBuffer('abc')
     serials.set(buffer, ++serial)
@@ -234,6 +236,108 @@ describe('<StreamText request>', () => {
     releaseStream('ref')
     await expect(ref.current!.getText()).resolves.toBe('abc')
     expect(ref.current!.getStatus()).toEqual({ status: 'done', bytes: 3 })
+  })
+
+  it('stops following a named stream after an imperative attach or clear', async () => {
+    const ref = React.createRef<StreamTextHandle>()
+    const view = await render(<StreamText ref={ref} testID="stream" streamId="owned-by-id" />)
+    const named = tsbBuffer('named')
+    streams.set('owned-by-id', { buffer: named, key: undefined })
+    for (const watcher of watchers.values()) watcher.callback(named)
+    await expect(ref.current!.getText()).resolves.toBe('named')
+
+    const manual = tsbBuffer('manual')
+    ref.current!.attach(manual)
+    const replacement = tsbBuffer('late publication')
+    streams.set('owned-by-id', { buffer: replacement, key: undefined })
+    for (const watcher of watchers.values()) watcher.callback(replacement)
+    await expect(ref.current!.getText()).resolves.toBe('manual')
+
+    ref.current!.clear()
+    const afterClear = tsbBuffer('after clear')
+    streams.set('owned-by-id', { buffer: afterClear, key: undefined })
+    for (const watcher of watchers.values()) watcher.callback(afterClear)
+    await expect(ref.current!.getText()).resolves.toBe('')
+    await view.unmount()
+  })
+
+  it('does not let a named publication replace an explicit source', async () => {
+    const ref = React.createRef<StreamTextHandle>()
+    const explicit = tsbBuffer('explicit')
+    await render(<StreamText ref={ref} testID="stream" source={explicit} streamId="also-named" />)
+    const named = tsbBuffer('named replacement')
+    streams.set('also-named', { buffer: named, key: undefined })
+    for (const watcher of watchers.values()) watcher.callback(named)
+    await expect(ref.current!.getText()).resolves.toBe('explicit')
+  })
+
+  it('returns to an already-published named stream when an explicit source is removed', async () => {
+    const ref = React.createRef<StreamTextHandle>()
+    const named = tsbBuffer('named buffer')
+    streams.set('return-to-id', { buffer: named, key: undefined })
+    const view = await render(
+      <StreamText ref={ref} testID="stream" source={tsbBuffer('explicit')} streamId="return-to-id" />
+    )
+    await view.rerender(<StreamText ref={ref} testID="stream" streamId="return-to-id" />)
+    await expect(ref.current!.getText()).resolves.toBe('named buffer')
+  })
+
+  it('renders a pre-aborted owned request as cancelled without publishing it under its generated id', async () => {
+    const controller = new AbortController()
+    controller.abort()
+    const ref = React.createRef<StreamTextHandle>()
+    const onStatusChange = jest.fn()
+    await render(
+      <StreamText
+        ref={ref}
+        testID="stream"
+        request={{ url: 'https://x/pre-abort', signal: controller.signal }}
+        onStatusChange={onStatusChange}
+      />
+    )
+    expect(mockBuffers.fetch).not.toHaveBeenCalled()
+    expect(mockBuffers.cancelledBuffer).toHaveBeenCalledTimes(1)
+    await fireEvent(host(), 'statusChange', {
+      nativeEvent: { status: 'cancelled', bytes: 0, generation: host().props.sourceGeneration },
+    })
+    expect(ref.current!.getStatus()).toEqual({ status: 'cancelled', bytes: 0 })
+    expect(onStatusChange).toHaveBeenCalledTimes(1)
+    expect(onStatusChange).toHaveBeenLastCalledWith('cancelled', 0)
+  })
+
+  it('keeps cancelled buffers scoped to the exact owned pre-aborted request', async () => {
+    const first = new AbortController()
+    const second = new AbortController()
+    first.abort()
+    second.abort()
+    const view = await render(<StreamText testID="stream" request={{ url: 'https://x/first', signal: first.signal }} />)
+    const firstBuffer = host().props.source
+    await view.rerender(<StreamText testID="stream" request={{ url: 'https://x/second', signal: second.signal }} />)
+    expect(mockBuffers.cancelledBuffer).toHaveBeenCalledTimes(2)
+    expect(host().props.source).not.toBe(firstBuffer)
+  })
+
+  it('does not let a previous owned pre-abort hide an existing shared stream', async () => {
+    const ownedAbort = new AbortController()
+    const sharedAbort = new AbortController()
+    ownedAbort.abort()
+    sharedAbort.abort()
+    const shared = tsbBuffer('shared remains visible')
+    streams.set('existing-shared', { buffer: shared, key: undefined })
+    const ref = React.createRef<StreamTextHandle>()
+    const view = await render(
+      <StreamText ref={ref} testID="stream" request={{ url: 'https://x/owned', signal: ownedAbort.signal }} />
+    )
+    await view.rerender(
+      <StreamText
+        ref={ref}
+        testID="stream"
+        streamId="existing-shared"
+        request={{ url: 'https://x/shared', signal: sharedAbort.signal }}
+      />
+    )
+    expect(mockBuffers.fetch).not.toHaveBeenCalled()
+    await expect(ref.current!.getText()).resolves.toBe('shared remains visible')
   })
 
   it('two declarative owners of one id share the request and unmount independently', async () => {

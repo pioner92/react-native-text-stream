@@ -134,11 +134,16 @@ class StreamTextView(context: Context) : ReactViewGroup(context) {
   private var stateWrapper: StateWrapper? = null
   private var propSourceAddress = 0L
   private var propGeneration = 0
+  /** 0 = none, 1 = explicit source prop, 2 = named stream. */
+  private var propSourceOwner = 0
   /** The streamFetch() buffer last attached (0: another kind), kept once let go of: not attached twice. */
   private var attachedSerial = 0L
   /** The `streamId` prop, listened to: a request started (or replaced) under it later is shown too. */
   private var streamId: String? = null
+  private var listenedStreamId: String? = null
   private var streamToken = 0L
+  /** Imperative attach/clear owns the view until a prop source identity changes. */
+  private var followsStream = false
   /** The JS wrapper's generation of the attached source, sent back with each status event. */
   private var generation = 0
   private var revision = 0
@@ -178,16 +183,20 @@ class StreamTextView(context: Context) : ReactViewGroup(context) {
     val propSource = StreamTextNative.stateSource(wrapper)
     val address = propSource?.address() ?: 0L
     val propGen = StreamTextNative.stateGeneration(wrapper)
+    val owner = StreamTextNative.stateSourceOwner(wrapper)
     val prepared = StreamTextNative.statePrepared(wrapper)
     // Compared with the previous prop, not with what is attached: an `attach` command may have
     // replaced the buffer since, and an unrelated update must not undo it. No source before and
     // after is no change, whatever the generation (a view mounted without one stays quiet).
-    val changed = address != propSourceAddress || (address != 0L && propGen != propGeneration)
+    val changed = address != propSourceAddress || propGen != propGeneration || owner != propSourceOwner
     propSourceAddress = address
     propGeneration = propGen
+    propSourceOwner = owner
     latestPrepared = prepared
     if (changed) {
-      attach(propSource, propGen, prepared, fromProp = true)
+      followsStream = owner == 2
+      updateStreamSubscription()
+      attach(propSource, propGen, prepared, fromProp = owner == 1)
     } else {
       propSource?.release()
       // Same text, maybe a new width or style.
@@ -200,18 +209,26 @@ class StreamTextView(context: Context) : ReactViewGroup(context) {
   /** Shows whatever streams under `id` from now on; null stops. */
   fun setStreamId(id: String?) {
     if (id == streamId) return
-    streamId?.let { StreamTextNative.unlistenStream(it, streamToken) }
     streamId = id
-    if (id == null) return
+    updateStreamSubscription()
+  }
+
+  /** Keeps the listener aligned with the prop owner; commands only change [followsStream]. */
+  private fun updateStreamSubscription() {
+    listenedStreamId?.let { StreamTextNative.unlistenStream(it, streamToken) }
+    listenedStreamId = null
+    val id = streamId ?: return
+    if (!followsStream) return
     val wake = Runnable { post { streamPublished() } }
     streamToken = StreamTextNative.listenStream(id, wake)
+    listenedStreamId = id
     // Published between the props' lookup and now: not missed.
     wake.run()
   }
 
   /** A request streams under `streamId` (a new one, or one that replaced it). Main thread. */
   private fun streamPublished() {
-    val id = streamId ?: return
+    val id = (if (followsStream) streamId else null) ?: return
     val source = StreamTextNative.streamSource(id) ?: return
     // Already shown (the state's own lookup attached it): attaching again would restart it.
     if (source.serial() == attachedSerial) {
@@ -222,15 +239,20 @@ class StreamTextView(context: Context) : ReactViewGroup(context) {
   }
 
   fun attachCommand(bufferId: Int, generation: Int) {
+    followsStream = false
+    updateStreamSubscription()
     attach(if (bufferId > 0) StreamTextNative.takeBuffer(bufferId) else null, generation, null)
   }
 
   fun clearCommand(generation: Int) {
+    followsStream = false
+    updateStreamSubscription()
     attach(null, generation, null)
   }
 
   /** The view is gone: stop reading the buffer and let go of it. */
   fun dispose() {
+    followsStream = false
     setStreamId(null)
     stopTicking()
     watcher.stop()

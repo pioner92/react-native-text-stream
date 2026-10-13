@@ -558,11 +558,16 @@ private final class CoreTextLines {
   }
 }
 
-/// Set on the main thread, read by background tile draws: a stale read only draws one tile in vain.
+/// Set on the main thread, read by background tile draws.  The cancellation state has to be
+/// synchronized: cancellation may race with a queued draw, and an unsynchronized `Bool` is a
+/// Swift data race even when a stale draw would be harmless.
 /// The canvas is read on the main thread only, so a background draw never holds it (its deinit
 /// stays on the main thread).
 private final class DrawToken: @unchecked Sendable {
-  var cancelled = false
+  private let lock = NSLock()
+  private var isCancelled = false
+  var cancelled: Bool { lock.withLock { isCancelled } }
+  func cancel() { lock.withLock { isCancelled = true } }
   weak var canvas: StreamTextCanvas?
   init(_ canvas: StreamTextCanvas?) { self.canvas = canvas }
 }
@@ -745,7 +750,7 @@ final class StreamTextCanvas: UIView {
   }
 
   private func cancelDrawing() {
-    drawToken.cancelled = true
+    drawToken.cancel()
     drawToken = DrawToken(self)
     pending.removeAll()
   }

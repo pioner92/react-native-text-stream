@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.textstream.StreamTextFetchTest" tests="7" skipped="0" failures="0" errors="0" timestamp="2026-10-13T07:28:42.246Z" hostname="MacBook-Pro.local" time="0.496">
+  <properties/>
+  <testcase name="cancelWhileQueuedCompletesBeforeAnotherRequestFinishes" classname="com.textstream.StreamTextFetchTest" time="0.373"/>
+  <testcase name="capacityEofAndTerminalStateMatrix" classname="com.textstream.StreamTextFetchTest" time="0.003"/>
+  <testcase name="bodyIsUtf8AndExplicitEncodingIsPreserved" classname="com.textstream.StreamTextFetchTest" time="0.001"/>
+  <testcase name="explicitGzipIsDecodedAndCapacityAppliesToDecodedBytes" classname="com.textstream.StreamTextFetchTest" time="0.004"/>
+  <testcase name="partialReadFailureKeepsPublishedPrefixAndCompletesOnce" classname="com.textstream.StreamTextFetchTest" time="0.001"/>
+  <testcase name="initialDeadlineIncludesDispatcherQueue" classname="com.textstream.StreamTextFetchTest" time="0.109"/>
+  <testcase name="cancelBufferedBodyStopsPublishingAndIgnoresLateCallbacks" classname="com.textstream.StreamTextFetchTest" time="0.003"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

@@ -1,0 +1,86 @@
+$ bun run --cwd packages/react-native-text-stream test --runInBand "--watchman=false" --runTestsByPath src/__tests__/review-probes.test.tsx
+$ jest --runInBand "--watchman=false" --runTestsByPath src/__tests__/review-probes.test.tsx
+FAIL src/__tests__/review-probes.test.tsx
+  ● review: late stream publication must not overwrite imperative attach
+
+    expect(received).resolves.toBe(expected) // Object.is equality
+
+    Expected: "manual"
+    Received: "late publication"
+
+      24 |   await expect(ref.current!.getText()).resolves.toBe('manual')
+      25 |   publish!(tsbBuffer('late publication'))
+    > 26 |   await expect(ref.current!.getText()).resolves.toBe('manual')
+         |                                                 ^
+      27 | })
+      28 |
+      29 | it('review: late stream publication must not undo clear', async () => {
+
+      at Object.toBe (../../node_modules/@jest/expect/node_modules/expect/build/index.js:2140:20)
+      at Object.toBe (src/__tests__/review-probes.test.tsx:26:49)
+      at asyncGeneratorStep (../../node_modules/@babel/runtime/helpers/asyncToGenerator.js:3:17)
+      at _next (../../node_modules/@babel/runtime/helpers/asyncToGenerator.js:17:9)
+
+  ● review: late stream publication must not undo clear
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: "idle"
+    Received: "streaming"
+
+      32 |   ref.current!.clear()
+      33 |   publish!(tsbBuffer('late publication'))
+    > 34 |   expect(ref.current!.getStatus().status).toBe('idle')
+         |                                           ^
+      35 |   await expect(ref.current!.getText()).resolves.toBe('')
+      36 | })
+      37 |
+
+      at Object.toBe (src/__tests__/review-probes.test.tsx:34:43)
+      at asyncGeneratorStep (../../node_modules/@babel/runtime/helpers/asyncToGenerator.js:3:17)
+      at _next (../../node_modules/@babel/runtime/helpers/asyncToGenerator.js:17:9)
+
+  ● review: an owned request with pre-aborted signal exposes cancelled
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: "cancelled"
+    Received: "idle"
+
+      42 |   await render(<StreamText ref={ref} request={{ url: 'https://example.test', signal: controller.signal }} />)
+      43 |   expect(buffers.fetch).not.toHaveBeenCalled()
+    > 44 |   expect(ref.current!.getStatus().status).toBe('cancelled')
+         |                                           ^
+      45 | })
+      46 |
+      47 | it('review: owned POST should not start twice in StrictMode', async () => {
+
+      at Object.toBe (src/__tests__/review-probes.test.tsx:44:43)
+      at asyncGeneratorStep (../../node_modules/@babel/runtime/helpers/asyncToGenerator.js:3:17)
+      at _next (../../node_modules/@babel/runtime/helpers/asyncToGenerator.js:17:9)
+
+  ● review: owned POST should not start twice in StrictMode
+
+    expect(jest.fn()).toHaveBeenCalledTimes(expected)
+
+    Expected number of calls: 1
+    Received number of calls: 2
+
+      47 | it('review: owned POST should not start twice in StrictMode', async () => {
+      48 |   await render(<React.StrictMode><StreamText request={{ url: 'https://example.test', method: 'POST', body: 'charge' }} /></React.StrictMode>)
+    > 49 |   expect(buffers.fetch).toHaveBeenCalledTimes(1)
+         |                         ^
+      50 | })
+      51 |
+
+      at Object.toHaveBeenCalledTimes (src/__tests__/review-probes.test.tsx:49:25)
+      at asyncGeneratorStep (../../node_modules/@babel/runtime/helpers/asyncToGenerator.js:3:17)
+      at _next (../../node_modules/@babel/runtime/helpers/asyncToGenerator.js:17:9)
+
+Test Suites: 1 failed, 1 total
+Tests:       4 failed, 4 total
+Snapshots:   0 total
+Time:        1.304 s
+Ran all test suites within paths "src/__tests__/review-probes.test.tsx".
+error: script "test" exited with code 1
+error: script "test" exited with code 1

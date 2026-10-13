@@ -1,0 +1,85 @@
+{
+  "date": "2026-10-13",
+  "baseCommit": "a8883376843baae10c57b459db100ebef7c1bde1",
+  "workingTree": "Includes existing user changes and added review tests; production bug fixes were not applied.",
+  "ios": {
+    "device": "TextStream Review 17 Pro Max",
+    "udid": "AF63A122-D9AE-447E-AB67-1CFB2145F2D2",
+    "runtime": "iOS 26.5",
+    "build": "Debug Simulator / Hermes / Fabric",
+    "bundleId": "com.textstreamexample",
+    "harnessLog": "ios-review-harness.log"
+  },
+  "android": {
+    "avd": "textstream_review_api35",
+    "serial": "emulator-5554",
+    "systemImage": "system-images;android-35;google_apis;arm64-v8a",
+    "build": "Debug / Hermes / Fabric",
+    "applicationId": "com.textstreamexample",
+    "harnessLog": "android-review-harness.log",
+    "wordTraversalLog": "android-r8-instrumentation.log"
+  },
+  "fixture": "http://127.0.0.1:19878",
+  "coreEvidence": "evidence.jsonl",
+  "findingsProvenByCoreSuite": [
+    "R1",
+    "R2",
+    "R3",
+    "R5",
+    "R9"
+  ],
+  "r4": "Not reproduced. Both devices: one HTTP side effect, effect setup=1 and cleanup=0; no runtime modifications were made to force replay.",
+  "sourceSha256": {
+    "packages/react-native-text-stream/src/StreamText.tsx": "e5118e53bb7e4f26a6a2711fd9e12de68e880cc09fe3bfc9b55957743dcf5577",
+    "packages/react-native-text-stream/src/fetch.ts": "a2ae7b476fca0a8f76843cd14d2db24881f6b182d933b0c98ccc77401caf6d13",
+    "packages/react-native-text-stream/cpp/StreamTextStreams.cpp": "f608edea44b44ad3eec24b51f3fdf082953b2dd0a5f2900c54e302f204851703",
+    "packages/react-native-text-stream/android/src/main/java/com/textstream/StreamTextReading.kt": "a5c254120bcd1673dc473b7fe037df68ad9f547724c5cb7402e15aaa50d67db9",
+    "packages/react-native-text-stream/ios/fabric/StreamTextPreparedLayout.swift": "0e897227ca9819d0da33e4b852c67541289a065333977f245a776e085261c251",
+    "example/__tests__/review-repro.harness.tsx": "f499ad9cfa9e73311a9b7c98e36be1480d460171fccff2143e182a1be40d1f0b",
+    "example/__tests__/registry-retention.harness.tsx": "251156cda7b02786923bc1c1487aa695b54bd098dcfc60dd59fb5be0af9f53e8",
+    "example/jest.harness.config.mjs": "9c3b03ec3228059fe4eebaa2775f810f85d2eb8e7dbdce7730c05c0f12a831bb"
+  },
+  "r6": {
+    "platform": "android",
+    "surfaceId": 1,
+    "before": {
+      "entries": 0,
+      "bytes": 0
+    },
+    "queued": {
+      "entries": 1,
+      "bytes": 4194368
+    },
+    "after500ms": {
+      "entries": 1,
+      "bytes": 4194368
+    },
+    "diagnostics": "STREAMTEXT_TESTING only; real public ref.attach and FabricUIManager.stopSurface",
+    "rawHarnessLog": "android-r6-raw-harness.log",
+    "rawLogcat": "android-r6-logcat.log",
+    "compileCommand": "android-r6-build-compile-command.log"
+  },
+  "r8": {
+    "platform": "android",
+    "method": "Android instrumentation of production StreamTextReading class",
+    "actual": "following(WORD,0) and preceding(WORD,2) return null for U+10400",
+    "expected": [
+      0,
+      2
+    ],
+    "talkBackServiceStarted": false,
+    "log": "android-r8-instrumentation.log"
+  },
+  "reviewTestOptIn": "HARNESS_REVIEW_PROOFS=1; both diagnostic harness suites excluded by default",
+  "fixtureStoppedAfterProofs": true,
+  "r7": {
+    "deviceProof": false,
+    "status": "Source-only finding. No DrawToken Thread Sanitizer warning was obtained; diagnostic TSan build did not yield a runnable simulator executable.",
+    "canvasSmokeTests": 2,
+    "temporaryHookRetainedInProductionSource": false,
+    "buildLog": "r7-tsan-universal-build.log",
+    "stressPatch": "r7-draw-token-tsan.patch",
+    "patchApplyCheckPassed": true,
+    "metro18083Stopped": true
+  }
+}

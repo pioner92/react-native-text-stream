@@ -1,9 +1,7 @@
 import React, { useCallback, useLayoutEffect, useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import { fetch } from 'react-native-nitro-fetch';
-import { TextDecoder } from 'react-native-nitro-text-decoder';
 import { StreamdownText } from 'react-native-streamdown';
-import { StreamText, type StreamTextStatus } from 'react-native-text-stream';
+import { StreamText, streamFetch, type StreamTextStatus } from 'react-native-text-stream';
 import { createFrameMonitor, createStreamTextTesting } from 'text-stream-testing';
 import { SERVER, TAG } from './config';
 import { median } from './stats';
@@ -44,15 +42,13 @@ interface Sample {
   text: string;
 }
 
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 async function loadSample(bytes: number): Promise<Sample> {
-  const res = await fetch(`${SERVER}/?fmt=raw&bytes=${bytes}&chunk=65536&tps=0`, { stream: true, nativeBuffer: true });
-  const buffer = res.nativeBuffer as ArrayBuffer;
-  const header = new DataView(buffer, 0, 64);
-  while (header.getUint32(24, true) === 0) await sleep(20);
-  const committed = header.getUint32(8, true);
-  return { buffer, text: new TextDecoder('utf-8').decode(new Uint8Array(buffer, 64, committed)) };
+  const stream = streamFetch(`${SERVER}/?fmt=raw&bytes=${bytes}&chunk=65536&tps=0`);
+  const result = await stream.done;
+  if (result.status !== 'done') throw new Error(result.error ?? `sample fetch ${result.status}`);
+  return { buffer: stream.buffer, text: stream.text() };
 }
 
 /** `count` copies of a sample, each in its own buffer and starting with its own tag ("07c" + "eaming…"). */
@@ -60,13 +56,14 @@ async function loadSamples(bytes: number, count: number, tag = 0): Promise<Sampl
   if (bytes < 0) return Array.from({ length: count }, () => mixedSample(-bytes));
   const samples: Sample[] = [];
   for (let i = 0; i < count; i++) {
-    const { buffer } = await loadSample(bytes);
+    const sample = await loadSample(bytes);
+    const { buffer } = sample;
     const body = new Uint8Array(buffer, 64, 3);
     body[0] = 48 + Math.floor(i / 10);
     body[1] = 48 + (i % 10);
     body[2] = 97 + tag;
-    const committed = new DataView(buffer, 0, 64).getUint32(8, true);
-    samples.push({ buffer, text: new TextDecoder('utf-8').decode(new Uint8Array(buffer, 64, committed)) });
+    sample.text = `${String.fromCharCode(body[0], body[1], body[2])}${sample.text.slice(3)}`;
+    samples.push(sample);
   }
   return samples;
 }

@@ -37,12 +37,12 @@ export const SCENARIOS: Scenario[] = [
 ];
 
 export const VARIANTS: { id: VariantId; title: string }[] = [
-  { id: 'A1', title: 'JS · setState per chunk' },
-  { id: 'A2', title: 'JS · setState per frame' },
+  { id: 'A1', title: 'JS/XHR · setState per progress callback' },
+  { id: 'A2', title: 'JS/XHR · setState per frame' },
   { id: 'B1', title: 'Reanimated · animated TextInput' },
   { id: 'B2', title: 'react-native-streamdown · per frame' },
-  { id: 'C', title: 'Native · nativeBuffer + StreamText' },
-  { id: 'D', title: 'Native · streamFetch + StreamText' },
+  { id: 'C', title: 'Native · streamFetch source + StreamText' },
+  { id: 'D', title: 'Native · StreamText request + streamFetch' },
 ];
 
 /** Narrows a run for investigation; leave empty for the full matrix. */

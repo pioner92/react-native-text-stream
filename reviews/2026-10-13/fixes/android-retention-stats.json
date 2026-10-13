@@ -1,0 +1,15 @@
+{
+  "surfaceId": "1",
+  "before": {
+    "entries": 0,
+    "bytes": 0
+  },
+  "queued": {
+    "entries": 1,
+    "bytes": 4194368
+  },
+  "after": {
+    "entries": 0,
+    "bytes": 0
+  }
+}

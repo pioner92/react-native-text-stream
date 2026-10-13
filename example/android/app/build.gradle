@@ -84,6 +84,15 @@ android {
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1
         versionName "1.0"
+        // React Native configures the autolinked CMake target from the app, not a library's
+        // externalNativeBuild block. Keep the StreamText registry diagnostics out of normal apps.
+        externalNativeBuild {
+            cmake {
+                if (rootProject.findProperty("streamTextTesting") == "true" && System.getenv("STREAMTEXT_TESTING") != "0") {
+                    arguments "-DSTREAMTEXT_TESTING=ON"
+                }
+            }
+        }
     }
     signingConfigs {
         debug {

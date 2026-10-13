@@ -14,6 +14,11 @@ import {
 export default {
   entryPoint: './index.js',
   appRegistryComponentName: 'TextStreamExample',
+  // Long device proofs (R5's 4,161 real registry entries) opt in through the runner environment;
+  // routine harness runs retain the five-second default.
+  testTimeout: Number(process.env.HARNESS_TEST_TIMEOUT ?? 5000),
+  // Avoid colliding with a Metro owned by another device-proof run.
+  metroPort: Number(process.env.HARNESS_METRO_PORT ?? 8081),
   runners: [
     applePlatform({
       name: 'ios',
@@ -21,7 +26,7 @@ export default {
         process.env.HARNESS_IOS_DEVICE ?? 'UltraBase64 17 Pro Max',
         process.env.HARNESS_IOS_VERSION ?? '26.5',
       ),
-      bundleId: 'com.textstreamexample',
+      bundleId: process.env.HARNESS_IOS_BUNDLE_ID ?? 'com.textstreamexample',
     }),
     androidPlatform({
       name: 'android',

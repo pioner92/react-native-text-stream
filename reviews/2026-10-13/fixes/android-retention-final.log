@@ -1,0 +1,12 @@
+HARNESS Preparing to run tests using android runner
+
+HARNESS Reusing Metro cache for android
+
+HARNESS Runner android ready
+
+Test Suites: 1 passed, 1 total
+Tests:       1 passed, 1 total
+Snapshots:   0 total
+Time:        4.089 s
+Ran all test suites matching registry-retention.harness.
+Test results written to: ../reviews/2026-10-13/fixes/android-retention-final.json

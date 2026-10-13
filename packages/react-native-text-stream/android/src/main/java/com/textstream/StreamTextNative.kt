@@ -27,6 +27,9 @@ internal object StreamTextNative {
 
   @JvmStatic external fun stateGeneration(stateWrapper: Any): Int
 
+  /** 0 = none, 1 = explicit source prop, 2 = named stream. */
+  @JvmStatic external fun stateSourceOwner(stateWrapper: Any): Int
+
   /** Commits the view's text height (dp) on the calling (main) thread, without the JS thread. */
   @JvmStatic external fun updateHeight(stateWrapper: Any, height: Float, revision: Int)
 

@@ -26,6 +26,8 @@ const REPS = FOCUS.reps ?? 3;
 export interface RunMetrics extends LatencyStats {
   scenario: string;
   variant: VariantId;
+  /** JS baselines count XHR progress callbacks; native variants use streamFetch. */
+  transport: 'xhr-progress' | 'streamFetch-native';
   rep: number;
   /** Server clock minus the device's, and the round trip it was measured with (see clock.ts). */
   clockOffsetMs: number;
@@ -57,7 +59,7 @@ interface Mounted {
   onFinish: (r: VariantResult) => void;
 }
 
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 const START_DELAY_MS = 3_000;
 const IDLE_FRAMES = 10;
 const IDLE_TIMEOUT_MS = 20_000;
@@ -135,6 +137,7 @@ export function BenchScreen({
     return {
       scenario: s.id,
       variant,
+      transport: variant === 'A1' || variant === 'A2' || variant === 'B1' || variant === 'B2' ? 'xhr-progress' : 'streamFetch-native',
       rep,
       clockOffsetMs: Math.round(clock.offsetMs * 10) / 10,
       clockRttMs: clock.rttMs,

@@ -1,0 +1,7 @@
+$ jest "--watchman=false" --runInBand
+
+Test Suites: 2 passed, 2 total
+Tests:       10 passed, 10 total
+Snapshots:   0 total
+Time:        0.4 s, estimated 1 s
+Ran all test suites.

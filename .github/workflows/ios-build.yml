@@ -14,8 +14,9 @@ on:
       - 'patches/**'
       - 'scripts/**'
       - 'packages/react-native-text-stream/**'
-      - 'packages/react-native-nitro-fetch/**'
       - 'example/package.json'
+      - 'example/App.tsx'
+      - 'example/src/**'
       - 'example/react-native.config.js'
       - 'example/ios/**'
       - 'example/modules/**'
@@ -33,8 +34,9 @@ on:
       - 'patches/**'
       - 'scripts/**'
       - 'packages/react-native-text-stream/**'
-      - 'packages/react-native-nitro-fetch/**'
       - 'example/package.json'
+      - 'example/App.tsx'
+      - 'example/src/**'
       - 'example/react-native.config.js'
       - 'example/ios/**'
       - 'example/modules/**'
@@ -72,6 +74,9 @@ jobs:
 
       - name: Native streamFetch invariants (ASan and UBSan)
         run: bun run test:native
+
+      - name: Draw cancellation token (Thread Sanitizer)
+        run: sh scripts/test-draw-token-tsan.sh
 
       - name: Setup Ruby (bundle)
         uses: ruby/setup-ruby@v1
@@ -126,7 +131,16 @@ jobs:
           throw new Error('No available iPhone simulator');
           NODE
 
-      - name: streamFetch in-app regressions
+      - name: Fetch, renderer and lifecycle in-app regressions
         env:
           HARNESS_APP_PATH: ${{ github.workspace }}/example/ios/build/Build/Products/Debug-iphonesimulator/TextStreamExample.app
-        run: bash scripts/test-stream-fetch-harness.sh ios
+        run: bash scripts/test-stream-fetch-harness.sh ios all
+
+      - name: Upload native test results and platform skips
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-native-regressions
+          path: |
+            ${{ runner.temp }}/streamtext-harness-ios
+          if-no-files-found: warn

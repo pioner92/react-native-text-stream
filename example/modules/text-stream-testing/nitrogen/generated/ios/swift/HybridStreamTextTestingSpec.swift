@@ -33,6 +33,7 @@ public protocol HybridStreamTextTestingSpec_protocol: HybridObject {
   func selectWordAt(key: String, x: Double, y: Double) throws -> Promise<String>
   func selectionGeometry(key: String, location: Double, length: Double) throws -> Promise<String>
   func accessibility(key: String, lines: [Double]) throws -> Promise<String>
+  func stopSurface(key: String) throws -> Promise<String>
   func snapshot(key: String) throws -> Promise<StreamTextSnapshot>
 }
 

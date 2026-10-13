@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   Pressable,
   ScrollView,
@@ -6,8 +6,7 @@ import {
   Text,
   View,
 } from 'react-native';
-import { fetch } from 'react-native-nitro-fetch';
-import { StreamText, useStreamTextRef } from 'react-native-text-stream';
+import { StreamText, streamFetch, useStreamTextRef, type TextStream } from 'react-native-text-stream';
 
 const STREAM_URL = 'http://localhost:9877/?fmt=raw&chunk=7&tps=60&repeat=40';
 
@@ -22,16 +21,30 @@ export function ChatDemo({ onBack }: { onBack: () => void }) {
   const streamRef = useStreamTextRef();
   const [jsTicks, setJsTicks] = useState(0);
   const [accent, setAccent] = useState(false);
+  const activeStream = useRef<TextStream | null>(null);
 
   useEffect(() => {
     const id = setInterval(() => setJsTicks((n) => n + 1), 100);
-    return () => clearInterval(id);
+    return () => {
+      clearInterval(id);
+      activeStream.current?.abort();
+    };
   }, []);
 
-  const stream = async () => {
+  const stream = () => {
+    activeStream.current?.abort();
     streamRef.clear();
-    const res = await fetch(STREAM_URL, { stream: true, nativeBuffer: true });
-    streamRef.attach(res.nativeBuffer);
+    try {
+      const next = streamFetch(STREAM_URL);
+      activeStream.current = next;
+      streamRef.attach(next);
+      void next.done.then((result) => {
+        if (activeStream.current === next && result.status === 'error')
+          console.warn('chat stream failed', result.error);
+      });
+    } catch (error) {
+      console.warn('chat stream failed', error);
+    }
   };
 
   const freeze = () =>

@@ -1,4 +1,4 @@
-import React, { forwardRef, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef } from 'react'
+import React, { forwardRef, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import {
   codegenNativeCommands,
   processColor,
@@ -31,6 +31,8 @@ type StatusEvent = NativeSyntheticEvent<{
 type NativeProps = ViewProps & {
   source?: ArrayBuffer | null
   sourceGeneration?: number
+  /** 0 = none, 1 = explicit prop, 2 = named stream. Keeps native ownership in sync with JS. */
+  sourceOwner?: number
   streamId?: string
   fontSize?: number
   fontFamily?: string
@@ -52,6 +54,7 @@ const NativeStreamText = NativeComponentRegistry.get<NativeProps>('StreamTextVie
     // Two ArrayBuffers deep-compare as equal (no enumerable keys): compare by identity.
     source: { diff: (a: unknown, b: unknown) => a !== b },
     sourceGeneration: true,
+    sourceOwner: true,
     streamId: true,
     fontSize: true,
     fontFamily: true,
@@ -79,9 +82,9 @@ let nextGeneration = 1
 
 export interface StreamTextProps extends ViewProps {
   /**
-   * A stream from `streamFetch()`, or a TSB1 buffer (e.g. `res.nativeBuffer` from the patched
-   * nitro-fetch). The view reads new bytes on every frame and grows with the text, without JS. Or
-   * hand it over with `ref.attach()`.
+   * A stream from `streamFetch()`, or a TSB1 buffer from another native producer. The view reads
+   * new bytes on every frame and grows with the text, without JS. Or hand it over with
+   * `ref.attach()`.
    */
   source?: ArrayBuffer | TextStream | null
   /**
@@ -155,9 +158,13 @@ export const StreamText = forwardRef<StreamTextHandle, StreamTextProps>(function
   const ownStreamId = useRef<string | null>(null)
   if (request && !sharedStreamId && ownStreamId.current == null) ownStreamId.current = `stream-text-${nextOwnStreamId++}`
   const streamId = sharedStreamId ?? (request ? ownStreamId.current! : undefined)
-  useStreamRequest(request, streamId, sharedStreamId == null)
+  const cancelledRequestSource = useStreamRequest(request, streamId, sharedStreamId == null)
   // The native view takes the buffer itself (its props parser reads a raw ArrayBuffer).
-  const source = toBuffer(sourceProp)
+  const explicitSource = toBuffer(sourceProp)
+  // A pre-aborted owned request deliberately never enters the named registry. Give its terminal
+  // buffer to the view explicitly so it still renders and reports `cancelled`.
+  const source = explicitSource ?? cancelledRequestSource
+  const sourceOwner = explicitSource != null || cancelledRequestSource != null ? 1 : streamId ? 2 : 0
   const native = useRef<HostInstance | null>(null)
   // Whichever was set last, the `source` prop or `attach()`; read by getStatus/getText.
   const current = useRef<ArrayBuffer | null>(source ?? null)
@@ -170,7 +177,7 @@ export const StreamText = forwardRef<StreamTextHandle, StreamTextProps>(function
   } | null>(null)
   // These inputs define the identity; the generated number does not otherwise read them.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  const sourceGeneration = useMemo(() => nextGeneration++, [source, streamId])
+  const sourceGeneration = useMemo(() => nextGeneration++, [source, streamId, sourceOwner])
   // The generation of `current`: status events about any other source are late, and dropped.
   const generation = useRef(sourceGeneration)
 
@@ -192,6 +199,7 @@ export const StreamText = forwardRef<StreamTextHandle, StreamTextProps>(function
   // buffer so refs still work after releaseStream(), exactly like the native view does.
   const acceptStream = useCallback(
     (buffer: ArrayBuffer) => {
+      if (!followsStream.current) return
       if (bufferSerial(current.current) !== bufferSerial(buffer)) lastStatus.current = null
       current.current = buffer
       followsStream.current = true
@@ -200,7 +208,7 @@ export const StreamText = forwardRef<StreamTextHandle, StreamTextProps>(function
     [sourceGeneration]
   )
   useLayoutEffect(() => {
-    if (source != null || !streamId || !Buffers) return
+    if (sourceOwner !== 2 || !streamId || !Buffers) return
     let active = true
     const watch = Buffers.watchStream(streamId, (buffer) => {
       if (active) acceptStream(buffer)
@@ -210,7 +218,7 @@ export const StreamText = forwardRef<StreamTextHandle, StreamTextProps>(function
       active = false
       Buffers?.unwatchStream(watch.token)
     }
-  }, [source, streamId, sourceGeneration, acceptStream])
+  }, [sourceOwner, streamId, sourceGeneration, acceptStream])
 
   const readCurrent = useCallback(() => {
     if (followsStream.current && streamId) {
@@ -225,7 +233,7 @@ export const StreamText = forwardRef<StreamTextHandle, StreamTextProps>(function
     const bufferId = Buffers?.put(buffer) ?? 0
     if (bufferId === 0) {
       // The view can't read it: show nothing rather than keep the previous buffer.
-      console.warn('StreamText: attach() needs a natively-backed ArrayBuffer, e.g. res.nativeBuffer')
+      console.warn('StreamText: attach() needs a streamFetch result or another natively-backed buffer')
       current.current = null
       return Commands.clear(instance as never, gen)
     }
@@ -292,6 +300,7 @@ export const StreamText = forwardRef<StreamTextHandle, StreamTextProps>(function
       source={source}
       streamId={streamId}
       sourceGeneration={sourceGeneration}
+      sourceOwner={sourceOwner}
       // Always subscribed: getStatus() needs the final status even without an onStatusChange prop.
       onStatusChange={handleStatus}
     />
@@ -305,8 +314,8 @@ export type StreamTextRef = React.RefObject<StreamTextHandle | null> & StreamTex
  *
  * ```tsx
  * const streamRef = useStreamTextRef()
- * const res = await fetch(url, { stream: true, nativeBuffer: true })
- * streamRef.attach(res.nativeBuffer) // no setState, no re-render
+ * const stream = streamFetch(url)
+ * streamRef.attach(stream) // no setState, no re-render
  * ```
  */
 export function useStreamTextRef(): StreamTextRef {
@@ -348,7 +357,18 @@ function toBuffer(source: ArrayBuffer | TextStream | null | undefined): ArrayBuf
  * ends with the view; one under the app's streamId outlives it, and a remount with the same request
  * doesn't send it again.
  */
-function useStreamRequest(request: StreamTextRequest | undefined, streamId: string | undefined, owned: boolean) {
+function useStreamRequest(
+  request: StreamTextRequest | undefined,
+  streamId: string | undefined,
+  owned: boolean
+): ArrayBuffer | null {
+  const [cancelledSource, setCancelledSource] = useState<{
+    buffer: ArrayBuffer
+    key: string
+    signal: AbortSignal | undefined
+    streamId: string
+    owned: boolean
+  } | null>(null)
   // Compare actual outgoing header pairs, including Headers/Map/forEach implementations.
   const normalized = request ? normalizeRequest(request) : null
   const key = request && normalized ? requestKey(request.url, normalized) : null
@@ -369,10 +389,26 @@ function useStreamRequest(request: StreamTextRequest | undefined, streamId: stri
       streamId,
       requestKey: key,
     })
+    // `startFetch` intentionally does not publish an already-cancelled request under a shared
+    // id. An owned view still has to expose that terminal state through its renderer.
+    if (owned && current.signal?.aborted) {
+      setCancelledSource({ buffer: stream.buffer, key, signal, streamId, owned })
+    } else {
+      setCancelledSource((previous) => (previous ? null : previous))
+    }
     if (!owned) return
     return () => {
       stream.abort()
       releaseStream(streamId)
     }
   }, [key, signal, streamId, owned])
+  // A new request must not briefly inherit a cancelled buffer from another request. In particular,
+  // a shared pre-abort must leave its already-published named stream visible.
+  return request?.signal?.aborted &&
+    cancelledSource?.key === key &&
+    cancelledSource.signal === signal &&
+    cancelledSource.streamId === streamId &&
+    cancelledSource.owned === owned
+    ? cancelledSource.buffer
+    : null
 }

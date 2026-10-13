@@ -1,0 +1,2 @@
+streamFetch native registry, lifecycle and publication tests passed
+streamFetch iOS capacity/splits, late callbacks, cancel and startup error tests passed

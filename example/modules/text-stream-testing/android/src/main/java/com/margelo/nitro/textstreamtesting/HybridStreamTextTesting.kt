@@ -16,6 +16,9 @@ import com.facebook.proguard.annotations.DoNotStrip
 import com.facebook.react.ReactRootView
 import com.facebook.react.bridge.ReactContext
 import com.facebook.react.uimanager.PixelUtil
+import com.facebook.react.uimanager.UIManagerHelper
+import com.facebook.react.uimanager.common.UIManagerType
+import com.facebook.react.fabric.FabricUIManager
 import com.margelo.nitro.NitroModules
 import com.margelo.nitro.core.ArrayBuffer
 import com.margelo.nitro.core.Promise
@@ -27,7 +30,7 @@ import kotlin.math.roundToInt
 import org.json.JSONArray
 import org.json.JSONObject
 
-/** Tests only: writes TSB1 buffers like the nitro-fetch producer, and reads StreamTextViews. */
+/** Tests only: writes TSB1 buffers like streamFetch, and reads StreamTextViews. */
 @DoNotStrip
 class HybridStreamTextTesting : HybridStreamTextTestingSpec() {
   private val lock = Any()
@@ -271,6 +274,23 @@ class HybridStreamTextTesting : HybridStreamTextTestingSpec() {
       val json = StreamTextDebug.accessibility(key, IntArray(lines.size) { lines[it].toInt() })
       if (json == null) promise.reject(IllegalStateException("No StreamTextView with nativeID $key and recordDisplayLog"))
       else promise.resolve(json)
+    }
+    return promise
+  }
+
+  override fun stopSurface(key: String): Promise<String> {
+    val promise = Promise<String>()
+    main.post {
+      val view = StreamTextDebug.view(key)
+      val context = view?.context as? ReactContext
+      val manager = context?.let { UIManagerHelper.getUIManager(it, UIManagerType.FABRIC) as? FabricUIManager }
+      if (view == null || manager == null) {
+        promise.reject(IllegalStateException("No Fabric surface for StreamTextView $key"))
+        return@post
+      }
+      val surfaceId = UIManagerHelper.getSurfaceId(view)
+      manager.stopSurface(surfaceId)
+      promise.resolve(surfaceId.toString())
     }
     return promise
   }

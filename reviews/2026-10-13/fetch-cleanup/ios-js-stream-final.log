@@ -1,0 +1,12 @@
+HARNESS Preparing to run tests using ios runner
+
+HARNESS Reusing Metro cache for ios
+
+HARNESS Using booted iOS simulator TextStream Review 17 Pro Max...
+HARNESS Runner ios ready
+
+Test Suites: 1 passed, 1 total
+Tests:       3 passed, 3 total
+Snapshots:   0 total
+Time:        9.195 s
+Ran all test suites matching js-stream.harness.

@@ -21,9 +21,15 @@ class StreamTextStreams {
 
   static StreamTextStreams &shared();
 
-  /** The buffer streamed under `id` now (a new request replaces it); listeners are told. */
+  /**
+   * The buffer streamed under `id` now (a new request replaces it); listeners are told.
+   *
+   * `retainEvictedRequest` is used for an unsafe HTTP method.  Once its finished body is evicted,
+   * its request key remains until `release(id)` or the owning JS runtime goes away.  This makes a
+   * remount fail closed instead of silently repeating a mutation after the ordinary cache fills.
+   */
   void publish(const std::string &id, std::shared_ptr<StreamTextMappedBuffer> buffer,
-               std::string requestKey = {}, uint64_t owner = 0);
+               std::string requestKey = {}, uint64_t owner = 0, bool retainEvictedRequest = false);
   /** The buffer streamed under `id`, or nullptr. Any thread. */
   std::shared_ptr<StreamTextMappedBuffer> find(const std::string &id);
   /** `includeEvicted`: also true when that request's stream was evicted, not explicitly released. */
@@ -45,7 +51,7 @@ class StreamTextStreams {
   /** Finished streams no view shows that are kept for a remount; older ones are forgotten. */
   static constexpr size_t kKeptFinished = 64;
   static constexpr uint64_t kKeptBytes = 64 * 1024 * 1024;
-  /** Hashes of evicted streams' request keys, so a remount doesn't silently resend a POST. */
+  /** Bounded request-key cache for evicted safe requests. */
   static constexpr size_t kKeptEvictedKeys = 4096;
 
  private:
@@ -55,6 +61,7 @@ class StreamTextStreams {
     uint64_t lastUse{0};
     uint64_t owner{0};
     std::string requestKey;
+    bool retainEvictedRequest{false};
   };
   struct Evicted {
     size_t keyHash{0};
@@ -68,6 +75,13 @@ class StreamTextStreams {
   uint64_t clock_{0};
   uint64_t lastToken_{0};
   std::unordered_map<std::string, Entry> entries_;
+  /**
+   * Unsafe requests are deliberately not subject to the bounded safe-request cache.  An exact
+   * no-replay guarantee needs either this metadata for the runtime's life or an application/server
+   * idempotency protocol; silently dropping it would make an old POST indistinguishable from a new
+   * one.  `release()` is the explicit opt-in to send that id again.
+   */
+  std::unordered_map<std::string, Evicted> retainedEvicted_;
   std::unordered_map<std::string, Evicted> evicted_;
 };
 

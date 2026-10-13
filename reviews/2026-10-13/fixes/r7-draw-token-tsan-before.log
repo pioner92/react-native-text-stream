@@ -1,0 +1,29 @@
+attempt=1
+==================
+WARNING: ThreadSanitizer: data race (pid=68773)
+  Read of size 1 at 0x00010dd03b90 by thread T1:
+    #0 closure #1 in  <null> (before:arm64+0x10000213c)
+    #1 thunk for @escaping @callee_guaranteed @Sendable () -> () <null> (before:arm64+0x1000022fc)
+    #2 __tsan::invoke_and_release_block(void*) <null> (libclang_rt.tsan_osx_dynamic.dylib:arm64e+0x8cb18)
+    #3 _dispatch_client_callout <null> (libdispatch.dylib:arm64e+0x1b4ac)
+
+  Previous write of size 1 at 0x00010dd03b90 by thread T4:
+    #0 DrawToken.cancel() <null> (before:arm64+0x1000028bc)
+    #1 closure #2 in  <null> (before:arm64+0x1000025c8)
+    #2 thunk for @escaping @callee_guaranteed @Sendable () -> () <null> (before:arm64+0x1000022fc)
+    #3 __tsan::invoke_and_release_block(void*) <null> (libclang_rt.tsan_osx_dynamic.dylib:arm64e+0x8cb18)
+    #4 _dispatch_client_callout <null> (libdispatch.dylib:arm64e+0x1b4ac)
+
+  Location is heap block of size 32 at 0x00010dd03b80 allocated by main thread:
+    #0 malloc <null> (libclang_rt.tsan_osx_dynamic.dylib:arm64e+0x679b4)
+    #1 _malloc_type_malloc_outlined <null> (libsystem_malloc.dylib:arm64e+0x1e6a4)
+    #2 main <null> (before:arm64+0x100001090)
+
+  Thread T1 (tid=29407973, running) is a GCD worker thread
+
+  Thread T4 (tid=29407976, running) is a GCD worker thread
+
+SUMMARY: ThreadSanitizer: data race (before:arm64+0x10000213c) in closure #1 in +0x1fc
+==================
+DrawToken TSan stress passed
+ThreadSanitizer: reported 1 warnings

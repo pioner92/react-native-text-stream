@@ -71,25 +71,28 @@ static NSString *_Nullable StreamTextNSString(const std::string &value) {
   uint64_t _observerToken;
   // The `streamId` prop, listened to: a request started (or replaced) under it later is shown too.
   std::string _streamId;
+  std::string _listenedStreamId;
   uint64_t _streamToken;
+  BOOL _followsStream;
   // Which streamFetch() buffer was attached last (0: another kind), kept once it is let go of.
   uint64_t _attachedSerial;
 }
 
 - (void)dealloc {
-  [self listenToStream:""];
+  _followsStream = NO;
+  [self updateStreamSubscription];
   [self stopObserving];
   // Before the ivars go, `_source` among them: the renderer's watcher reads that buffer.
   [_renderer invalidate];
 }
 
-/** Shows whatever streams under `streamId` from now on; "" stops. */
-- (void)listenToStream:(const std::string &)streamId {
-  if (!_streamId.empty()) {
-    StreamTextStreams::shared().unlisten(_streamId, _streamToken);
+/** Subscribes only while the prop, rather than an imperative command, owns the named stream. */
+- (void)updateStreamSubscription {
+  if (!_listenedStreamId.empty()) {
+    StreamTextStreams::shared().unlisten(_listenedStreamId, _streamToken);
+    _listenedStreamId.clear();
   }
-  _streamId = streamId;
-  if (streamId.empty()) {
+  if (!_followsStream || _streamId.empty()) {
     return;
   }
   __weak StreamTextComponentView *weakSelf = self;
@@ -98,14 +101,15 @@ static NSString *_Nullable StreamTextNSString(const std::string &value) {
       [weakSelf streamPublished];
     });
   };
-  _streamToken = StreamTextStreams::shared().listen(streamId, wake);
+  _listenedStreamId = _streamId;
+  _streamToken = StreamTextStreams::shared().listen(_streamId, wake);
   // Published between the props' lookup and now: not missed.
   wake();
 }
 
 /** A request streams under `streamId` (a new one, or one that replaced it). Main thread. */
 - (void)streamPublished {
-  if (_streamId.empty()) {
+  if (!_followsStream || _streamId.empty()) {
     return;
   }
   auto buffer = StreamTextStreams::shared().find(_streamId);
@@ -200,16 +204,17 @@ static NSString *_Nullable StreamTextNSString(const std::string &value) {
     _renderer.displayLogKey = next.recordDisplayLog ? StreamTextNSString(next.nativeId) : nil;
   }
 #endif
-  // Compared with the previous props, not with what is attached: an `attach` command may have
-  // replaced the buffer since, and an unrelated prop change must not undo it.
-  if (next.source != previous.source) {
+  // Source identity is independent of its pointer: named A -> missing named B and explicit A ->
+  // named B both need to detach what was previously visible, even if their prop pointers are null.
+  BOOL sourceIdentityChanged = next.sourceGeneration != previous.sourceGeneration ||
+      next.sourceOwner != previous.sourceOwner || next.streamId != previous.streamId;
+  if (sourceIdentityChanged) {
     _propSource = next.source;
     _propGeneration = next.sourceGeneration;
     _hasPropSource = YES;
-  }
-  if (next.streamId != previous.streamId) {
-    _propGeneration = next.sourceGeneration;
-    [self listenToStream:next.streamId];
+    _streamId = next.streamId;
+    _followsStream = next.sourceOwner == 2;
+    [self updateStreamSubscription];
   }
   [super updateProps:props oldProps:oldProps];
 }
@@ -271,10 +276,14 @@ static NSString *_Nullable StreamTextNSString(const std::string &value) {
   if ([commandName isEqualToString:@"attach"]) {
     int bufferId = [args.firstObject intValue];
     int generation = args.count > 1 ? [args[1] intValue] : 0;
+    _followsStream = NO;
+    [self updateStreamSubscription];
     [self attachSource:bufferId > 0 ? StreamTextBufferRegistry::shared().take(bufferId) : nullptr
               prepared:nil
             generation:generation];
   } else if ([commandName isEqualToString:@"clear"]) {
+    _followsStream = NO;
+    [self updateStreamSubscription];
     [self attachSource:nullptr prepared:nil generation:args.count > 0 ? [args.firstObject intValue] : 0];
   } else {
     [super handleCommand:commandName args:args];

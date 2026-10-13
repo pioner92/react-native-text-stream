@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.textstream.StreamTextReadingTest" tests="6" skipped="0" failures="0" errors="0" timestamp="2026-10-13T07:28:42.744Z" hostname="MacBook-Pro.local" time="0.008">
+  <properties/>
+  <testcase name="lines" classname="com.textstream.StreamTextReadingTest" time="0.003"/>
+  <testcase name="words" classname="com.textstream.StreamTextReadingTest" time="0.004"/>
+  <testcase name="paragraphs" classname="com.textstream.StreamTextReadingTest" time="0.0"/>
+  <testcase name="aTailReadsItsEllipsisWithTheFirstLine" classname="com.textstream.StreamTextReadingTest" time="0.0"/>
+  <testcase name="nothingPastTheEnds" classname="com.textstream.StreamTextReadingTest" time="0.0"/>
+  <testcase name="characters" classname="com.textstream.StreamTextReadingTest" time="0.0"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

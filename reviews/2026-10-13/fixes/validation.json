@@ -1,0 +1,166 @@
+{
+  "scope": "Fix confirmed R1/R2/R3/R5/R6/R7/R8/R9 and enable permanent regressions; remove obsolete nitro-fetch",
+  "base_head": "a8883376843baae10c57b459db100ebef7c1bde1",
+  "state": "validation of the reviewed working tree; scoped commit excludes earlier unrelated style/demo/benchmark edits",
+  "devices": {
+    "ios": {
+      "name": "TextStream Review 17 Pro Max",
+      "udid": "AF63A122-D9AE-447E-AB67-1CFB2145F2D2",
+      "version": "26.5"
+    },
+    "android": {
+      "avd": "textstream_review_api35",
+      "serial": "emulator-5554",
+      "api": 35
+    }
+  },
+  "in_app": {
+    "ios": {
+      "passed": 156,
+      "failed": 0,
+      "skipped": 3,
+      "groups": [
+        {
+          "results": "ios-review-final.json",
+          "passed": 12,
+          "skipped": 0
+        },
+        {
+          "results": "ios-renderer.json",
+          "passed": 95,
+          "skipped": 3
+        },
+        {
+          "results": "ios-fetch.json",
+          "passed": 49,
+          "skipped": 0
+        }
+      ],
+      "platform_skips": [
+        "StreamText: prepared layouts selects right-to-left text where the view draws it, on the canvas and in a text view",
+        "StreamText: canvas block memory a full-screen canvas keeps the blocks near the screen, only the screen after a memory trim",
+        "StreamText: canvas block memory 120 bubbles scrolled through hold the blocks of those near the screen only"
+      ],
+      "evidence": "ios-final-evidence.jsonl"
+    },
+    "android": {
+      "passed": 135,
+      "failed": 0,
+      "skipped": 27,
+      "groups": [
+        {
+          "results": "android-review.json",
+          "passed": 12,
+          "skipped": 0
+        },
+        {
+          "results": "android-renderer.json",
+          "passed": 73,
+          "skipped": 27
+        },
+        {
+          "results": "android-fetch.json",
+          "passed": 49,
+          "skipped": 0
+        },
+        {
+          "results": "android-retention-final.json",
+          "passed": 1,
+          "skipped": 0
+        }
+      ],
+      "platform_skips": [
+        "StreamText: prepared layouts selects right-to-left text on the canvas the way the text view does",
+        "StreamText: canvas tile memory a full-screen canvas holds the screen and its margins, only the screen out of the window or after a memory warning",
+        "StreamText: canvas tile memory 120 bubbles scrolled through hold no more than one screen and its margins",
+        "StreamText: CoreText lines match TextKit latin, at three widths",
+        "StreamText: CoreText lines match TextKit mixed, at three widths",
+        "StreamText: CoreText lines match TextKit emoji, at three widths",
+        "StreamText: CoreText lines match TextKit thai, at three widths",
+        "StreamText: CoreText lines match TextKit devanagari, at three widths",
+        "StreamText: CoreText lines match TextKit vietnamese, at three widths",
+        "StreamText: CoreText lines match TextKit cjk, at three widths",
+        "StreamText: CoreText lines match TextKit url, at three widths",
+        "StreamText: CoreText lines match TextKit nbsp, at three widths",
+        "StreamText: CoreText lines match TextKit trailingNewline, at three widths",
+        "StreamText: CoreText lines match TextKit crlf, at three widths",
+        "StreamText: CoreText lines match TextKit blankLines, at three widths",
+        "StreamText: CoreText lines match TextKit longWord, at three widths",
+        "StreamText: CoreText lines match TextKit longParagraph, at three widths",
+        "StreamText: CoreText lines match TextKit style base",
+        "StreamText: CoreText lines match TextKit style center",
+        "StreamText: CoreText lines match TextKit style right",
+        "StreamText: CoreText lines match TextKit style letterSpacing",
+        "StreamText: CoreText lines match TextKit style bold",
+        "StreamText: CoreText lines match TextKit style menlo",
+        "StreamText: CoreText lines match TextKit style georgia",
+        "StreamText: CoreText lines match TextKit style tight",
+        "StreamText: CoreText lines match TextKit style divides256",
+        "StreamText: CoreText lines match TextKit leaves to TextKit what it does not reproduce"
+      ],
+      "evidence": "android-final-evidence.jsonl"
+    }
+  },
+  "R6_registry": {
+    "surfaceId": "1",
+    "before": {
+      "entries": 0,
+      "bytes": 0
+    },
+    "queued": {
+      "entries": 1,
+      "bytes": 4194368
+    },
+    "after": {
+      "entries": 0,
+      "bytes": 0
+    }
+  },
+  "package_jest": {
+    "passed": 123,
+    "log": "package-jest-final.log"
+  },
+  "example_jest": {
+    "passed": 10,
+    "log": "example-jest-final.log"
+  },
+  "android_jvm": {
+    "passed": 17,
+    "xml_directory": "android-junit"
+  },
+  "android_instrumentation": {
+    "passed": 4,
+    "log": "android-instrumentation.log"
+  },
+  "checks": {
+    "package_types_and_build": "package-build-final.log",
+    "example_types": "example-typecheck-final.log",
+    "ios_debug_build": "ios-build.log",
+    "android_debug_and_test_apk_build": "android-build.log",
+    "ASan_UBSan_core_and_Foundation": "native-asan-ubsan.log",
+    "TSan_control_data_race": "r7-draw-token-tsan-before.log",
+    "TSan_fixed_production_token": "r7-draw-token-tsan-fixed.log",
+    "TSan_permanent_CI_script": "r7-ci-check.log"
+  },
+  "limitations": [
+    "Platform skips are explicitly excluded from pass totals.",
+    "R4 remains unconfirmed on RN 0.86; its once-only control passes on both platforms.",
+    "TSan tests an exact extracted production DrawToken with a stub canvas on macOS, not the full UIKit app.",
+    "R6 uses Android surface teardown and Hermes GC; no iOS surface teardown or RSS measurement is claimed.",
+    "No Release build, physical-device run, long-session memory profile or remote GitHub Actions execution is claimed.",
+    "Unsafe request-key tombstones intentionally live until explicit release or runtime destruction. This is not distributed exactly-once."
+  ],
+  "intermediate_failures": {
+    "ios-review.json": "The added late-write fixture used a timer and could coalesce its first chunk; final test gates completion explicitly through /complete.",
+    "android-retention.json": "The test producer retained every allocated buffer in a strong Kotlin map; final test uses the production pre-aborted fetch allocator and releases its JS owner before GC."
+  },
+  "commit_scope": {
+    "excluded_prior_changes": [
+      "StreamTextStyle.kt and its StreamTextFlowTest.kt",
+      "benchmark bottom anchoring and extra result logging",
+      "Live/Promo demo, entrypoints and media"
+    ],
+    "instrumentation_included": 3,
+    "instrumentation_preexisting": 1
+  }
+}

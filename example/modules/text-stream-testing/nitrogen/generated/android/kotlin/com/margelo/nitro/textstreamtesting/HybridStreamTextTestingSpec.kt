@@ -113,6 +113,10 @@ abstract class HybridStreamTextTestingSpec: HybridObject() {
   
   @DoNotStrip
   @Keep
+  abstract fun stopSurface(key: String): Promise<String>
+
+  @DoNotStrip
+  @Keep
   abstract fun snapshot(key: String): Promise<StreamTextSnapshot>
 
   // Default implementation of `HybridObject.toString()`

@@ -1,0 +1,4 @@
+source=/Users/alex/WebstormProjects/react-native-text-stream/packages/react-native-text-stream/ios/fabric/StreamTextPreparedLayout.swift
+command=rtk proxy sh reviews/2026-10-13/fixes/run-r7-draw-token-tsan.sh
+fixed fixture: swiftc -sanitize=thread <production DrawToken extraction + stress>
+control: same extraction with only the lock/state lines reverted; a main-thread reader overlaps an active writer before all workers are joined

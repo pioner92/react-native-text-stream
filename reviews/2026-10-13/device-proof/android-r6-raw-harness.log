@@ -1,0 +1,24 @@
+HARNESS Preparing to run tests using android runner
+
+HARNESS Reusing Metro cache for android
+
+HARNESS Runner android ready
+
+FAIL __tests__/registry-retention.harness.tsx
+  ● StreamText: Fabric attach handoff teardown › R6: a real Fabric surface stop after ref.attach() releases its registry handoff
+
+    expected { entries: 1, bytes: 4194368 } to deeply equal { entries: +0, bytes: +0 }
+
+      [0m [90m 33 |[39m     console[33m.[39minfo([32m`R6_REGISTRY ${JSON.stringify({ surfaceId, before, queued, after })}`[39m)[33m;[39m
+       [90m 34 |[39m
+      [31m[1m>[22m[39m[90m 35 |[39m     expect(after)[33m.[39mtoEqual(before)[33m;[39m
+       [90m    |[39m                          [31m[1m^[22m[39m
+       [90m 36 |[39m   })[33m;[39m
+       [90m 37 |[39m })[33m;[39m
+       [90m 38 |[39m[0m
+
+Test Suites: 1 failed, 1 total
+Tests:       1 failed, 1 total
+Snapshots:   0 total
+Time:        8.34 s
+Ran all test suites matching registry-retention\.harness.

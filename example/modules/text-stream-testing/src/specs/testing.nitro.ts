@@ -35,7 +35,7 @@ export interface StreamTextTestStyle {
 }
 
 /**
- * Tests only: a producer that writes TSB1 buffers the way nitro-fetch does (release stores from
+ * Tests only: a producer that writes TSB1 buffers the way streamFetch does (release stores from
  * a background queue), and a way to read what a StreamTextView with `recordDisplayLog` shows.
  */
 export interface StreamTextTesting extends HybridObject<{ ios: 'swift'; android: 'kotlin' }> {
@@ -112,6 +112,12 @@ export interface StreamTextTesting extends HybridObject<{ ios: 'swift'; android:
    * (`back`: the line number found at the middle of the line's frame).
    */
   accessibility(key: string, lines: number[]): Promise<string>
+  /**
+   * Android test only: stops the Fabric surface containing `key`. This is intentionally terminal
+   * for that test app instance, and exists to exercise commands already enqueued for a stopped
+   * surface.
+   */
+  stopSurface(key: string): Promise<string>
   /** The view whose `nativeID` is `key` and that has `recordDisplayLog`; rejects if there is none. */
   snapshot(key: string): Promise<StreamTextSnapshot>
 }
