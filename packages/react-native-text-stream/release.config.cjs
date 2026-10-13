@@ -15,7 +15,8 @@ const sortMap = Object.fromEntries(
  * @type {import('semantic-release').GlobalConfig}
  */
 module.exports = {
-  branches: ['main', { name: 'next', prerelease: 'next' }],
+  branches: ['master', { name: 'next', prerelease: 'next' }],
+  tagFormat: 'v${version}',
   plugins: [
     [
       '@semantic-release/commit-analyzer',
@@ -45,7 +46,7 @@ module.exports = {
     [
       '@semantic-release/changelog',
       {
-        changelogFile: 'CHANGELOG.md',
+        changelogFile: '../../CHANGELOG.md',
       },
     ],
     '@semantic-release/npm',
@@ -53,7 +54,7 @@ module.exports = {
     [
       '@semantic-release/git',
       {
-        assets: ['package.json', 'CHANGELOG.md', '../example/package.json'],
+        assets: ['package.json', '../../CHANGELOG.md'],
       },
     ],
   ],

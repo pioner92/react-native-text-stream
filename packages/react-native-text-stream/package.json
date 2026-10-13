@@ -11,6 +11,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.build.json && tsc --noEmit",
     "clean": "git clean -dfX",
     "release": "semantic-release",
+    "prepack": "bun run build",
     "build": "bun run typecheck && bob build",
     "test": "jest"
   },
@@ -20,12 +21,14 @@
   ],
   "files": [
     "src",
+    "!src/**/__tests__/**",
     "react-native.config.js",
     "lib",
     "cpp",
     "android/build.gradle",
     "android/src",
     "!android/src/test",
+    "!android/src/androidTest",
     "ios/**/*.h",
     "ios/**/*.m",
     "ios/**/*.mm",

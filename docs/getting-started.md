@@ -3,8 +3,6 @@
 [← README](../README.md) · [Usage](usage.md) · [API reference](api.md)
 
 StreamText is an experimental native component for rendering **plain UTF-8 streaming text**.
-The package is not published to npm yet. You can try the example app or build a local package
-for your own application.
 
 ## Requirements
 
@@ -34,7 +32,25 @@ bun install
 Follow the [example app instructions](../example/README.md) to start the streaming server,
 Metro, and an iOS or Android build.
 
-## Use in an existing app
+## Install from npm
+
+From your React Native application directory:
+
+```sh
+npm install react-native-text-stream
+```
+
+For iOS, install the native pods using your app's usual CocoaPods setup, for example:
+
+```sh
+cd ios
+bundle exec pod install
+```
+
+Rebuild the native app on either platform. Reloading JavaScript alone cannot register a new native
+component. Autolinking is supplied by the package; there is no StreamText-specific Babel plugin.
+
+## Local development installation
 
 Build a package from the library workspace. The repository root is a private workspace wrapper;
 installing the GitHub repository root is not a supported package installation.

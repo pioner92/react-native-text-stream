@@ -17,9 +17,16 @@ Nitro Modules, or Reanimated dependency is required.
 
 ## Status and installation
 
-**Experimental preview; not yet published to npm.** Build the library workspace and install a local
-package archive. Follow the [installation guide](https://github.com/pioner92/react-native-text-stream/blob/master/docs/getting-started.md)
-for the complete steps. The repository root is a workspace wrapper, not the installable library.
+**Experimental preview.** Install the package from npm:
+
+```sh
+npm install react-native-text-stream
+```
+
+Install iOS pods and rebuild the native app after adding the package. Follow the
+[installation guide](https://github.com/pioner92/react-native-text-stream/blob/master/docs/getting-started.md)
+for platform steps and local-development installation. The repository root is a workspace wrapper,
+not the installable library.
 
 ## Compatibility
 
@@ -38,6 +45,7 @@ are planned, not available features.
 - [Usage and lifecycle guides](https://github.com/pioner92/react-native-text-stream/blob/master/docs/usage.md)
 - [API reference](https://github.com/pioner92/react-native-text-stream/blob/master/docs/api.md)
 - [Example app](https://github.com/pioner92/react-native-text-stream/blob/master/example/README.md)
+- [Changelog](https://github.com/pioner92/react-native-text-stream/blob/master/CHANGELOG.md)
 - [Report an issue](https://github.com/pioner92/react-native-text-stream/issues)
 
 ## License

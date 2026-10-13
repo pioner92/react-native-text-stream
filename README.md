@@ -51,17 +51,15 @@ SSE/NDJSON parsing and Markdown rendering are not included yet.
 
 ## Quick start
 
-> **Experimental preview.** The package is not published to npm yet. Start with the example app or
-> install a locally built package. The API may change before a stable release.
+> **Experimental preview.** The API may change before a stable release.
 
 ```sh
-git clone https://github.com/pioner92/react-native-text-stream.git
-cd react-native-text-stream
-bun install
+npm install react-native-text-stream
 ```
 
-Then follow the [iOS or Android example setup](example/README.md), or the
-[installation guide for an existing app](docs/getting-started.md#use-in-an-existing-app).
+Then install iOS pods and rebuild the native app. Follow the
+[installation guide](docs/getting-started.md#install-from-npm) for platform steps, or the
+[example setup](example/README.md) to run the repository demo.
 The library itself has no runtime dependencies beyond React and React Native.
 
 ### Stream a response
@@ -179,19 +177,20 @@ See [setup and compatibility details](docs/getting-started.md).
 
 | Guide | What you will find |
 | --- | --- |
-| [Getting started](docs/getting-started.md) | Requirements, local installation, and backend response format |
+| [Getting started](docs/getting-started.md) | Requirements, npm installation, and backend response format |
 | [Usage and recipes](docs/usage.md) | POST requests, completion, cancellation, refs, and list lifecycles |
 | [API reference](docs/api.md) | Component props, `streamFetch`, stream handles, and status semantics |
 | [Architecture](docs/architecture.md) | Native transport, rendering, layout, and custom producers |
 | [Benchmarks](docs/benchmarks.md) | Workloads, all results, limitations, and reproducibility |
 | [Example app](example/README.md) | Run the demo, freeze JS, and explore the benchmark screens |
+| [Changelog](CHANGELOG.md) | Release notes and current scope |
 
 ## Roadmap
 
 - Native SSE and NDJSON parsing, including provider-specific text extraction.
 - A JavaScript chunk-input API for existing SDKs and other transports.
 - Native Markdown rendering.
-- An npm release and a broader validated compatibility matrix.
+- A broader validated compatibility matrix.
 
 These are planned directions, not currently supported features or release commitments.
 
