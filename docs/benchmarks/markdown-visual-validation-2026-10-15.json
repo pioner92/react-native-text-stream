@@ -1,0 +1,155 @@
+{
+  "date": "2026-10-15",
+  "ios": {
+    "device": "3151717D-25E3-40D9-8D93-4BB90C4C6C18",
+    "suite": "markdown-rich.harness.tsx",
+    "passed": 22,
+    "failed": 0,
+    "cases": [
+      {
+        "name": "lays out an aligned grid with styled Unicode cells and wraps on resize",
+        "status": "passed"
+      },
+      {
+        "name": "materializes a large table across native language boundaries",
+        "status": "passed"
+      },
+      {
+        "name": "updates table metadata even when its document placeholder stays identical",
+        "status": "passed"
+      },
+      {
+        "name": "styles fenced syntax while preserving raw source and unknown languages",
+        "status": "passed"
+      },
+      {
+        "name": "loads and measures images natively after source completion, without another terminal event",
+        "status": "passed"
+      },
+      {
+        "name": "does not crop an inline loaded image to an explicit text lineHeight",
+        "status": "passed"
+      },
+      {
+        "name": "keeps quote indentation while measuring an inline image beyond text lineHeight",
+        "status": "passed"
+      },
+      {
+        "name": "finishes image loading while JavaScript is blocked",
+        "status": "passed"
+      },
+      {
+        "name": "keeps a pending image subscription when later text appends after its unchanged prefix",
+        "status": "passed"
+      },
+      {
+        "name": "keeps image completion layout live across a pending font-style change",
+        "status": "passed"
+      },
+      {
+        "name": "shows a stable fallback for broken.png",
+        "status": "passed"
+      },
+      {
+        "name": "shows a stable fallback for invalid.png",
+        "status": "passed"
+      },
+      {
+        "name": "shows a stable fallback for oversize.png",
+        "status": "passed"
+      },
+      {
+        "name": "shows a stable fallback for oversize-chunked.png",
+        "status": "passed"
+      },
+      {
+        "name": "blocks non-HTTP images",
+        "status": "passed"
+      },
+      {
+        "name": "downsamples large images within decoded pixel limits",
+        "status": "passed"
+      },
+      {
+        "name": "reuses a decoded image across remounts and does not send request credentials",
+        "status": "passed"
+      },
+      {
+        "name": "shares an in-flight download between subscribers and limits active requests to two",
+        "status": "passed"
+      },
+      {
+        "name": "ignores delayed image completion after replace",
+        "status": "passed"
+      },
+      {
+        "name": "ignores delayed image completion after clear",
+        "status": "passed"
+      },
+      {
+        "name": "ignores delayed image completion after plain",
+        "status": "passed"
+      },
+      {
+        "name": "ignores delayed image completion after unmount",
+        "status": "passed"
+      }
+    ]
+  },
+  "android": {
+    "device": "emulator-5556",
+    "jvmSuites": [
+      {
+        "name": "com.textstream.StreamTextFetchTest",
+        "tests": "11",
+        "failures": "0",
+        "errors": "0",
+        "skipped": "0",
+        "timestamp": "2026-10-15T16:47:36.129Z"
+      },
+      {
+        "name": "com.textstream.StreamTextMarkdownTest",
+        "tests": "12",
+        "failures": "0",
+        "errors": "0",
+        "skipped": "0",
+        "timestamp": "2026-10-15T16:47:36.347Z"
+      },
+      {
+        "name": "com.textstream.StreamTextMarkdownWorkerTest",
+        "tests": "9",
+        "failures": "0",
+        "errors": "0",
+        "skipped": "0",
+        "timestamp": "2026-10-15T16:47:36.359Z"
+      },
+      {
+        "name": "com.textstream.StreamTextReadingTest",
+        "tests": "7",
+        "failures": "0",
+        "errors": "0",
+        "skipped": "0",
+        "timestamp": "2026-10-15T16:47:36.365Z"
+      },
+      {
+        "name": "com.textstream.Utf8StreamDecoderTest",
+        "tests": "3",
+        "failures": "0",
+        "errors": "0",
+        "skipped": "0",
+        "timestamp": "2026-10-15T16:47:36.370Z"
+      }
+    ],
+    "totalTests": 42
+  },
+  "fixtureServerTest": {
+    "passed": 1,
+    "failed": 0
+  },
+  "exampleTypeScript": "passed",
+  "visualReport": "../markdown-visual-stress.md",
+  "limitations": [
+    "Manual screenshots are not exhaustive conformance proof.",
+    "No new physical-device or performance benchmark was run in this visual pass."
+  ]
+}

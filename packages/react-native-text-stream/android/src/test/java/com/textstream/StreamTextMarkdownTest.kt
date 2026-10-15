@@ -4,6 +4,37 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class StreamTextMarkdownTest {
+
+  @Test fun codeTokensUseOneParagraphMargin() {
+    val margins = StreamTextMarkdown.codeBlockMarginRanges(
+        "const value = 42\nnext", intArrayOf(0, 6, 14, 17), intArrayOf(5, 5, 2, 4),
+        intArrayOf(StreamTextMarkdown.CODE_BLOCK or StreamTextMarkdown.TOKEN_KEYWORD,
+            StreamTextMarkdown.CODE_BLOCK, StreamTextMarkdown.CODE_BLOCK or StreamTextMarkdown.TOKEN_NUMBER,
+            StreamTextMarkdown.CODE_BLOCK))
+    assertEquals(listOf(0 to 16, 17 to 21), margins)
+  }
+
+  @Test fun codeBlockMarginRangesRemainLinearForManyTokensAndMultilineRuns() {
+    val text = "a b c d\ne f g\nnext"
+    val margins = StreamTextMarkdown.codeBlockMarginRanges(
+        text, intArrayOf(0, 2, 4, 6, 8, 14), intArrayOf(13, 1, 1, 1, 1, 4),
+        IntArray(6) { StreamTextMarkdown.CODE_BLOCK })
+    assertEquals(listOf(0 to 7, 8 to 13, 14 to 18), margins)
+  }
+
+  @Test fun multilineCodeRunKeepsMarginsForEveryCoveredParagraph() {
+    val margins = StreamTextMarkdown.codeBlockMarginRanges(
+        "one\ntwo\nplain", intArrayOf(0), intArrayOf(7), intArrayOf(StreamTextMarkdown.CODE_BLOCK))
+    assertEquals(listOf(0 to 3, 4 to 7), margins)
+  }
+
+  @Test fun quoteAndIndentDecorationsAreOnePerTokenizedParagraph() {
+    val decorations = StreamTextMarkdown.paragraphDecorations(
+        "quoted tokens\nlist item", intArrayOf(0, 7, 14, 19), intArrayOf(6, 6, 4, 4),
+        intArrayOf(StreamTextMarkdown.QUOTE, StreamTextMarkdown.QUOTE, 0, 0), intArrayOf(0, 0, 2, 2))
+    assertEquals(listOf("0:13:true:0", "14:23:false:2"),
+        decorations.map { "${it.start}:${it.end}:${it.quote}:${it.indent}" })
+  }
   private fun cell(text: String = "cell", flags: Int = 0, url: String? = null, alignment: Int = 1, header: Boolean = false) =
       StreamTextMarkdown.RichCell(text, intArrayOf(0), intArrayOf(text.length), intArrayOf(flags),
           intArrayOf(0), intArrayOf(0), arrayOf(url), header, alignment)

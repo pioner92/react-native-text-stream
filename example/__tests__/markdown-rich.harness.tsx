@@ -2,7 +2,7 @@ import React from 'react';
 import { Platform } from 'react-native';
 import { describe, expect, it, render, waitFor } from 'react-native-harness';
 import { StreamText, type StreamTextHandle } from 'react-native-text-stream';
-import { buffer, busyWait, Column, newKey, sleep, testing, TSB, waitForSnapshot, write } from './helpers';
+import { buffer, busyWait, Column, itIOS, newKey, sleep, testing, TSB, waitForSnapshot, write } from './helpers';
 
 type Block = {
   kind: 'table' | 'image'; start: number; width: number; height: number;
@@ -125,6 +125,28 @@ describe('StreamText rich Markdown native seams', () => {
     expect(loaded.blocks[0]!.pixelHeight).toBe(80);
     expect(loaded.blocks[0]!.width / loaded.blocks[0]!.height).toBe(2);
     expect(events.filter(status => status === 'done')).toEqual(['done']);
+  });
+
+  itIOS('does not crop an inline loaded image to an explicit text lineHeight', async () => {
+    const key = newKey();
+    const url = `${endpoint}/image.png?key=${key}`;
+    await render(<Column width={300}><StreamText source={buffer(`Before ![checkerboard](${url}) after`, TSB.done)}
+      nativeID={key} recordDisplayLog format="markdown" markdownFlavor="gfm" fontSize={16} lineHeight={28} /></Column>);
+    const image = await imageStatus(key, 'loaded');
+    expect(image.blocks[0]!.height).toBeGreaterThanOrEqual(80);
+    await waitForSnapshot(key, state => expect(state.height).toBeGreaterThanOrEqual(image.blocks[0]!.height));
+  });
+
+  itIOS('keeps quote indentation while measuring an inline image beyond text lineHeight', async () => {
+    const key = newKey();
+    const url = `${endpoint}/large.png?key=${key}`;
+    await render(<Column width={300}><StreamText source={buffer(`> Before ![checkerboard](${url}) after`, TSB.done)}
+      nativeID={key} recordDisplayLog format="markdown" markdownFlavor="gfm" fontSize={16} lineHeight={28} /></Column>);
+    const image = await imageStatus(key, 'loaded');
+    // The quote adds an indent; the attachment must fit its text column, not the full container.
+    expect(image.blocks[0]!.width).toBeLessThan(300);
+    expect(image.blocks[0]!.height).toBeGreaterThan(100);
+    await waitForSnapshot(key, state => expect(state.height).toBeGreaterThanOrEqual(image.blocks[0]!.height));
   });
 
   it('finishes image loading while JavaScript is blocked', async () => {

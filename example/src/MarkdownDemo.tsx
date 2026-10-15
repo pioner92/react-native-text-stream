@@ -1,3 +1,4 @@
+import { MarkdownVisualStress } from './MarkdownVisualStress';
 import React, { useEffect, useRef, useState } from 'react';
 import { Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { StreamText, streamFetch, useStreamTextRef, type TextStream } from 'react-native-text-stream';
@@ -5,6 +6,7 @@ import { StreamText, streamFetch, useStreamTextRef, type TextStream } from 'reac
 export function MarkdownDemo({ onBack }: { onBack: () => void }) {
   const ref = useStreamTextRef();
   const active = useRef<TextStream | null>(null);
+  const [visual, setVisual] = useState(false);
   const [status, setStatus] = useState('Ready');
   const [markdown, setMarkdown] = useState(true);
   useEffect(() => () => active.current?.abort(), []);
@@ -26,12 +28,14 @@ export function MarkdownDemo({ onBack }: { onBack: () => void }) {
     const until = Date.now() + 5000;
     while (Date.now() < until) { /* Demonstrate native progress while JS is blocked. */ }
   }, 50);
+  if (visual) return <MarkdownVisualStress onBack={() => setVisual(false)} />;
   return <View style={styles.screen}>
     <View style={styles.controls}>
       <Pressable onPress={onBack}><Text style={styles.link}>‹ Demo</Text></Pressable>
       <Pressable onPress={() => start(false)}><Text style={styles.link}>Stream</Text></Pressable>
       <Pressable onPress={() => start(true)}><Text style={styles.link}>100 KB</Text></Pressable>
       <Pressable onPress={() => start(false, true)}><Text style={styles.link}>Rich</Text></Pressable>
+      <Pressable onPress={() => setVisual(true)}><Text style={styles.link}>Stress test</Text></Pressable>
       <Pressable onPress={freeze}><Text style={styles.link}>Freeze JS</Text></Pressable>
       <Pressable onPress={() => setMarkdown(v => !v)}><Text style={styles.link}>{markdown ? 'Raw' : 'Markdown'}</Text></Pressable>
     </View>

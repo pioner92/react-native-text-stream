@@ -147,6 +147,8 @@ internal class StreamTextMarkdown @DoNotStrip constructor(
 
   fun styled(@Suppress("UNUSED_PARAMETER") baseColor: Int, width: Int = 0, style: StreamTextStyle = StreamTextStyle()): CharSequence {
     val out = SpannableStringBuilder(text)
+    val codeBlockMargins = codeBlockMarginRanges(text, starts, lengths, flags)
+    val paragraphDecorations = paragraphDecorations(text, starts, lengths, flags, indents)
     for (i in starts.indices) {
       val start = starts[i].coerceIn(0, out.length)
       val end = (start + lengths[i]).coerceIn(start, out.length)
@@ -164,13 +166,8 @@ internal class StreamTextMarkdown @DoNotStrip constructor(
       if (bits and CODE_BLOCK != 0) {
         out.setSpan(TypefaceSpan("monospace"), start, end, spanFlags)
         out.setSpan(MarkdownCodeBackgroundSpan(18), start, end, spanFlags)
-        out.setSpan(LeadingMarginSpan.Standard(dp(24)), start, end, spanFlags)
       }
       tokenSpan(bits)?.let { out.setSpan(it, start, end, spanFlags) }
-      if (bits and QUOTE != 0) {
-        out.setSpan(LeadingMarginSpan.Standard(dp(18)), start, end, spanFlags)
-        out.setSpan(MarkdownQuoteSpan(), start, end, spanFlags)
-      }
       urls.getOrNull(i)?.takeIf { bits and LINK != 0 && isSafeUrl(it) }?.let { out.setSpan(MarkdownUrlSpan(it), start, end, spanFlags) }
       when (headings.getOrElse(i) { 0 }) {
         1 -> { out.setSpan(RelativeSizeSpan(1.55f), start, end, spanFlags); out.setSpan(StyleSpan(Typeface.BOLD), start, end, spanFlags) }
@@ -179,8 +176,20 @@ internal class StreamTextMarkdown @DoNotStrip constructor(
         4 -> { out.setSpan(RelativeSizeSpan(1.12f), start, end, spanFlags); out.setSpan(StyleSpan(Typeface.BOLD), start, end, spanFlags) }
         in 5..6 -> out.setSpan(StyleSpan(Typeface.BOLD), start, end, spanFlags)
       }
-      val indent = indents.getOrElse(i) { 0 }
-      if (indent > 0) out.setSpan(LeadingMarginSpan.Standard(dp(indent.coerceAtMost(8) * 16)), start, end, spanFlags)
+    }
+    // Syntax-token runs share CODE_BLOCK. Add each paragraph margin once, outside the per-token
+    // loop, so a token-dense or very long line remains linear to format.
+    for ((start, end) in codeBlockMargins) {
+      out.setSpan(LeadingMarginSpan.Standard(dp(24)), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+    }
+    for (decoration in paragraphDecorations) {
+      if (decoration.quote) {
+        out.setSpan(LeadingMarginSpan.Standard(dp(18)), decoration.start, decoration.end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        out.setSpan(MarkdownQuoteSpan(), decoration.start, decoration.end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+      }
+      if (decoration.indent > 0) out.setSpan(
+          LeadingMarginSpan.Standard(dp(decoration.indent.coerceAtMost(8) * 16)),
+          decoration.start, decoration.end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
     }
     if (width > 0) for (block in blocks) {
       val start = block.start.coerceIn(0, out.length)
@@ -247,6 +256,7 @@ internal class StreamTextMarkdown @DoNotStrip constructor(
   }
 
   companion object {
+    internal data class ParagraphDecoration(val start: Int, val end: Int, val quote: Boolean, val indent: Int)
     fun plain(text: String) = StreamTextMarkdown(text, IntArray(0), IntArray(0), IntArray(0), IntArray(0), IntArray(0), emptyArray())
     const val BOLD = 1
     const val ITALIC = 2
@@ -262,6 +272,65 @@ internal class StreamTextMarkdown @DoNotStrip constructor(
     const val TOKEN_TYPE = 1 shl 20
     const val BLOCK_TABLE = 1
     const val BLOCK_IMAGE = 2
+
+    /**
+     * Returns each code-block paragraph once. This scans text and ordered parser runs forward,
+     * so a run spanning multiple paragraphs cannot suppress a later paragraph's margin.
+     */
+    internal fun codeBlockMarginRanges(
+        text: String, starts: IntArray, lengths: IntArray, flags: IntArray,
+    ): List<Pair<Int, Int>> {
+      if (flags.none { it and CODE_BLOCK != 0 }) return emptyList()
+      val result = ArrayList<Pair<Int, Int>>()
+      var run = 0
+      var lineStart = 0
+      while (lineStart < text.length) {
+        var lineEnd = text.indexOf('\n', lineStart)
+        if (lineEnd == -1) lineEnd = text.length
+        while (run < starts.size && starts[run] + lengths.getOrElse(run) { 0 } <= lineStart) run++
+        var candidate = run
+        var hasCode = false
+        while (candidate < starts.size && starts[candidate] < lineEnd) {
+          val runEnd = starts[candidate] + lengths.getOrElse(candidate) { 0 }
+          if (runEnd > lineStart && flags.getOrElse(candidate) { 0 } and CODE_BLOCK != 0) {
+            hasCode = true
+            break
+          }
+          candidate++
+        }
+        if (hasCode && lineStart < lineEnd) result.add(lineStart to lineEnd)
+        lineStart = lineEnd + 1
+      }
+      return result
+    }
+
+    /** One quote/list decoration per paragraph, independent of how the parser tokenizes it. */
+    internal fun paragraphDecorations(
+        text: String, starts: IntArray, lengths: IntArray, flags: IntArray, indents: IntArray,
+    ): List<ParagraphDecoration> {
+      if (flags.none { it and QUOTE != 0 } && indents.none { it > 0 }) return emptyList()
+      val result = ArrayList<ParagraphDecoration>()
+      var run = 0
+      var lineStart = 0
+      while (lineStart < text.length) {
+        var lineEnd = text.indexOf('\n', lineStart)
+        if (lineEnd == -1) lineEnd = text.length
+        while (run < starts.size && starts[run] + lengths.getOrElse(run) { 0 } <= lineStart) run++
+        var candidate = run
+        var quote = false
+        var indent = 0
+        while (candidate < starts.size && starts[candidate] < lineEnd) {
+          if (starts[candidate] + lengths.getOrElse(candidate) { 0 } > lineStart) {
+            quote = quote || flags.getOrElse(candidate) { 0 } and QUOTE != 0
+            indent = maxOf(indent, indents.getOrElse(candidate) { 0 })
+          }
+          candidate++
+        }
+        if (quote || indent > 0) result.add(ParagraphDecoration(lineStart, lineEnd, quote, indent))
+        lineStart = lineEnd + 1
+      }
+      return result
+    }
 
     private fun dp(value: Int) = (value * android.content.res.Resources.getSystem().displayMetrics.density + 0.5f).toInt()
     private fun isSafeUrl(url: String): Boolean {

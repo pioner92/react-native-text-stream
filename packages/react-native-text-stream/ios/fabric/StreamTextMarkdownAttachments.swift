@@ -3,19 +3,40 @@ import CoreText
 
 func streamTextMarkdownAttachBlocks(_ blocks: [StreamTextMarkdownBlock], to output: NSMutableAttributedString,
                                    offset: Int, base: [NSAttributedString.Key: Any], width: CGFloat) {
+  // Several inline blocks can live in one paragraph. Resolve its effective style once, both to
+  // retain Markdown's quote/list indentation and to avoid repeating an O(paragraph) mutation.
+  var adjustedParagraphStarts = Set<Int>()
   for block in blocks where block.range.location >= offset {
     let range = NSRange(location: block.range.location - offset, length: block.range.length)
     guard range.length == 1, NSMaxRange(range) <= output.length else { continue }
+    let paragraphRange = (output.string as NSString).paragraphRange(for: range)
+    let effectiveParagraph = output.attribute(.paragraphStyle, at: paragraphRange.location, effectiveRange: nil) as? NSParagraphStyle
+    // An attachment is laid out after its paragraph's head/tail indents. Use the same usable
+    // width for rich blocks so a quoted/list table or image cannot overflow its text column.
+    let headEdge = max(effectiveParagraph?.headIndent ?? 0, effectiveParagraph?.firstLineHeadIndent ?? 0)
+    let tailIndent = effectiveParagraph?.tailIndent ?? 0
+    // UIKit interprets a positive tail indent from the leading edge and a non-positive one from
+    // the trailing edge. Subtracting a negative value would accidentally make the block wider.
+    let trailingEdge = tailIndent > 0 ? min(width, tailIndent) : width + tailIndent
+    let attachmentWidth = max(1, trailingEdge - headEdge)
     let attachment: StreamTextMarkdownAttachment
     if block.kind == UInt32(STMD_BLOCK_TABLE) {
-      attachment = StreamTextMarkdownTableAttachment(block: block, base: base, width: width)
+      attachment = StreamTextMarkdownTableAttachment(block: block, base: base, width: attachmentWidth)
     } else {
-      attachment = StreamTextMarkdownImageAttachment(block: block, width: width)
+      attachment = StreamTextMarkdownImageAttachment(block: block, width: attachmentWidth)
     }
     output.addAttribute(.attachment, value: attachment, range: range)
-    // Fixed text line heights must not crop a tall attachment.
-    let paragraph = NSMutableParagraphStyle()
-    output.addAttribute(.paragraphStyle, value: paragraph, range: range)
+    // TextKit takes paragraph metrics from the paragraph's leading regular text, not necessarily
+    // from U+FFFC. Reset the whole paragraph so an inline attachment is never cropped by an
+    // explicit lineHeight carried by text before it ("Before ![image] after").
+    guard adjustedParagraphStarts.insert(paragraphRange.location).inserted else { continue }
+    let paragraph = (effectiveParagraph ?? (base[.paragraphStyle] as? NSParagraphStyle))?.mutableCopy() as? NSMutableParagraphStyle
+      ?? NSMutableParagraphStyle()
+    if paragraph.minimumLineHeight > 0 || paragraph.maximumLineHeight > 0 {
+      paragraph.minimumLineHeight = 0
+      paragraph.maximumLineHeight = 0
+      output.addAttribute(.paragraphStyle, value: paragraph, range: paragraphRange)
+    }
   }
 }
 

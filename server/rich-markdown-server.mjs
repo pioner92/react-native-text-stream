@@ -1,6 +1,8 @@
 // Deterministic loopback fixtures for native Markdown attachments (PORT defaults to 9882).
 import http from 'node:http';
 import { deflateSync } from 'node:zlib';
+import { readFileSync } from 'node:fs';
+import { cases as visualCases } from './fixtures/markdown-visual.mjs';
 
 function crc32(bytes) {
   let crc = 0xffffffff;
@@ -39,6 +41,7 @@ function png(width, height) {
 }
 const image = png(160, 80);
 const largeImage = png(4096, 2048);
+const daylightConcept = readFileSync(new URL('./fixtures/daylight-concept.png', import.meta.url));
 const requests = new Map();
 const activity = new Map();
 const port = Number(process.env.PORT) || 9882;
@@ -55,6 +58,30 @@ const server = http.createServer((req, res) => {
     res.setHeader('Content-Type', 'application/json');
     return res.end(JSON.stringify(activity.get(key) ?? { active: 0, peak: 0 }));
   }
+  if (url.pathname === '/visual-cases') {
+    res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+    return res.end(JSON.stringify(visualCases(req.headers.host ?? `127.0.0.1:${port}`, url.searchParams.get('run') ?? 'visual').map(({ id, title }) => ({ id, title }))));
+  }
+  if (url.pathname === '/visual') {
+    const host = req.headers.host ?? `127.0.0.1:${port}`;
+    const requested = url.searchParams.get('case') ?? 'all';
+    const run = url.searchParams.get('run') ?? 'visual';
+    const fixtures = visualCases(host, run);
+    const selected = requested === 'all' ? fixtures.filter(item => item.id !== 'announce') : fixtures.filter((item) => item.id === requested);
+    if (!selected.length) return res.writeHead(404).end('unknown visual case');
+    const chunk = Math.min(64 * 1024, Math.max(1, Number(url.searchParams.get('chunk')) || 23));
+    const interval = Math.min(1000, Math.max(0, Number(url.searchParams.get('interval')) || 12));
+    const body = Buffer.from(selected.map((item) => item.markdown).join('\n\n'));
+    res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' });
+    let offset = 0;
+    const send = () => {
+      if (res.destroyed) return;
+      res.write(body.subarray(offset, offset + chunk)); offset += chunk;
+      if (offset >= body.length) return res.end();
+      setTimeout(send, interval);
+    };
+    send(); return;
+  }
   if (url.pathname === '/markdown') {
     const host = req.headers.host ?? `127.0.0.1:${port}`;
     const body = Buffer.from(`# Native Markdown\n\nTables, images and code update on the native side.\n\n` +
@@ -64,7 +91,7 @@ const server = http.createServer((req, res) => {
       '```typescript\n// A streaming response\nconst answer: string = "Hello";\nconsole.log(answer, 42);\n```\n\n' +
       `![Purple and teal checkerboard](http://${host}/image.png?delay=600&key=demo)\n\n` +
       '```python\ndef greet(name):\n    return "Hello " + name # native highlighting\n```\n');
-    res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' });
+    res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' });
     let offset = 0;
     const timer = setInterval(() => {
       res.write(body.subarray(offset, offset + 23));
@@ -88,6 +115,7 @@ const server = http.createServer((req, res) => {
     res.on('close', () => state.active--);
   }
   const timer = setTimeout(() => {
+    if (url.pathname === '/daylight-concept.png') return res.writeHead(200, { 'Content-Type': 'image/png', 'Content-Length': daylightConcept.length, 'Cache-Control': 'no-store' }).end(daylightConcept);
     if (url.pathname === '/broken.png') return res.writeHead(404).end('missing');
     if (url.pathname === '/invalid.png') return res.writeHead(200, { 'Content-Type': 'image/png' }).end('invalid image');
     if (url.pathname === '/oversize.png') {
