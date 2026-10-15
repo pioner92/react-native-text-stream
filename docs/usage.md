@@ -214,13 +214,15 @@ export function AnswerStatus() {
 | `capacity` | 16 MiB | Maximum decoded body bytes to retain; overflow ends as `truncated`. |
 | `timeout` | 5 min | Deadline through response headers, then an idle-read timeout; it is not a total transfer limit. |
 | `streamId` | — | Native registry key shared with `<StreamText streamId>`. |
+| `parser` | — | Native SSE/NDJSON framing and text extraction; see [protocols](protocols.md). |
 
 ## Protocols and text formats
 
-The component renders response bytes as plain UTF-8 text. It does not parse
-Markdown, SSE, NDJSON, or provider-specific event envelopes. If an endpoint sends
-SSE or NDJSON, the raw wire body is what appears in the view. Transform it on a
-server or use a native producer that writes the desired plain text.
+The component renders UTF-8 text. Select `format="markdown"` for native
+[CommonMark/GFM rendering](markdown.md). For SSE or NDJSON endpoints, configure
+a request `parser` to extract text before it reaches the buffer; see
+[provider presets and custom fields](protocols.md). Without a parser, the raw wire
+body appears in the view.
 
 For a native producer, pass its native-owned TSB1 `ArrayBuffer` to `source` or
 `attach()`. JavaScript-created `ArrayBuffer`s are not supported. See
@@ -228,7 +230,7 @@ For a native producer, pass its native-owned TSB1 `ArrayBuffer` to `source` or
 
 ## Practical notes
 
-- `StreamText` is a plain-text view. It lays out at the width it receives and
+- `StreamText` lays out at the width it receives and
   grows with the text; use normal React Native view styles for its container.
 - A finished message still needs native layout work when mounted. Measure your
   own message sizes and screen hardware; see [benchmarks](benchmarks.md).

@@ -25,10 +25,14 @@ internal class StreamTextFetch internal constructor(
     private val handle: Long,
     private val data: ByteBuffer,
     private val events: Events = JniEvents,
+    /** Parsed transports retain no wire body in [data]; native owns their output buffer. */
+    private val parsed: Boolean = false,
 ) : Callback {
   internal interface Events {
     fun response(handle: Long, status: Int, headers: Array<String>, url: String)
     fun publish(handle: Long, committed: Long)
+    /** Parser-only path; raw text never calls this or allocates parser scratch state. */
+    fun consume(handle: Long, bytes: ByteArray, count: Int): Int = STATUS_CONTINUE
     fun complete(handle: Long, status: Int, error: String?)
   }
 
@@ -71,6 +75,14 @@ internal class StreamTextFetch internal constructor(
           events.response(handle, response.code, headers.toTypedArray(), response.request.url.toString())
           if (completed) return
         }
+        val rejectParsedResponse = parsed && !response.isSuccessful
+        if (rejectParsedResponse) {
+          synchronized(lock) {
+            if (!completed) finishLocked(STATUS_ERROR, "streamFetch: HTTP ${response.code}")
+          }
+          call.cancel()
+          return
+        }
         val body = response.body
         if (body == null) { synchronized(lock) { finishLocked(STATUS_DONE, null) }; return }
         // OkHttp handles implicit gzip itself. Explicit Accept-Encoding must also decode gzip,
@@ -83,7 +95,7 @@ internal class StreamTextFetch internal constructor(
           val capacity = data.capacity()
           while (true) {
             synchronized(lock) { if (completed) return }
-            if (committed == capacity) {
+            if (!parsed && committed == capacity) {
               val exhausted = source.exhausted()
               synchronized(lock) {
                 if (completed) return
@@ -93,16 +105,26 @@ internal class StreamTextFetch internal constructor(
               return
             }
             // Never block holding the lifecycle lock, and never let Okio write into released memory.
-            val read = source.read(scratch, 0, minOf(scratch.size, capacity - committed))
+            val read = source.read(scratch, 0, if (parsed) scratch.size else minOf(scratch.size, capacity - committed))
+            var cancelAfter = false
             synchronized(lock) {
               if (completed) return
               if (call.isCanceled()) { finishLocked(STATUS_CANCELLED, null); return }
               if (read == -1) { finishLocked(STATUS_DONE, null); return }
-              data.position(committed)
-              data.put(scratch, 0, read)
-              committed += read
-              events.publish(handle, committed.toLong())
+              if (parsed) {
+                when (events.consume(handle, scratch, read)) {
+                  STATUS_DONE -> { finishLocked(STATUS_DONE, null); cancelAfter = true }
+                  STATUS_ERROR -> { finishLocked(STATUS_ERROR, null); cancelAfter = true }
+                  STATUS_OVERFLOW -> { finishLocked(STATUS_OVERFLOW, null); cancelAfter = true }
+                }
+              } else {
+                data.position(committed)
+                data.put(scratch, 0, read)
+                committed += read
+                events.publish(handle, committed.toLong())
+              }
             }
+            if (cancelAfter) { call.cancel(); return }
           }
         }
       }
@@ -143,6 +165,7 @@ internal class StreamTextFetch internal constructor(
   }
 
   companion object {
+    internal const val STATUS_CONTINUE = 0
     internal const val STATUS_DONE = 1
     internal const val STATUS_ERROR = 2
     internal const val STATUS_CANCELLED = 3
@@ -183,8 +206,8 @@ internal class StreamTextFetch internal constructor(
 
     @JvmStatic
     @DoNotStrip
-    fun start(handle: Long, url: String, method: String, headers: Array<String>, body: ByteArray?, timeoutMs: Long, data: ByteBuffer): StreamTextFetch {
-      val fetch = StreamTextFetch(handle, data)
+    fun start(handle: Long, url: String, method: String, headers: Array<String>, body: ByteArray?, timeoutMs: Long, data: ByteBuffer, parsed: Boolean): StreamTextFetch {
+      val fetch = StreamTextFetch(handle, data, parsed = parsed)
       try {
         require(timeoutMs in 1..Int.MAX_VALUE.toLong()) { "invalid timeout" }
         fetch.enqueue(client, request(url, method, headers, body), timeoutMs)
@@ -197,11 +220,13 @@ internal class StreamTextFetch internal constructor(
     private object JniEvents : Events {
       override fun response(handle: Long, status: Int, headers: Array<String>, url: String) = nativeResponse(handle, status, headers, url)
       override fun publish(handle: Long, committed: Long) = nativePublish(handle, committed)
+      override fun consume(handle: Long, bytes: ByteArray, count: Int) = nativeConsume(handle, bytes, count)
       override fun complete(handle: Long, status: Int, error: String?) = nativeComplete(handle, status, error)
     }
 
     @JvmStatic private external fun nativeResponse(handle: Long, status: Int, headers: Array<String>, url: String)
     @JvmStatic private external fun nativePublish(handle: Long, committed: Long)
+    @JvmStatic private external fun nativeConsume(handle: Long, bytes: ByteArray, count: Int): Int
     @JvmStatic private external fun nativeComplete(handle: Long, status: Int, error: String?)
   }
 }

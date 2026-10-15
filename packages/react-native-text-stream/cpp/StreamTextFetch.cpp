@@ -62,6 +62,45 @@ double numberProperty(jsi::Runtime &rt, const jsi::Object &object, const char *n
   return value.isNumber() ? value.getNumber() : fallback;
 }
 
+StreamTextParserOptions parserOptions(jsi::Runtime &rt, const jsi::Object &init) {
+  StreamTextParserOptions options;
+  auto value = init.getProperty(rt, "parser");
+  if (value.isUndefined()) return options;
+  if (!value.isObject() || value.getObject(rt).isArray(rt))
+    throw jsi::JSError(rt, "streamFetch: parser must be an object");
+  auto parser = value.getObject(rt);
+  auto format = stringProperty(rt, parser, "format", "");
+  if (format == "sse") options.protocol = StreamTextProtocol::SSE;
+  else if (format == "ndjson") options.protocol = StreamTextProtocol::NDJSON;
+  else throw jsi::JSError(rt, "streamFetch: invalid native parser format");
+  auto extractor = stringProperty(rt, parser, "extractor", "");
+  if (extractor == "data" && format == "sse") options.extraction = StreamTextExtraction::Data;
+  else if (extractor == "json-pointer") options.extraction = StreamTextExtraction::JsonPointer;
+  else if (extractor == "openai-chat" && format == "sse") options.extraction = StreamTextExtraction::OpenAIChat;
+  else if (extractor == "openai-responses" && format == "sse") options.extraction = StreamTextExtraction::OpenAIResponses;
+  else if (extractor == "anthropic" && format == "sse") options.extraction = StreamTextExtraction::Anthropic;
+  else if (extractor == "ollama" && format == "ndjson") options.extraction = StreamTextExtraction::Ollama;
+  else throw jsi::JSError(rt, "streamFetch: incompatible native parser extractor");
+  auto limit = parser.getProperty(rt, "maxEventBytes");
+  double maxBytes = limit.isUndefined() ? 1024 * 1024 : limit.isNumber() ? limit.getNumber() : 0;
+  if (!std::isfinite(maxBytes) || std::floor(maxBytes) != maxBytes || maxBytes < 1 || maxBytes > 16 * 1024 * 1024)
+    throw jsi::JSError(rt, "streamFetch: invalid maxEventBytes");
+  options.maxEventBytes = static_cast<size_t>(maxBytes);
+  if (options.extraction == StreamTextExtraction::JsonPointer) {
+    auto path = parser.getProperty(rt, "textPath");
+    if (!path.isString()) throw jsi::JSError(rt, "streamFetch: textPath must be a JSON Pointer");
+    options.textPointer = path.getString(rt).utf8(rt);
+    const auto &pointer = options.textPointer;
+    if (pointer.size() > 4096 || pointer.find('\0') != std::string::npos || (!pointer.empty() && pointer[0] != '/'))
+      throw jsi::JSError(rt, "streamFetch: invalid textPath");
+    for (size_t i = 0; i < pointer.size(); ++i) {
+      if (pointer[i] == '~' && (++i == pointer.size() || (pointer[i] != '0' && pointer[i] != '1')))
+        throw jsi::JSError(rt, "streamFetch: invalid textPath escape");
+    }
+  }
+  return options;
+}
+
 } // namespace
 
 StreamTextBuffersModule::StreamTextBuffersModule(std::shared_ptr<CallInvoker> jsInvoker)
@@ -125,6 +164,7 @@ jsi::Value StreamTextBuffersModule::fetch(
   StreamTextFetchRequest request;
   request.url = args[0].getString(rt).utf8(rt);
   request.method = stringProperty(rt, init, "method", "GET");
+  request.parser = parserOptions(rt, init);
   double timeoutMs = numberProperty(rt, init, "timeout", 300000);
   if (!std::isfinite(timeoutMs) || timeoutMs < 1 || timeoutMs > kStreamTextMaxTimeoutMs || std::floor(timeoutMs) != timeoutMs) {
     throw jsi::JSError(rt, "StreamTextBuffers.fetch: timeout must be an integer between 1 and 2147483647 ms");

@@ -9,7 +9,8 @@
     "test": "bun run --cwd packages/react-native-text-stream test",
     "test:harness": "bun run --cwd example test:harness",
     "test:markdown": "sh scripts/test-markdown-native.sh",
-    "test:native": "sh scripts/test-stream-fetch-native.sh"
+    "test:native": "sh scripts/test-stream-fetch-native.sh",
+    "test:protocol": "sh scripts/test-response-parser-native.sh"
   },
   "workspaces": [
     "packages/*",

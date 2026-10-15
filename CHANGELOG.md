@@ -2,6 +2,13 @@
 
 All notable changes to StreamText are documented in this file.
 
+## Unreleased
+
+- Native CommonMark/GFM rendering with `format="markdown"`, incremental updates and platform seam tests.
+- Native SSE/NDJSON framing with OpenAI Chat/Responses, Anthropic and Ollama text presets.
+- Custom JSON Pointer text extraction, bounded record size, terminal-marker completion and parser-aware request identity.
+- Shared sanitizer coverage and iOS/Android networking-to-Markdown regression tests.
+
 ## 0.1.0 — 2026-10-13
 
 First experimental release of native plain-text streaming for React Native.

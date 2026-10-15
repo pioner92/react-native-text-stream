@@ -36,8 +36,9 @@ export function Answer({ url }: { url: string }) {
 }
 ```
 
-Your endpoint returns **plain UTF-8 text**. StreamText handles the native request and rendering;
-SSE/NDJSON parsing is not included. Opt into native Markdown with
+By default your endpoint returns **plain UTF-8 text**. StreamText handles the native request
+and rendering. Select a native SSE/NDJSON parser with `parser: { provider: 'openai-chat' }`;
+see the [protocol guide](docs/protocols.md) for providers and custom fields. Opt into native Markdown with
 `format="markdown" markdownFlavor="gfm"`; see the [Markdown guide](docs/markdown.md)
 for supported elements and performance limits.
 
@@ -182,6 +183,8 @@ See [setup and compatibility details](docs/getting-started.md).
 | [Getting started](docs/getting-started.md) | Requirements, npm installation, and backend response format |
 | [Usage and recipes](docs/usage.md) | POST requests, completion, cancellation, refs, and list lifecycles |
 | [API reference](docs/api.md) | Component props, `streamFetch`, stream handles, and status semantics |
+| [Protocol parsing](docs/protocols.md) | Native SSE/NDJSON, provider presets and custom JSON fields |
+| [Markdown](docs/markdown.md) | CommonMark/GFM support and rendering limits |
 | [Architecture](docs/architecture.md) | Native transport, rendering, layout, and custom producers |
 | [Benchmarks](docs/benchmarks.md) | Workloads, all results, limitations, and reproducibility |
 | [Example app](example/README.md) | Run the demo, freeze JS, and explore the benchmark screens |
@@ -189,7 +192,6 @@ See [setup and compatibility details](docs/getting-started.md).
 
 ## Roadmap
 
-- Native SSE and NDJSON parsing, including provider-specific text extraction.
 - A JavaScript chunk-input API for existing SDKs and other transports.
 - Richer Markdown blocks: table grids, images and code syntax highlighting.
 - A broader validated compatibility matrix.

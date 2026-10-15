@@ -12,6 +12,7 @@
 #include <string>
 #include <utility>
 #include <vector>
+#include "streaming/StreamTextResponseParser.hpp"
 
 namespace facebook::react {
 
@@ -75,6 +76,7 @@ struct StreamTextFetchRequest {
   std::optional<std::string> body;
   /** Longest wait for the next bytes, in seconds; 0: the platform's default. */
   double timeoutSeconds{0};
+  StreamTextParserOptions parser;
 };
 
 /**

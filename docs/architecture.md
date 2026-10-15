@@ -9,7 +9,9 @@ the response body does not need a JavaScript callback for each chunk.
 ```mermaid
 flowchart LR
   A[React Native app] -->|request once or attach once| B[Native request / producer]
-  B -->|append and publish| C[(TSB1 native buffer)]
+  B -->|raw bytes| C[(TSB1 native buffer)]
+  B -->|optional| P[Native SSE / NDJSON parser]
+  P -->|extracted UTF-8| C
   B -->|coalesced wake| D[StreamText native view]
   C -->|read committed prefix| D
   D -->|native size update| E[Fabric layout]
@@ -28,7 +30,7 @@ frame, or that a particular latency is universal—font shaping, layout, payload
 device, and host load all matter.
 
 `TextStream.response` is a transport milestone: HTTP headers arrived.
-`TextStream.done` is transport completion. `onStatusChange` is a display
+`TextStream.done` is request completion, including a parsed provider terminal marker. `onStatusChange` is a display
 milestone: the view has processed the terminal buffer state. They should not be
 used interchangeably.
 
@@ -62,15 +64,18 @@ their ownership and thread-safety do not meet the native producer contract.
 
 ## Text and protocol boundary
 
-The renderer receives UTF-8 body bytes. It displays plain text by default;
-`format="markdown"` adds native Markdown parsing and styled text rendering. It does
-not interpret JSON, SSE, NDJSON, tool calls, or an LLM provider protocol.
-Feed it a plain-text endpoint, transform structured events upstream, or implement
-a native producer that emits the desired text.
+The renderer receives UTF-8 text. It displays plain text by default;
+`format="markdown"` adds native Markdown parsing and styled text rendering.
+An optional `parser` on the request strips SSE/NDJSON framing and extracts provider
+text on the network thread before publication. Both platforms use the same C++
+parser and strict yyjson decoding. Tool/usage/reasoning events do not become text.
+Omitting `parser` retains the direct raw-body path.
 
-Network completion means the platform ended the body; it does not independently
-verify application-level integrity. Validate structured payloads or checksums in
-the layer that owns that protocol.
+Protocol framing retains bounded pending records. Output capacity applies only to
+extracted text. Parser access is serialized with transport cancellation, and a
+provider completion marker publishes the terminal state and closes the request.
+Generic protocols complete at EOF; provider presets require their completion marker.
+See [protocol parsing](protocols.md) for exact limits and errors.
 
 ## What to measure
 

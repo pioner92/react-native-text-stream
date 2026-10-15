@@ -15,6 +15,7 @@ struct JStreamTextFetch : jni::JavaClass<JStreamTextFetch> {
       jni::alias_ref<jni::JArrayClass<jstring>> headers,
       jni::alias_ref<jstring> url);
   static void nativePublish(jni::alias_ref<jclass>, jlong handle, jlong committed);
+  static jint nativeConsume(jni::alias_ref<jclass>, jlong handle, jni::alias_ref<jni::JArrayByte> bytes, jint count);
   static void nativeComplete(jni::alias_ref<jclass>, jlong handle, jint status, jni::alias_ref<jstring> error);
 
   static void registerNatives();

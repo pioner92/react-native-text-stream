@@ -36,8 +36,8 @@ not the installable library.
 - Custom native build required. Expo Go, the old architecture, and web are unsupported;
   Expo integration has not been validated.
 
-StreamText currently renders raw UTF-8 text. Native SSE/NDJSON parsing and Markdown rendering
-are planned, not available features.
+StreamText renders UTF-8 text and supports native SSE/NDJSON text extraction and Markdown.
+Use `parser: { provider: 'openai-chat' }` on requests and `format="markdown"` on the view.
 
 ## Documentation
 

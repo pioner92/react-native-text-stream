@@ -1,0 +1,132 @@
+{
+  "date": "2026-10-15",
+  "platform": "macOS arm64 host",
+  "compiler": "Apple clang 21.0.0",
+  "optimization": "-O3",
+  "fixture": "10000 OpenAI Chat SSE records (token) then [DONE], 50000 extracted UTF-8 bytes",
+  "scope": "Parser only; no network, JNI, native layout or device; compilation excluded; shared host load not isolated; no baseline speedup claim",
+  "runs": [
+    {
+      "run": 1,
+      "chunkBytes": 1,
+      "firstTextMs": 0.001583,
+      "wireMBps": 105.155,
+      "outputBytes": 50000
+    },
+    {
+      "run": 1,
+      "chunkBytes": 64,
+      "firstTextMs": 0.00175,
+      "wireMBps": 486.487,
+      "outputBytes": 50000
+    },
+    {
+      "run": 1,
+      "chunkBytes": 8192,
+      "firstTextMs": 0.000458,
+      "wireMBps": 518.921,
+      "outputBytes": 50000
+    },
+    {
+      "run": 2,
+      "chunkBytes": 1,
+      "firstTextMs": 0.001375,
+      "wireMBps": 98.5423,
+      "outputBytes": 50000
+    },
+    {
+      "run": 2,
+      "chunkBytes": 64,
+      "firstTextMs": 0.001458,
+      "wireMBps": 492.245,
+      "outputBytes": 50000
+    },
+    {
+      "run": 2,
+      "chunkBytes": 8192,
+      "firstTextMs": 0.000417,
+      "wireMBps": 568.159,
+      "outputBytes": 50000
+    },
+    {
+      "run": 3,
+      "chunkBytes": 1,
+      "firstTextMs": 0.001334,
+      "wireMBps": 97.5346,
+      "outputBytes": 50000
+    },
+    {
+      "run": 3,
+      "chunkBytes": 64,
+      "firstTextMs": 0.001959,
+      "wireMBps": 472.056,
+      "outputBytes": 50000
+    },
+    {
+      "run": 3,
+      "chunkBytes": 8192,
+      "firstTextMs": 0.001292,
+      "wireMBps": 540.034,
+      "outputBytes": 50000
+    },
+    {
+      "run": 4,
+      "chunkBytes": 1,
+      "firstTextMs": 0.00125,
+      "wireMBps": 100.736,
+      "outputBytes": 50000
+    },
+    {
+      "run": 4,
+      "chunkBytes": 64,
+      "firstTextMs": 0.001916,
+      "wireMBps": 476.093,
+      "outputBytes": 50000
+    },
+    {
+      "run": 4,
+      "chunkBytes": 8192,
+      "firstTextMs": 0.0005,
+      "wireMBps": 547.343,
+      "outputBytes": 50000
+    },
+    {
+      "run": 5,
+      "chunkBytes": 1,
+      "firstTextMs": 0.001333,
+      "wireMBps": 104.021,
+      "outputBytes": 50000
+    },
+    {
+      "run": 5,
+      "chunkBytes": 64,
+      "firstTextMs": 0.001291,
+      "wireMBps": 484.186,
+      "outputBytes": 50000
+    },
+    {
+      "run": 5,
+      "chunkBytes": 8192,
+      "firstTextMs": 0.001792,
+      "wireMBps": 511.489,
+      "outputBytes": 50000
+    }
+  ],
+  "summary": [
+    {
+      "chunkBytes": 1,
+      "medianFirstTextMs": 0.001334,
+      "medianWireMBps": 100.736
+    },
+    {
+      "chunkBytes": 64,
+      "medianFirstTextMs": 0.00175,
+      "medianWireMBps": 484.186
+    },
+    {
+      "chunkBytes": 8192,
+      "medianFirstTextMs": 0.0005,
+      "medianWireMBps": 540.034
+    }
+  ]
+}

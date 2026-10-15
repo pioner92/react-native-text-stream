@@ -12,7 +12,8 @@ using namespace facebook::react;
 /** One request's delegate (URLSession keeps it until the task completes): the buffer's only writer. */
 @interface StreamTextFetchDelegate : NSObject <NSURLSessionDataDelegate>
 - (instancetype)initWithBuffer:(std::shared_ptr<StreamTextMappedBuffer>)buffer
-                      listener:(std::shared_ptr<StreamTextFetchListener>)listener;
+                      listener:(std::shared_ptr<StreamTextFetchListener>)listener
+                       options:(StreamTextParserOptions)options;
 - (void)cancelTask:(NSURLSessionTask *)task;
 - (void)armDeadlineForTask:(NSURLSessionTask *)task seconds:(double)seconds;
 @end
@@ -20,6 +21,7 @@ using namespace facebook::react;
 @implementation StreamTextFetchDelegate {
   std::shared_ptr<StreamTextMappedBuffer> _buffer;
   std::shared_ptr<StreamTextFetchListener> _listener;
+  std::unique_ptr<StreamTextResponseParser> _parser;
   BOOL _overflowed;
   BOOL _finished;
   BOOL _responded;
@@ -27,10 +29,25 @@ using namespace facebook::react;
 }
 
 - (instancetype)initWithBuffer:(std::shared_ptr<StreamTextMappedBuffer>)buffer
-                      listener:(std::shared_ptr<StreamTextFetchListener>)listener {
+                      listener:(std::shared_ptr<StreamTextFetchListener>)listener
+                       options:(StreamTextParserOptions)options {
   if (self = [super init]) {
     _buffer = std::move(buffer);
     _listener = std::move(listener);
+    if (options.protocol != StreamTextProtocol::Text) {
+      // The lifecycle lock protects the parser and this borrowed pointer. finish() destroys
+      // the parser before releasing its buffer; the sink never retains the delegate.
+      auto *mapped = _buffer.get();
+      _parser = std::make_unique<StreamTextResponseParser>(std::move(options), [mapped](std::string_view text) {
+        if (text.empty()) return true;
+        auto *base = mapped->data();
+        auto *header = reinterpret_cast<TSBHeader *>(base);
+        const uint64_t room = header->capacity - tsb_committed(base);
+        const auto prefix = std::min<uint64_t>(text.size(), room);
+        if (prefix) tsb_append(base, text.data(), prefix);
+        return text.size() <= room;
+      });
+    }
   }
   return self;
 }
@@ -45,12 +62,14 @@ using namespace facebook::react;
 
 - (void)dealloc {
   [self clearDeadline];
+  _parser.reset();
 }
 
 - (void)finish:(uint32_t)status error:(std::string)error {
   if (_finished) return;
   _finished = YES;
   [self clearDeadline];
+  _parser.reset();
   auto buffer = std::move(_buffer);
   auto listener = std::move(_listener);
   buffer->finish(status);
@@ -101,6 +120,11 @@ using namespace facebook::react;
       }];
     }
     _listener->onResponse(status, std::move(headers), response.URL.absoluteString.UTF8String ?: "");
+    if (_parser && (status < 200 || status >= 300)) {
+      [self finish:TSB_STATUS_ERROR error:std::string("streamFetch: HTTP ") + std::to_string(status)];
+      completionHandler(NSURLSessionResponseCancel);
+      return;
+    }
     completionHandler(NSURLSessionResponseAllow);
   }
 }
@@ -108,6 +132,22 @@ using namespace facebook::react;
 - (void)URLSession:(NSURLSession *)session dataTask:(NSURLSessionDataTask *)dataTask didReceiveData:(NSData *)data {
   @synchronized(self) {
     if (_finished) return;
+    if (_parser) {
+      const uint64_t before = tsb_committed(_buffer->data());
+      __block StreamTextParseStatus status = StreamTextParseStatus::Continue;
+      [data enumerateByteRangesUsingBlock:^(const void *bytes, NSRange range, BOOL *stop) {
+        status = self->_parser->feed(static_cast<const uint8_t *>(bytes), range.length);
+        *stop = status != StreamTextParseStatus::Continue;
+      }];
+      if (status != StreamTextParseStatus::Continue) {
+        const auto error = status == StreamTextParseStatus::Error ? _parser->error() : std::string();
+        [self finish:static_cast<uint32_t>(status) error:error];
+        [dataTask cancel];
+      } else if (tsb_committed(_buffer->data()) != before) {
+        _buffer->notify();
+      }
+      return;
+    }
     void *base = _buffer->data();
     auto *header = static_cast<TSBHeader *>(base);
     [data enumerateByteRangesUsingBlock:^(const void *bytes, NSRange range, BOOL *stop) {
@@ -130,6 +170,12 @@ using namespace facebook::react;
 - (void)URLSession:(NSURLSession *)session task:(NSURLSessionTask *)task didCompleteWithError:(NSError *)error {
   @synchronized(self) {
     if (_finished) return;
+    if (!error && _parser) {
+      const auto status = _parser->finish();
+      const auto message = status == StreamTextParseStatus::Error ? _parser->error() : std::string();
+      [self finish:static_cast<uint32_t>(status) error:message];
+      return;
+    }
     BOOL cancelled = [error.domain isEqualToString:NSURLErrorDomain] && error.code == NSURLErrorCancelled;
     uint32_t status = !error ? TSB_STATUS_DONE : cancelled ? TSB_STATUS_CANCELLED : TSB_STATUS_ERROR;
     std::string message = status == TSB_STATUS_ERROR ? (error.localizedDescription.UTF8String ?: "network error") : "";
@@ -197,7 +243,9 @@ std::shared_ptr<StreamTextFetchTask> streamTextStartFetch(
     urlRequest.timeoutInterval = request.timeoutSeconds;
   }
   NSURLSessionDataTask *task = [streamFetchSession() dataTaskWithRequest:urlRequest];
-  auto delegate = [[StreamTextFetchDelegate alloc] initWithBuffer:std::move(buffer) listener:std::move(listener)];
+  auto delegate = [[StreamTextFetchDelegate alloc] initWithBuffer:std::move(buffer)
+                                                       listener:std::move(listener)
+                                                        options:std::move(request.parser)];
   task.delegate = delegate;
   [delegate armDeadlineForTask:task seconds:request.timeoutSeconds];
   [task resume];

@@ -47,6 +47,9 @@ jobs:
       - name: Native Markdown parser and patch seams (ASan and UBSan)
         run: sh scripts/test-markdown-native.sh --sanitize
 
+      - name: Native SSE and NDJSON parser seams (ASan and UBSan)
+        run: sh scripts/test-response-parser-native.sh --sanitize
+
       - name: Example unit tests
         run: bun run --cwd example test
 

@@ -14,6 +14,14 @@ export interface NativeFetchInit {
   timeout: number
   streamId?: string
   requestKey?: string
+  parser?: NativeStreamParser
+}
+
+export interface NativeStreamParser {
+  format: 'sse' | 'ndjson'
+  extractor: 'data' | 'json-pointer' | 'openai-chat' | 'openai-responses' | 'anthropic' | 'ollama'
+  textPath?: string
+  maxEventBytes: number
 }
 
 interface StreamTextBuffersModule extends TurboModule {

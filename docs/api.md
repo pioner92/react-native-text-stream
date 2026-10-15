@@ -81,6 +81,7 @@ native buffer as it arrives.
 | `capacity` | `number` | 16 MiB |
 | `timeout` | `number` | 300,000 ms |
 | `streamId` | `string` | — |
+| `parser` | `StreamFetchParser` | raw body |
 
 `GET` and `HEAD` cannot have a body. `capacity` and `timeout` must be positive
 integers. Capacity is capped at 2,147,483,583 bytes; timeout is capped at
@@ -116,8 +117,10 @@ interface TextStream {
 | `abort()` | Cancels this request. Already committed body bytes remain readable. |
 | `text()` | Decodes the committed prefix as UTF-8. A terminal incomplete sequence becomes U+FFFD. |
 
-HTTP status codes do not turn into transport errors. A 4xx/5xx body remains
-available; inspect `response.ok` or `response.status`.
+Without `parser`, HTTP status codes do not turn into transport errors: the body remains
+available. With `parser`, non-2xx responses finish as `error` after response metadata
+is delivered. See [native protocol parsing](protocols.md) for provider presets, custom
+JSON fields, limits and completion semantics.
 
 ## Named-stream controls
 
@@ -167,4 +170,4 @@ interface StreamTextState {
 `StreamTextProps`, `StreamTextRequest`, `StreamTextHandle`, `StreamTextRef`,
 `StreamTextStatus`, `StreamTextState`, `StreamTextAlign`,
 `StreamTextFontWeight`, `StreamFetchInit`, `StreamFetchResponse`,
-`StreamFetchResult`, and `TextStream` are exported for TypeScript users.
+`StreamFetchResult`, `StreamFetchParser`, `StreamFetchProvider`, and `TextStream` are exported for TypeScript users.

@@ -9,8 +9,10 @@ compiler=${CXX:-clang++}
   tests/native/stream_fetch_test.cpp "$pkg/cpp/StreamTextMappedBuffer.cpp" "$pkg/cpp/StreamTextStreams.cpp" "$pkg/cpp/StreamTextBuffers.cpp" -o "$build/core"
 "$build/core"
 if [ "$(uname -s)" = Darwin ]; then
+  ${CC:-clang} -std=c99 -fsanitize=address,undefined -c "$pkg/cpp/streaming/vendor/yyjson/yyjson.c" -o "$build/yyjson.o"
   "$compiler" -std=c++20 -fobjc-arc -Wno-nonnull -fsanitize=address,undefined -Itests/native -I"$pkg/cpp" \
     tests/native/stream_fetch_ios_test.mm "$pkg/cpp/StreamTextMappedBuffer.cpp" "$pkg/cpp/StreamTextStreams.cpp" \
+    "$pkg/cpp/streaming/StreamTextResponseParser.cpp" "$build/yyjson.o" \
     -framework Foundation -o "$build/ios"
   "$build/ios"
 fi

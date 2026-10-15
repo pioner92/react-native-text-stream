@@ -100,3 +100,11 @@ See [rendering scope and performance](../docs/markdown.md).
 
 The Markdown screen uses its own fixture port: from the repository root run
 `PORT=9879 node server/stream-server.mjs`.
+
+## Protocol fixtures
+
+`node server/protocol-server.mjs` (from the repository root) serves fragmented SSE
+and NDJSON on port 9881. `protocol.harness.tsx` exercises all four provider presets,
+custom JSON fields, EOF/terminal/error behavior and native progress while JS is
+blocked. The fetch group in `test-stream-fetch-harness.sh` starts this server
+automatically. See [protocol parsing](../docs/protocols.md).

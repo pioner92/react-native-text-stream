@@ -109,16 +109,16 @@ completion, and persistent list items, see [usage and recipes](usage.md).
 
 ## Backend response format
 
-Return the text you want displayed, encoded as UTF-8. StreamText renders the response body as-is:
+By default, return the text you want displayed, encoded as UTF-8:
 
 ```text
 The first part of the answer…
 ```
 
-It does not extract text from SSE events or JSON objects. A body such as
-`data: {"delta":"Hello"}` will appear literally. If your model provider returns SSE or NDJSON,
-have your backend extract the text before returning it to this component. Markdown syntax is
-also displayed as plain text.
+For SSE or NDJSON, select a native request `parser`, for example
+`{ provider: 'openai-chat' }` or `{ format: 'sse', textPath: '/delta' }`.
+See [protocol parsing](protocols.md). To render Markdown, add `format="markdown"`
+to the view; see the [Markdown guide](markdown.md).
 
 For a plain-text endpoint, send:
 
@@ -131,7 +131,7 @@ The `nosniff` header avoids URLSession's initial content-sniffing buffer for `te
 Your server and any proxy also need to flush chunks instead of buffering the whole response.
 Streaming through a proxy should be checked against your deployment configuration.
 
-HTTP error responses still have renderable bodies. Use `streamFetch().response` and check `ok`
+Without a parser, HTTP error responses still have renderable bodies. Parsed requests fail on non-2xx responses. Use `streamFetch().response` and check `ok`
 when your UI needs separate error handling; [the API reference](api.md) explains transport and
 view completion separately.
 
@@ -141,7 +141,7 @@ view completion separately.
 | --- | --- |
 | Native component or module cannot be found | Enable the New Architecture, install iOS pods, and rebuild the native app after adding the package. |
 | Text appears only at the end | Check server/proxy buffering and the iOS `nosniff` header. |
-| SSE or JSON syntax appears in the view | Convert the response to plain text on your backend. Native SSE/NDJSON parsing is planned. |
+| SSE or JSON syntax appears in the view | Set the request `parser` to match the endpoint; see [protocol parsing](protocols.md). |
 | Local server cannot be reached on Android | Reverse port 9877 as described in the [example guide](../example/README.md). |
 | A changed request restarts unexpectedly | Request values are compared; an `AbortSignal` is compared by identity. Keep the controller stable for that request's lifetime. |
 | A retained POST does not restart after cache eviction | This is intentional no-replay behavior. See [stream lifecycles](usage.md) before releasing or reusing an id. |

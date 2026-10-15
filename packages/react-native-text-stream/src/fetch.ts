@@ -1,4 +1,4 @@
-import { Native, type NativeFetchInit } from './native'
+import { Native, type NativeFetchInit, type NativeStreamParser } from './native'
 import { bufferText, headerStatus } from './buffer'
 
 /** The response body's cap by default: pages are only committed once written, so a large one is free. */
@@ -10,6 +10,18 @@ type HeadersLike =
   | Record<string, string>
   | ReadonlyArray<readonly [string, string]>
   | { forEach(callback: (value: string, name: string) => void): void }
+
+export type StreamFetchProvider = 'openai-chat' | 'openai-responses' | 'anthropic' | 'ollama'
+
+/** Native framing and text extraction. JSON Pointer follows RFC 6901 (e.g. `/delta/text`). */
+export type StreamFetchParser = {
+  /** Maximum incoming line/record or SSE data payload size; defaults to 1 MiB, at most 16 MiB. */
+  maxEventBytes?: number
+} & (
+  | { provider: StreamFetchProvider; format?: never; textPath?: never }
+  | { format: 'sse'; provider?: never; textPath?: string }
+  | { format: 'ndjson'; provider?: never; textPath: string }
+)
 
 export interface StreamFetchInit {
   /** Defaults to GET, or POST when there is a body. */
@@ -26,6 +38,8 @@ export interface StreamFetchInit {
    * in either order. A later request under the same id replaces it (and cancels this one).
    */
   streamId?: string
+  /** Decode provider events into text on the network thread. Omitted: original response bytes. */
+  parser?: StreamFetchParser
 }
 
 export interface StreamFetchResponse {
@@ -53,7 +67,7 @@ export interface TextStream {
   readonly done: Promise<StreamFetchResult>
   /** Stops the request; the body so far stays. */
   abort(): void
-  /** The body received so far, decoded as UTF-8. */
+  /** The text received so far, decoded as UTF-8; extracted text when `parser` is set. */
   text(): string
 }
 
@@ -195,7 +209,39 @@ function flattenHeaders(headers: HeadersLike | undefined): string[] {
 export const MAX_CAPACITY = 0x7fffffff - 64
 export const MAX_TIMEOUT_MS = 0x7fffffff
 
+const MAX_EVENT_BYTES = 16 * 1024 * 1024
+
+function normalizeParser(parser: StreamFetchParser | undefined): NativeStreamParser | undefined {
+  if (parser === undefined) return undefined
+  if (parser === null || typeof parser !== 'object' || Array.isArray(parser))
+    throw new TypeError('streamFetch: parser must be an object')
+  const maxEventBytes = parser.maxEventBytes ?? 1024 * 1024
+  if (!Number.isInteger(maxEventBytes) || maxEventBytes < 1 || maxEventBytes > MAX_EVENT_BYTES)
+    throw new RangeError(`streamFetch: maxEventBytes must be an integer between 1 and ${MAX_EVENT_BYTES}`)
+  if (parser.provider !== undefined) {
+    if (!['openai-chat', 'openai-responses', 'anthropic', 'ollama'].includes(parser.provider) ||
+        parser.format !== undefined || parser.textPath !== undefined)
+      throw new TypeError('streamFetch: choose a supported provider or a custom format/textPath')
+    return { format: parser.provider === 'ollama' ? 'ndjson' : 'sse', extractor: parser.provider, maxEventBytes }
+  }
+  if (parser.format !== 'sse' && parser.format !== 'ndjson')
+    throw new TypeError('streamFetch: parser.format must be sse or ndjson')
+  const path = parser.textPath
+  if (path !== undefined && (typeof path !== 'string' || path.length > 1024 || path.includes('\0') ||
+      (path !== '' && !path.startsWith('/')) || /~(?:[^01]|$)/.test(path)))
+    throw new TypeError('streamFetch: textPath must be a JSON Pointer (at most 1024 characters, without NUL)')
+  if (parser.format === 'ndjson' && path === undefined)
+    throw new TypeError('streamFetch: ndjson requires textPath or a provider')
+  return {
+    format: parser.format,
+    extractor: path === undefined ? 'data' : 'json-pointer',
+    ...(path === undefined ? {} : { textPath: path }),
+    maxEventBytes,
+  }
+}
+
 export function normalizeRequest(init: StreamFetchInit): NativeFetchInit {
+  const parser = normalizeParser(init.parser)
   const capacity = init.capacity ?? DEFAULT_CAPACITY
   const timeout = init.timeout ?? DEFAULT_TIMEOUT_MS
   if (!Number.isInteger(capacity) || capacity < 1 || capacity > MAX_CAPACITY)
@@ -228,9 +274,12 @@ export function normalizeRequest(init: StreamFetchInit): NativeFetchInit {
     capacity,
     timeout,
     ...(init.streamId ? { streamId: init.streamId } : {}),
+    ...(parser ? { parser } : {}),
   }
 }
 
 export function requestKey(url: string, request: NativeFetchInit): string {
-  return JSON.stringify([url, request.method, request.headers, request.body, request.capacity, request.timeout])
+  const key: unknown[] = [url, request.method, request.headers, request.body, request.capacity, request.timeout]
+  if (request.parser) key.push([request.parser.format, request.parser.extractor, request.parser.textPath, request.parser.maxEventBytes])
+  return JSON.stringify(key)
 }

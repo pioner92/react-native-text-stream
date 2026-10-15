@@ -11,6 +11,8 @@ add_library(streamtext_md4c OBJECT
 )
 set_target_properties(streamtext_md4c PROPERTIES POSITION_INDEPENDENT_CODE ON)
 target_include_directories(streamtext_md4c PRIVATE ${LIB_ROOT_DIR}/cpp/markdown/vendor/md4c)
+add_library(streamtext_yyjson OBJECT ${LIB_ROOT_DIR}/cpp/streaming/vendor/yyjson/yyjson.c)
+set_target_properties(streamtext_yyjson PROPERTIES POSITION_INDEPENDENT_CODE ON C_STANDARD 99)
 
 add_library(
   ${LIB_TARGET_NAME}
@@ -20,7 +22,9 @@ add_library(
   ${LIB_ROOT_DIR}/cpp/StreamTextFetch.cpp
   ${LIB_ROOT_DIR}/cpp/StreamTextStreams.cpp
   ${LIB_ROOT_DIR}/cpp/markdown/StreamMarkdown.cpp
+  ${LIB_ROOT_DIR}/cpp/streaming/StreamTextResponseParser.cpp
   $<TARGET_OBJECTS:streamtext_md4c>
+  $<TARGET_OBJECTS:streamtext_yyjson>
   ${CMAKE_CURRENT_SOURCE_DIR}/StreamTextFetchAndroid.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/textstream.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/StreamTextPreparedAndroid.cpp

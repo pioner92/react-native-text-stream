@@ -12,6 +12,8 @@ export {
   releaseStream,
   streamFetch,
   type StreamFetchInit,
+  type StreamFetchParser,
+  type StreamFetchProvider,
   type StreamFetchResponse,
   type StreamFetchResult,
   type TextStream,

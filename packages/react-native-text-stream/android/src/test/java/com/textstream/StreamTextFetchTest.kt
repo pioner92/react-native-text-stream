@@ -23,6 +23,9 @@ class StreamTextFetchTest {
     var bytes = 0L
     var error: String? = null
     var onPublish: (() -> Unit)? = null
+    var consumeStatus = StreamTextFetch.STATUS_CONTINUE
+    var consumedBytes = 0
+    var onConsume: (() -> Unit)? = null
     override fun response(handle: Long, status: Int, headers: Array<String>, url: String) {
       check(completions == 0) { "response after native handle release" }
     }
@@ -30,6 +33,12 @@ class StreamTextFetchTest {
       check(completions == 0) { "publication after native handle release" }
       bytes = committed
       onPublish?.invoke()
+    }
+    override fun consume(handle: Long, bytes: ByteArray, count: Int): Int {
+      check(completions == 0) { "parser consumed after native handle release" }
+      consumedBytes += count
+      onConsume?.invoke()
+      return consumeStatus
     }
     override fun complete(handle: Long, status: Int, error: String?) {
       check(completions++ == 0) { "duplicate native completion" }
@@ -167,5 +176,57 @@ class StreamTextFetchTest {
     assertEquals(3L, events.bytes)
     assertEquals("broken body", events.error)
     assertEquals(1, events.completions)
+  }
+
+  @Test fun parsedTransportUsesPrivateScratchAndDoesNotSpendOutputCapacityOnMetadata() {
+    val events = Events()
+    val data = ByteBuffer.allocateDirect(2)
+    val fetch = StreamTextFetch(1, data, events, parsed = true)
+    fetch.onResponse(OkHttpClient().newCall(request), response("event: metadata\ndata: visible\n\n".toResponseBody()))
+    assertEquals(1, events.status)
+    assertEquals("event: metadata\ndata: visible\n\n".toByteArray().size, events.consumedBytes)
+    // Only C++ parser output can advance this buffer; wire metadata never does.
+    assertEquals(0, data.position())
+    assertEquals(0L, events.bytes)
+  }
+
+  @Test fun parsedProtocolDoneCancelsTheNetworkAfterTheCurrentRead() {
+    val events = Events().also { it.consumeStatus = StreamTextFetch.STATUS_DONE }
+    val data = ByteBuffer.allocateDirect(1)
+    val call = OkHttpClient().newCall(request)
+    StreamTextFetch(1, data, events, parsed = true).onResponse(call, response(ByteArray(9000) { 65 }.toResponseBody()))
+    assertEquals(1, events.status)
+    assertTrue(call.isCanceled())
+    assertEquals(8192, events.consumedBytes)
+    assertEquals(0, data.position())
+  }
+
+  @Test fun parsedTerminalErrorsStopBeforeTheNextNetworkRead() {
+    for ((parserStatus, expectedStatus) in listOf(
+        StreamTextFetch.STATUS_ERROR to 2,
+        StreamTextFetch.STATUS_OVERFLOW to 4,
+    )) {
+      val events = Events().also { it.consumeStatus = parserStatus }
+      val data = ByteBuffer.allocateDirect(1)
+      val call = OkHttpClient().newCall(request)
+      StreamTextFetch(1, data, events, parsed = true).onResponse(call, response(ByteArray(9000) { 65 }.toResponseBody()))
+      assertEquals(expectedStatus, events.status)
+      assertEquals(1, events.completions)
+      assertTrue(call.isCanceled())
+      assertEquals(8192, events.consumedBytes)
+      assertEquals(0, data.position())
+    }
+  }
+
+  @Test fun parsedCancellationStopsAfterTheCurrentParserCallback() {
+    val events = Events()
+    val data = ByteBuffer.allocateDirect(1)
+    val fetch = StreamTextFetch(1, data, events, parsed = true)
+    events.onConsume = { fetch.cancel() }
+    fetch.onResponse(OkHttpClient().newCall(request), response(ByteArray(9000) { 65 }.toResponseBody()))
+    assertEquals(3, events.status)
+    assertEquals(1, events.completions)
+    assertEquals(8192, events.consumedBytes)
+    assertEquals(0, data.position())
   }
 }
