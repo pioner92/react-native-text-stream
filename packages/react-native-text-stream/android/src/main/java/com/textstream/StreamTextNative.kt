@@ -72,7 +72,7 @@ internal object StreamTextNative {
   @JvmStatic external fun status(base: Long): Int
 
   /** MD4C-backed parse. Called only by [StreamTextMarkdownWorker], never by the UI thread. */
-  @JvmStatic external fun parseMarkdown(markdown: String, github: Boolean): StreamTextMarkdown?
+  @JvmStatic external fun parseMarkdownStreaming(markdown: String, github: Boolean, final: Boolean): StreamTextMarkdown?
 
   const val STATUS_OPEN = 0
   const val STATUS_DONE = 1

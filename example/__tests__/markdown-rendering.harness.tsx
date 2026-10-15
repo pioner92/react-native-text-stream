@@ -87,6 +87,43 @@ describe('StreamText Markdown native rendering', () => {
     });
   });
 
+  it('keeps task controls accessible in cold and warm prepared layouts', async () => {
+    const source = buffer('- [x] shipped\n- [ ] pending\n', TSB.done);
+    const coldKey = newKey();
+    const cold = await render(markdownView(source, coldKey));
+    await waitForSnapshot(coldKey, state => {
+      expect(state.status).toBe('done');
+      expect(state.accessibilityValue).toContain('Checked task');
+      expect(state.accessibilityValue).toContain('Unchecked task');
+    });
+    cold.unmount();
+
+    await warmPrepared(warmKey => markdownView(source, warmKey));
+    const key = newKey();
+    await render(markdownView(source, key));
+    await waitForSnapshot(key, state => {
+      expect(state.mode).toBe('canvas');
+      expect(state.accessibilityValue).toContain('Checked task');
+      expect(state.accessibilityValue).toContain('Unchecked task');
+      expect(state.accessibilityValue).not.toContain('\uFFFC');
+    });
+  });
+
+  it('keeps fenced code styled in a warm prepared canvas', async () => {
+    const source = buffer('```ts\nconst answer: number = 42;\n```\n', TSB.done);
+    await warmPrepared(warmKey => markdownView(source, warmKey));
+    const key = newKey();
+    await render(markdownView(source, key));
+    await waitForSnapshot(key, state => {
+      expect(state.mode).toBe('canvas');
+      expect(state.status).toBe('done');
+    });
+    await waitForAttributes(key, value => {
+      covers(value, 'const', run => run.mono);
+      covers(value, 'answer', run => run.mono);
+    });
+  });
+
   it('applies the same styles to an open native stream', async () => {
     const key = newKey();
     const source = buffer();

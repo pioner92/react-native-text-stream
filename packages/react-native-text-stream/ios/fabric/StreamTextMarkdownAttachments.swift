@@ -1,6 +1,132 @@
 import UIKit
 import CoreText
 
+func streamTextMarkdownAccessibleText(_ text: NSAttributedString, range: NSRange) -> String {
+  let raw = text.string as NSString
+  var cursor = range.location
+  var value = ""
+  text.enumerateAttribute(.attachment, in: range) { attachment, attachmentRange, _ in
+    guard attachmentRange.location >= cursor else { return }
+    if attachmentRange.location > cursor {
+      value += raw.substring(with: NSRange(location: cursor, length: attachmentRange.location - cursor))
+    }
+    switch attachment {
+    case let task as StreamTextMarkdownTaskAttachment:
+      value += task.checked ? "Checked task" : "Unchecked task"
+    case let image as StreamTextMarkdownImageAttachment:
+      value += image.block.alt.isEmpty ? "Image" : image.block.alt
+    case let table as StreamTextMarkdownTableAttachment:
+      for (index, cell) in table.block.cells.enumerated() {
+        if index > 0 { value += index % max(1, table.block.columns) == 0 ? "\n" : " | " }
+        value += cell.text
+      }
+    default:
+      value += raw.substring(with: attachmentRange)
+    }
+    cursor = NSMaxRange(attachmentRange)
+  }
+  if cursor < NSMaxRange(range) {
+    value += raw.substring(with: NSRange(location: cursor, length: NSMaxRange(range) - cursor))
+  }
+  return value
+}
+
+/// One small attachment rather than four styled marker glyphs. The source remains in the stream
+/// buffer; this is only the native presentation of MD4C's generated `[x] `/`[ ] ` task prefix.
+final class StreamTextMarkdownTaskAttachment: NSTextAttachment {
+  private static let imageLock = NSLock()
+  private static var images: [String: UIImage] = [:]
+  let checked: Bool
+  init(checked: Bool, font: UIFont, foreground: UIColor) {
+    self.checked = checked
+    super.init(data: nil, ofType: nil)
+    let edge = max(13, min(18, round(font.pointSize)))
+    bounds = CGRect(x: 0, y: -1, width: edge + 4, height: edge)
+    image = Self.cachedImage(checked: checked, edge: edge, foreground: foreground)
+  }
+  required init?(coder: NSCoder) { nil }
+  override func attachmentBounds(for textContainer: NSTextContainer?, proposedLineFragment lineFrag: CGRect,
+                                 glyphPosition position: CGPoint, characterIndex charIndex: Int) -> CGRect {
+    bounds
+  }
+  private static func cachedImage(checked: Bool, edge: CGFloat, foreground: UIColor) -> UIImage {
+    let resolved = foreground.resolvedColor(with: UITraitCollection.current)
+    var red: CGFloat = 0, green: CGFloat = 0, blue: CGFloat = 0, alpha: CGFloat = 0
+    let hasRGB = resolved.getRed(&red, green: &green, blue: &blue, alpha: &alpha)
+    let key = hasRGB
+      ? "\(checked ? 1 : 0):\(Int(edge.rounded())):\(Int((red * 255).rounded())):\(Int((green * 255).rounded())):\(Int((blue * 255).rounded())):\(Int((alpha * 255).rounded())):\(UIScreen.main.scale)"
+      : "\(checked ? 1 : 0):\(Int(edge.rounded())):fallback:\(UIScreen.main.scale)"
+    if let existing = imageLock.withLock({ images[key] }) { return existing }
+    let rendered = image(checked: checked, edge: edge, foreground: hasRGB ? UIColor(red: red, green: green, blue: blue, alpha: alpha) : .label)
+    return imageLock.withLock {
+      // Two states times a small number of Dynamic Type sizes: keep this cache bounded.
+      if images.count >= 16 { images.removeAll(keepingCapacity: true) }
+      images[key] = rendered
+      return rendered
+    }
+  }
+  private static func image(checked: Bool, edge: CGFloat, foreground: UIColor) -> UIImage {
+    let side = edge + 4
+    let format = UIGraphicsImageRendererFormat(); format.scale = UIScreen.main.scale
+    return UIGraphicsImageRenderer(size: CGSize(width: side, height: edge), format: format).image { context in
+      let rect = CGRect(x: 1, y: 1, width: edge - 2, height: edge - 2)
+      let path = UIBezierPath(roundedRect: rect, cornerRadius: max(2, edge * 0.2))
+      if checked {
+        UIColor.systemGreen.setFill(); path.fill()
+        UIColor.white.setStroke()
+        let check = UIBezierPath()
+        check.move(to: CGPoint(x: edge * 0.23, y: edge * 0.51))
+        check.addLine(to: CGPoint(x: edge * 0.43, y: edge * 0.70))
+        check.addLine(to: CGPoint(x: edge * 0.78, y: edge * 0.30))
+        check.lineWidth = max(1.5, edge * 0.13); check.lineCapStyle = .round; check.lineJoinStyle = .round; check.stroke()
+      } else {
+        // RN may draw a dark custom surface while UIKit's trait collection remains Light.
+        // Derive this edge from the requested text color, not `secondaryLabel`.
+        foreground.withAlphaComponent(max(0.58, foreground.cgColor.alpha)).setStroke()
+        path.lineWidth = 1.5; path.stroke()
+      }
+    }
+  }
+}
+
+/// MD4C only inserts these markers for GFM task list items. We additionally require the parser's
+/// list indent on the run that owns the prefix, so ordinary `[x]` text and code are never changed.
+func streamTextMarkdownAttachTaskMarkers(_ runs: [StreamTextMarkdownRun], to output: NSMutableAttributedString,
+                                         base: [NSAttributedString.Key: Any]) {
+  guard output.length >= 4 else { return }
+  let string = output.string as NSString
+  let listRuns = runs.filter { $0.indent > 0 && $0.flags & UInt32(STMD_RUN_CODE) == 0 }
+  guard !listRuns.isEmpty else { return }
+  var cursor = 0
+  var runIndex = 0
+  while cursor < string.length {
+    let line = string.lineRange(for: NSRange(location: cursor, length: 0))
+    let contentEnd = line.length > 0 && string.character(at: NSMaxRange(line) - 1) == 10 ? NSMaxRange(line) - 1 : NSMaxRange(line)
+    var marker = line.location
+    // Markdown's display prefix can include quoted/list nesting before the generated task marker.
+    while marker + 1 < contentEnd && string.character(at: marker) == 62 && string.character(at: marker + 1) == 32 { marker += 2 }
+    while marker < contentEnd && (string.character(at: marker) == 32 || string.character(at: marker) == 9) { marker += 1 }
+    guard marker + 4 <= contentEnd else { cursor = NSMaxRange(line); continue }
+    let first = string.character(at: marker), state = string.character(at: marker + 1)
+    let isMarker = first == 91 && (state == 120 || state == 88 || state == 32) &&
+      string.character(at: marker + 2) == 93 && string.character(at: marker + 3) == 32
+    while runIndex < listRuns.count && NSMaxRange(listRuns[runIndex].range) <= marker { runIndex += 1 }
+    let parserOwned = runIndex < listRuns.count && listRuns[runIndex].range.location <= marker &&
+      NSMaxRange(listRuns[runIndex].range) >= marker + 4
+    guard isMarker, parserOwned else { cursor = NSMaxRange(line); continue }
+    let checked = state == 120 || state == 88
+    let attachment = StreamTextMarkdownTaskAttachment(checked: checked,
+      font: base[.font] as? UIFont ?? .systemFont(ofSize: 15),
+      foreground: base[.foregroundColor] as? UIColor ?? .label)
+    // Preserve UTF-16 offsets for the worker diff, selection and later rich-block placeholders.
+    output.replaceCharacters(in: NSRange(location: marker, length: 4), with: "\u{FFFC}\u{200B}\u{200B}\u{200B}")
+    output.addAttribute(.attachment, value: attachment, range: NSRange(location: marker, length: 1))
+    output.addAttributes([.foregroundColor: UIColor.clear, .font: UIFont.systemFont(ofSize: 0.1)],
+                         range: NSRange(location: marker + 1, length: 3))
+    cursor = NSMaxRange(line)
+  }
+}
+
 func streamTextMarkdownAttachBlocks(_ blocks: [StreamTextMarkdownBlock], to output: NSMutableAttributedString,
                                    offset: Int, base: [NSAttributedString.Key: Any], width: CGFloat) {
   // Several inline blocks can live in one paragraph. Resolve its effective style once, both to
@@ -217,6 +343,48 @@ final class StreamTextMarkdownImageAttachment: StreamTextMarkdownAttachment {
 
 final class StreamTextMarkdownLayoutManager: NSLayoutManager {
   var drawsTables = false
+  override func drawBackground(forGlyphRange glyphsToShow: NSRange, at origin: CGPoint) {
+    super.drawBackground(forGlyphRange: glyphsToShow, at: origin)
+    guard let storage = textStorage, let context = UIGraphicsGetCurrentContext() else { return }
+    let characters = characterRange(forGlyphRange: glyphsToShow, actualGlyphRange: nil)
+    var drawnStarts = Set<Int>()
+    storage.enumerateAttribute(streamTextMarkdownCodeBlockAttribute, in: characters) { value, range, _ in
+      guard value != nil else { return }
+      var fullCharacters = NSRange()
+      guard let style = storage.attribute(streamTextMarkdownCodeBlockAttribute, at: range.location,
+                                          longestEffectiveRange: &fullCharacters,
+                                          in: NSRange(location: 0, length: storage.length)) as? StreamTextMarkdownCodeStyle,
+            drawnStarts.insert(fullCharacters.location).inserted else { return }
+      let glyphs = self.glyphRange(forCharacterRange: fullCharacters, actualCharacterRange: nil)
+      guard glyphs.length > 0,
+            let container = self.textContainer(forGlyphAt: glyphs.location, effectiveRange: nil) else { return }
+      // One rounded surface per fenced block, drawn behind all of its lines. This is O(blocks),
+      // not O(glyphs), and works for both a live TextKit view and reused attributed suffixes.
+      let glyphRect = self.boundingRect(forGlyphRange: glyphs, in: container)
+      let fragment = self.lineFragmentRect(forGlyphAt: glyphs.location, effectiveRange: nil,
+                                           withoutAdditionalLayout: true)
+      guard !glyphRect.isNull, !glyphRect.isEmpty, !fragment.isNull, !fragment.isEmpty else { return }
+      // Keep the surface inside the line fragment: expanding a glyph rect past a container edge
+      // clips the rounded corner and leaves a language label flush against the visible edge.
+      let left = max(fragment.minX, glyphRect.minX - 8)
+      let right = min(fragment.maxX, glyphRect.maxX + 8)
+      guard right > left else { return }
+      // Reserve a true header band: the 9pt label has 4pt top padding and at least 7pt before
+      // the first code glyph. Only the block's first paragraph supplies this vertical room.
+      let rect = CGRect(x: left, y: glyphRect.minY - 22, width: right - left,
+                        height: glyphRect.height + 24).offsetBy(dx: origin.x, dy: origin.y)
+      context.saveGState()
+      style.background.setFill()
+      UIBezierPath(roundedRect: rect, cornerRadius: 4).fill()
+      if NSIntersectionRange(glyphsToShow, NSRange(location: glyphs.location, length: 1)).length > 0 {
+        (style.language as NSString).draw(at: CGPoint(x: rect.minX + 8, y: rect.minY + 4), withAttributes: [
+          .font: UIFont.monospacedSystemFont(ofSize: 9, weight: .semibold),
+          .foregroundColor: style.labelColor,
+        ])
+      }
+      context.restoreGState()
+    }
+  }
   override func drawGlyphs(forGlyphRange glyphsToShow: NSRange, at origin: CGPoint) {
     super.drawGlyphs(forGlyphRange: glyphsToShow, at: origin)
     guard drawsTables, let storage = textStorage, let context = UIGraphicsGetCurrentContext() else { return }

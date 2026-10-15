@@ -1,0 +1,43 @@
+{
+  "heldBefore": {
+    "status": "● STREAMING",
+    "body": {
+      "height": 841,
+      "width": 374,
+      "x": 33,
+      "y": 286.99999618530273
+    },
+    "latest": {
+      "height": 32.33331298828125,
+      "width": 78,
+      "x": 181,
+      "y": 838.6666412353516
+    }
+  },
+  "heldAfter": {
+    "status": "● STREAMING",
+    "body": {
+      "height": 1039,
+      "width": 374,
+      "x": 33,
+      "y": 286.99999618530273
+    },
+    "latest": {
+      "height": 32.33331298828125,
+      "width": 78,
+      "x": 181,
+      "y": 838.6666412353516
+    }
+  },
+  "checkedAt": "2026-10-15T18:06:20.008Z",
+  "resumed": {
+    "status": "● STREAMING",
+    "body": {
+      "height": 1183,
+      "width": 374,
+      "x": 33,
+      "y": -324.00000381469727
+    },
+    "latestVisible": false
+  }
+}

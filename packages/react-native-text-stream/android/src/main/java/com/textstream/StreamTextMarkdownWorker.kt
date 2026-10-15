@@ -11,9 +11,9 @@ import java.util.concurrent.Executors
  */
 internal class StreamTextMarkdownWorker(
     private val executor: Executor = sharedExecutor,
-    private val parse: (String, Boolean) -> StreamTextMarkdown? = { text, github -> StreamTextNative.parseMarkdown(text, github) },
+    private val parse: (String, Boolean, Boolean) -> StreamTextMarkdown? = { text, github, final -> StreamTextNative.parseMarkdownStreaming(text, github, final) },
     private val style: (StreamTextMarkdown, Int, Int, StreamTextStyle) -> CharSequence = { document, color, width, textStyle -> document.styled(color, width, textStyle) },
-    private val deliver: (Long, Long, StreamTextMarkdown, CharSequence, Int, () -> Unit) -> Unit,
+    private val deliver: (Long, Long, Boolean, StreamTextMarkdown, CharSequence, Int, () -> Unit) -> Unit,
 ) {
   private var pendingText: String? = null
   private var pendingGeneration = 0L
@@ -22,11 +22,12 @@ internal class StreamTextMarkdownWorker(
   private var pendingBytes = 0L
   private var pendingWidth = 0
   private var pendingStyle = StreamTextStyle()
+  private var pendingFinal = false
   private var running = false
   private var acknowledged: StreamTextMarkdown? = null
   private var acknowledgedWidth = -1
 
-  fun submit(text: String, generation: Long, bytes: Long, github: Boolean, color: Int, width: Int = 1, textStyle: StreamTextStyle = StreamTextStyle()) {
+  fun submit(text: String, generation: Long, bytes: Long, github: Boolean, color: Int, width: Int = 1, textStyle: StreamTextStyle = StreamTextStyle(), final: Boolean = false) {
     synchronized(this) {
       pendingText = text
       pendingGeneration = generation
@@ -35,6 +36,7 @@ internal class StreamTextMarkdownWorker(
       pendingBytes = bytes
       pendingWidth = width
       pendingStyle = textStyle
+      pendingFinal = final
       if (running) return
       running = true
     }
@@ -59,6 +61,7 @@ internal class StreamTextMarkdownWorker(
       val bytes: Long
       val width: Int
       val textStyle: StreamTextStyle
+      val final: Boolean
       val base: StreamTextMarkdown?
       val baseWidth: Int
       synchronized(this) {
@@ -72,14 +75,15 @@ internal class StreamTextMarkdownWorker(
         bytes = pendingBytes
         width = pendingWidth
         textStyle = pendingStyle
+        final = pendingFinal
         base = acknowledged
         baseWidth = acknowledgedWidth
         pendingText = null
       }
-      val result = parse(input, github) ?: StreamTextMarkdown.plain(input)
+      val result = parse(input, github, final) ?: StreamTextMarkdown.plain(input)
       // Span construction is linear in run count and stays off the UI thread.
       val changedStart = if (result.hasRichBlocks && width != baseWidth) 0 else result.changedStartFrom(base)
-      deliver(generation, bytes, result, style(result, color, width, textStyle), changedStart) {
+      deliver(generation, bytes, final, result, style(result, color, width, textStyle), changedStart) {
         synchronized(this) {
           if (pendingGeneration == generation) { acknowledged = result; acknowledgedWidth = width }
         }

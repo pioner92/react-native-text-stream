@@ -12,10 +12,10 @@ class StreamTextMarkdownWorkerTest {
     val document = StreamTextMarkdown("\uFFFC", intArrayOf(0), intArrayOf(1), intArrayOf(0),
         intArrayOf(0), intArrayOf(0), arrayOf(null),
         arrayOf(StreamTextMarkdown.RichBlock(2, 0, 0, 0, null, "https://example.test/a", "alt")))
-    val worker = StreamTextMarkdownWorker(executor = queue, parse = { _, _ -> document },
+    val worker = StreamTextMarkdownWorker(executor = queue, parse = { _, _, _ -> document },
         style = { value, _, width, _ -> widths.add(width); value.text },
-        deliver = { generation, bytes, value, _, changed, acknowledge ->
-          deliveries.add(Delivery(generation, bytes, value.text, changed, acknowledge))
+        deliver = { generation, bytes, final, value, _, changed, acknowledge ->
+          deliveries.add(Delivery(generation, bytes, final, value.text, changed, acknowledge))
         })
     fun submit(width: Int) {
       worker.submit("source", 1, 6, true, 0, width)
@@ -34,13 +34,13 @@ class StreamTextMarkdownWorkerTest {
     override fun execute(command: Runnable) { work.addLast(command) }
     fun runNext() { work.removeFirst().run() }
   }
-  private data class Delivery(val generation: Long, val bytes: Long, val text: String, val changed: Int, val acknowledge: () -> Unit)
+  private data class Delivery(val generation: Long, val bytes: Long, val final: Boolean, val text: String, val changed: Int, val acknowledge: () -> Unit)
   private fun worker(queue: Queue, deliveries: MutableList<Delivery>, fail: Boolean = false) = StreamTextMarkdownWorker(
       executor = queue,
-      parse = { text, _ -> if (fail) null else StreamTextMarkdown.plain(text) },
+      parse = { text, _, _ -> if (fail) null else StreamTextMarkdown.plain(text) },
       style = { document, _, _, _ -> document.text },
-      deliver = { generation, bytes, document, _, changed, acknowledge ->
-        deliveries.add(Delivery(generation, bytes, document.text, changed, acknowledge))
+      deliver = { generation, bytes, final, document, _, changed, acknowledge ->
+        deliveries.add(Delivery(generation, bytes, final, document.text, changed, acknowledge))
       })
 
   @Test fun deliversOnlyOneSnapshotUntilTheUiAcknowledgesIt() {
@@ -159,6 +159,31 @@ class StreamTextMarkdownWorkerTest {
     assertEquals(2, delivered.size)
     assertEquals(3, delivered.last().generation)
     assertEquals(0, delivered.last().changed)
+  }
+
+  @Test fun terminalParseIsDeliveredAsFinalEvenAtTheSameByteOffset() {
+    val queue = Queue()
+    val delivered = mutableListOf<Delivery>()
+    val parseFinal = mutableListOf<Boolean>()
+    val worker = StreamTextMarkdownWorker(
+        executor = queue,
+        parse = { text, _, final -> parseFinal.add(final); StreamTextMarkdown.plain(if (final) "$text final" else text) },
+        style = { document, _, _, _ -> document.text },
+        deliver = { generation, bytes, final, document, _, changed, acknowledge ->
+          delivered.add(Delivery(generation, bytes, final, document.text, changed, acknowledge))
+        })
+
+    worker.submit("[unfinished", 9, 11, true, 0, final = false)
+    queue.runNext()
+    delivered.single().acknowledge()
+    queue.runNext()
+    worker.submit("[unfinished", 9, 11, true, 0, final = true)
+    queue.runNext()
+
+    assertEquals(listOf(false, true), parseFinal)
+    assertEquals(11L, delivered[1].bytes)
+    assertTrue(delivered[1].final)
+    assertEquals("[unfinished final", delivered[1].text)
   }
 
   @Test fun idleWorkerSchedulesASecondIndependentStream() {

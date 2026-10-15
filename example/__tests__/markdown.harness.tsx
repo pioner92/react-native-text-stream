@@ -20,17 +20,55 @@ describe('StreamText native Markdown', () => {
     await expect(ref.current!.getText()).resolves.toBe('**Привет 🚀** &amp; `code`');
   });
 
-  it('updates a previously literal delimiter and reports original source bytes', async () => {
+  it('projects an unfinished delimiter without raw syntax, then resolves it when completed', async () => {
     const key = newKey();
     const source = buffer('**hello');
     const events: [string, number][] = [];
     await render(<Column><StreamText source={source} nativeID={key} recordDisplayLog format="markdown"
       onStatusChange={(status, bytes) => events.push([status, bytes])} /></Column>);
-    await waitRendered(key, '**hello');
+    await waitRendered(key, 'hello');
     write(source, '**');
     testing.setStatus(source, TSB.done);
     await waitRendered(key, 'hello');
     await waitFor(() => expect(events.at(-1)).toEqual(['done', 9]));
+  });
+
+  it('withholds incomplete link and image syntax while open, then restores literals at terminal', async () => {
+    const key = newKey();
+    const source = buffer('Before [link](https://example.com');
+    const view = await render(nativeView(source, key));
+    await waitForSnapshot(key, state => {
+      expect(state.status).toBe('streaming');
+      expect(state.text).toContain('Before link');
+      expect(state.text).not.toContain('[');
+      expect(state.text).not.toContain('https://');
+    });
+    testing.setStatus(source, TSB.done);
+    await waitRendered(key, 'Before [link](https://example.com');
+
+    const image = buffer('Image ![alt](https://example.com/a.png');
+    await view.rerender(nativeView(image, key));
+    await waitForSnapshot(key, state => {
+      expect(state.text).toContain('Image alt');
+      expect(state.text).not.toContain('![');
+      expect(state.text).not.toContain('https://');
+    });
+    testing.setStatus(image, TSB.done);
+    await waitRendered(key, 'Image ![alt](https://example.com/a.png');
+  });
+
+  it('suppresses an unfinished GFM table tail and restores it after a reset', async () => {
+    const key = newKey();
+    const ref = React.createRef<StreamTextHandle>();
+    const source = buffer('| Name | Value |\n| --- | --- |\n| partial');
+    await render(<Column><StreamText ref={ref} source={source} nativeID={key} recordDisplayLog
+      format="markdown" markdownFlavor="gfm" /></Column>);
+    await waitForSnapshot(key, state => {
+      expect(state.status).toBe('streaming');
+      expect(state.text).not.toContain('| partial');
+    });
+    ref.current!.clear();
+    await waitForSnapshot(key, state => { expect(state.text).toBe(''); expect(state.height).toBe(0); });
   });
 
   it('reformats earlier reference text when its definition arrives', async () => {
@@ -51,6 +89,29 @@ describe('StreamText native Markdown', () => {
     write(source, ' and **second**');
     // No terminal status and no later chunk may be required to trigger this update.
     await waitRendered(key, 'first and second');
+  });
+
+  it('ends a chunked fenced block with the same layout as one-shot Markdown', async () => {
+    const code = '```ts\nconst answer: number = 42;\nconsole.log(answer);\n```\n';
+    const oneShotKey = newKey();
+    await render(nativeView(buffer(code, TSB.done), oneShotKey));
+    const oneShot = await waitForSnapshot(oneShotKey, state => expect(state.status).toBe('done'));
+
+    const streamedKey = newKey();
+    const streamed = buffer();
+    await render(nativeView(streamed, streamedKey));
+    write(streamed, '```ts\nconst answer: number = 42;\n');
+    await waitForSnapshot(streamedKey, state => {
+      expect(state.status).toBe('streaming');
+      expect(state.text).toContain('const answer: number = 42;');
+    });
+    write(streamed, 'console.log(answer);\n```\n');
+    testing.setStatus(streamed, TSB.done);
+    const completed = await waitForSnapshot(streamedKey, state => {
+      expect(state.status).toBe('done');
+      expect(state.text).toContain('const answer: number = 42;');
+    });
+    expect(completed.height).toBe(oneShot.height);
   });
 
   it('changes format of an imperatively attached finished source', async () => {

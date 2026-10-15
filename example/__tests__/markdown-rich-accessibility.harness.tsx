@@ -40,4 +40,18 @@ describe('StreamText rich Markdown accessibility', () => {
       recordDisplayLog /></Column>);
     await waitForSnapshot(key, snapshot => expect(snapshot.accessibilityValue).toBe('ordinary accessibility text'));
   });
+
+  it('describes native task state while preserving surrounding text', async () => {
+    const key = newKey();
+    const source = 'before\n\n- [x] done\n- [ ] next\n\nafter\n';
+    await render(<Column><StreamText source={buffer(source, TSB.done)} nativeID={key} recordDisplayLog
+      format="markdown" markdownFlavor="gfm" /></Column>);
+    await waitForSnapshot(key, snapshot => {
+      expect(snapshot.accessibilityValue).toContain('before');
+      expect(snapshot.accessibilityValue).toContain('Checked task');
+      expect(snapshot.accessibilityValue).toContain('Unchecked task');
+      expect(snapshot.accessibilityValue).toContain('after');
+      expect(snapshot.accessibilityValue).not.toContain('\uFFFC');
+    });
+  });
 });

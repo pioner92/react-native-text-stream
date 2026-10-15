@@ -5,9 +5,9 @@ It compiles both revisions with `-O3`, warms each parser five times, then record
 of twenty snapshots per case. Retained-parser and fresh-parser results are separate; a fresh
 parser is not a cold process.
 
-The host parser evidence compares baseline `867c265` with the current parser using the same
-synthetic source families. It measures native parsing only; baseline semantics are narrower than
-the current rich tables, images, and fenced-code metadata, so it is not a universal speedup claim.
+The latest host parser evidence compares baseline `964ee45` with the streaming-polish parser
+using the same rich source families. It measures native parsing only, separately reporting
+exact-final and progressive snapshots. It is not a universal speedup claim.
 See [host JSON](benchmarks/markdown-rich-parser-host-2026-10-15.json).
 
 The iOS evidence contains 36 Release arm64 simulator runs on a dedicated iPhone 17 Pro Max,
@@ -25,7 +25,7 @@ rendering latency. `settledMs` marks the beginning of the next three on-time-fra
 reported by the native monitor, not promise-resolution time. Frame counters come from
 CADisplayLink on this simulator. UI inspection happened after timing.
 
-The final build (including the transparent native table attachment) produced these medians
+The earlier rich-Markdown build (including the transparent native table attachment) produced these medians
 across three repetitions. The last column totals native hitch counters across those runs.
 
 | Rich workload | Status ms | Settling marker ms | Maximum frame ms, median | Hitches, sum |
@@ -40,3 +40,6 @@ across three repetitions. The last column totals native hitch counters across th
 Bulk mounting still has measurable hitches. The measurements do not support a universal
 maximum-performance claim. The raw artifact includes the plain overhead-reference cases,
 phase counters, display logs and process memory: [iOS simulator JSON](benchmarks/markdown-rich-ios-release-2026-10-15.json).
+
+The subsequent streaming-polish pass and its new measurements are tracked in
+[streaming polish validation](markdown-streaming-polish.md).

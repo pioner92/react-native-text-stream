@@ -1,0 +1,19 @@
+{
+  "file": "streamtext-rich-markdown-twitter-v2.mp4",
+  "sha256": "19e605bd7648d37c70bbdc24a32138c58b050ba24eece95792d62519d22a6625",
+  "bytes": 2432437,
+  "durationSeconds": 23,
+  "width": 1080,
+  "height": 1920,
+  "framesPerSecond": 30,
+  "codec": "h264",
+  "pixelFormat": "yuv420p",
+  "audio": false,
+  "fullDecode": "passed",
+  "source": "iOS dedicated simulator Release capture",
+  "streamChunkBytes": 8,
+  "streamIntervalMs": 100,
+  "playbackSpeed": 1,
+  "staticFrameTrimming": false,
+  "rawCapture": ".argent/recordings/screen-recording-3151717D-25E3-40D9-8D93-4BB90C4C6C18-1792087804537.mp4"
+}

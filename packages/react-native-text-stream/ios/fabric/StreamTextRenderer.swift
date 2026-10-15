@@ -56,7 +56,10 @@ public final class StreamTextRenderer: UIView {
   private var markdownRevision = 0
   private var markdownResult: StreamTextMarkdownResult?
   private var markdownAppliedBytes = -1
+  private var markdownAppliedFinal = false
   private var markdownLastScheduledBytes = -1
+  /// `final` changes the parser's projection even at the same byte count.
+  private var markdownLastScheduledFinal = false
   private var markdownLastScheduleTime: CFTimeInterval = 0
   private var markdownDebounce: DispatchWorkItem?
   private var pendingMarkdownTerminal: (status: UInt32, bytes: UInt64, sourceBytes: Int)?
@@ -101,7 +104,9 @@ public final class StreamTextRenderer: UIView {
     markdownBytes.removeAll(keepingCapacity: false)
     markdownResult = nil
     markdownAppliedBytes = -1
+    markdownAppliedFinal = false
     markdownLastScheduledBytes = -1
+    markdownLastScheduledFinal = false
     markdownLastScheduleTime = 0
     pendingMarkdownTerminal = nil
     markdownRevision &+= 1
@@ -313,7 +318,9 @@ public final class StreamTextRenderer: UIView {
     markdownBytes.removeAll(keepingCapacity: false)
     markdownResult = nil
     markdownAppliedBytes = -1
+    markdownAppliedFinal = false
     markdownLastScheduledBytes = -1
+    markdownLastScheduledFinal = false
     markdownLastScheduleTime = 0
     pendingMarkdownTerminal = nil
     markdownRevision &+= 1
@@ -402,6 +409,7 @@ public final class StreamTextRenderer: UIView {
       markdownPipeline = StreamTextMarkdownPipeline()
       markdownRevision &+= 1
       markdownLastScheduledBytes = -1
+      markdownLastScheduledFinal = false
       scheduleMarkdownIfNeeded(force: true)
       return
     }
@@ -600,7 +608,7 @@ public final class StreamTextRenderer: UIView {
         // The final native status is observable by JS. Hold it until the exact final snapshot is
         // styled, otherwise a list can remount the raw Markdown between terminal and parse apply.
         pendingMarkdownTerminal = (status, committed, markdownBytes.count)
-        if markdownAppliedBytes == markdownBytes.count {
+        if markdownAppliedBytes == markdownBytes.count && markdownAppliedFinal {
           pendingMarkdownTerminal = nil
           reportStatus(terminalStatus(status), bytes: committed)
         } else {
@@ -652,7 +660,8 @@ public final class StreamTextRenderer: UIView {
   /// pauses without closing the stream. The worker also coalesces updates while a patch is in flight.
   private func scheduleMarkdownIfNeeded(force: Bool) {
     guard markdownEnabled, let pipeline = markdownPipeline else { return }
-    guard markdownBytes.count != markdownLastScheduledBytes else { return }
+    let final = finished
+    guard markdownBytes.count != markdownLastScheduledBytes || final != markdownLastScheduledFinal else { return }
     let now = CACurrentMediaTime()
     let remaining = 0.016 - (now - markdownLastScheduleTime)
     if !force && markdownLastScheduledBytes >= 0 && remaining > 0 {
@@ -671,8 +680,9 @@ public final class StreamTextRenderer: UIView {
     markdownDebounce?.cancel()
     markdownDebounce = nil
     markdownLastScheduledBytes = markdownBytes.count
+    markdownLastScheduledFinal = final
     markdownLastScheduleTime = now
-    pipeline.schedule(markdownBytes, github: markdownGitHub, revision: markdownRevision,
+    pipeline.schedule(markdownBytes, github: markdownGitHub, final: final, revision: markdownRevision,
                       attributes: textAttributes, width: max(1, bounds.width)) { [weak self] update in
       guard let self, self.markdownEnabled, update.revision == self.markdownRevision else { return }
       self.applyMarkdown(update)
@@ -684,6 +694,7 @@ public final class StreamTextRenderer: UIView {
     markdownPipeline = StreamTextMarkdownPipeline()
     markdownRevision &+= 1
     markdownLastScheduledBytes = -1
+    markdownLastScheduledFinal = false
     scheduleMarkdownIfNeeded(force: true)
   }
 
@@ -716,6 +727,7 @@ public final class StreamTextRenderer: UIView {
       markdownPipeline = StreamTextMarkdownPipeline()
       markdownRevision &+= 1
       markdownLastScheduledBytes = -1
+      markdownLastScheduledFinal = false
       scheduleMarkdownIfNeeded(force: true)
       return
     }
@@ -740,6 +752,7 @@ public final class StreamTextRenderer: UIView {
     (textView?.layoutManager as? StreamTextMarkdownLayoutManager)?.drawsTables = update.result.blocks.contains { $0.kind == UInt32(STMD_BLOCK_TABLE) }
     bindMarkdownImages()
     markdownAppliedBytes = update.sourceBytes
+    markdownAppliedFinal = update.final
     _ = reportHeight()
     StreamTextRenderStats.shared.addPhase("markdown.apply", time: CACurrentMediaTime() - started)
     if displayLogKey != nil {
@@ -747,7 +760,7 @@ public final class StreamTextRenderer: UIView {
       // A display-link tick records only a document that has actually been applied and laid out.
       setTicking(window != nil)
     }
-    if let terminal = pendingMarkdownTerminal, terminal.sourceBytes == update.sourceBytes {
+    if let terminal = pendingMarkdownTerminal, update.final, terminal.sourceBytes == update.sourceBytes {
       pendingMarkdownTerminal = nil
       if let key = displayLogKey { StreamTextRenderStats.shared.set(key, stats) }
       reportStatus(terminalStatus(terminal.status), bytes: terminal.bytes)
@@ -835,6 +848,8 @@ private final class StreamTextView: UITextView {
           return
         }
         switch attachment {
+        case let task as StreamTextMarkdownTaskAttachment:
+          append(task.checked ? "Checked task" : "Unchecked task")
         case let image as StreamTextMarkdownImageAttachment:
           append(image.block.alt.isEmpty ? "Image" : image.block.alt)
         case let table as StreamTextMarkdownTableAttachment:

@@ -1,17 +1,27 @@
 package com.textstream
 
 import android.graphics.Typeface
+import android.graphics.Canvas
+import android.graphics.Paint
+import android.graphics.Path
+import android.graphics.RectF
 import android.text.SpannableStringBuilder
 import android.text.Spanned
 import android.text.TextPaint
 import android.text.style.CharacterStyle
 import android.text.style.LeadingMarginSpan
+import android.text.style.LineHeightSpan
+import android.text.style.LineBackgroundSpan
 import android.text.style.RelativeSizeSpan
+import android.text.style.ReplacementSpan
 import android.text.style.StrikethroughSpan
 import android.text.style.StyleSpan
 import android.text.style.TypefaceSpan
 import android.text.style.URLSpan
 import com.facebook.proguard.annotations.DoNotStrip
+import com.facebook.react.uimanager.PixelUtil
+import kotlin.math.ceil
+import kotlin.math.floor
 
 /**
  * The compact result of the native MD4C parser.  All positions are UTF-16 offsets, so Kotlin can
@@ -60,6 +70,15 @@ internal class StreamTextMarkdown @DoNotStrip constructor(
   )
 
   internal val hasRichBlocks: Boolean get() = blocks.isNotEmpty()
+
+  /**
+   * A code-block surface and its header span cover a complete contiguous fence, rather than one
+   * parser token. A suffix update beginning in a later code paragraph must therefore replace the
+   * entire fence: otherwise Android retains a clipped old surface/header and adds a second span
+   * for the suffix, which can double its line-height or paint.
+   */
+  internal fun codeBlockClusterStart(offset: Int): Int =
+      codeBlockClusterStart(text, starts, lengths, flags, offset)
   /**
    * First UTF-16 offset whose visible text or semantic run differs from [previous].  The parser
    * returns a whole document, but this lets the view retain DynamicLayout's already-valid prefix.
@@ -103,7 +122,11 @@ internal class StreamTextMarkdown @DoNotStrip constructor(
 
   /** Bounded expansion using absolute document positions, including a tail starting after earlier
    * attachments. Rich accessibility lines follow the expanded text, never stale glyph offsets. */
-  fun accessibleReading(from: Int, limit: Int): StreamTextReading {
+  /**
+   * Expands semantics inside a source range. [limit] caps produced accessibility text independently
+   * from [sourceEnd]: a task marker occupies three source characters but expands to a phrase.
+   */
+  fun accessibleReading(from: Int, limit: Int, sourceEnd: Int = text.length): StreamTextReading {
     val out = StringBuilder(minOf(limit, text.length))
     fun append(value: String) {
       var count = minOf(value.length, limit - out.length)
@@ -111,6 +134,7 @@ internal class StreamTextMarkdown @DoNotStrip constructor(
       out.append(value, 0, count)
     }
     var position = from.coerceIn(0, text.length)
+    val end = sourceEnd.coerceIn(position, text.length)
     if (position > 0) append("…")
     var low = 0; var high = blocks.size
     while (low < high) {
@@ -118,7 +142,19 @@ internal class StreamTextMarkdown @DoNotStrip constructor(
       if (blocks[mid].start < position) low = mid + 1 else high = mid
     }
     var index = low
-    while (position < text.length && out.length < limit) {
+    // Task markers are derived once from parser-confirmed list runs, then consumed in document
+    // order. Accessibility gets the semantic control state rather than literal Markdown syntax.
+    val markers = taskMarkers(text, starts, lengths, flags, indents)
+    var markerIndex = 0
+    while (markerIndex < markers.size && markers[markerIndex].start < position) markerIndex++
+    while (position < end && out.length < limit) {
+      val marker = markers.getOrNull(markerIndex)
+      if (marker != null && marker.start == position) {
+        append(if (marker.checked) "Checked task" else "Unchecked task")
+        position += 3
+        markerIndex++
+        continue
+      }
       val block = blocks.getOrNull(index)
       if (block != null && block.start == position) {
         if (block.kind == BLOCK_TABLE) {
@@ -149,6 +185,7 @@ internal class StreamTextMarkdown @DoNotStrip constructor(
     val out = SpannableStringBuilder(text)
     val codeBlockMargins = codeBlockMarginRanges(text, starts, lengths, flags)
     val paragraphDecorations = paragraphDecorations(text, starts, lengths, flags, indents)
+    val taskMarkers = taskMarkers(text, starts, lengths, flags, indents)
     for (i in starts.indices) {
       val start = starts[i].coerceIn(0, out.length)
       val end = (start + lengths[i]).coerceIn(start, out.length)
@@ -159,13 +196,14 @@ internal class StreamTextMarkdown @DoNotStrip constructor(
       val italic = bits and ITALIC != 0
       if (bold || italic) out.setSpan(StyleSpan(if (bold && italic) Typeface.BOLD_ITALIC else if (bold) Typeface.BOLD else Typeface.ITALIC), start, end, spanFlags)
       if (bits and STRIKE != 0) out.setSpan(StrikethroughSpan(), start, end, spanFlags)
-      if (bits and CODE != 0) {
+      if (bits and CODE != 0 && bits and CODE_BLOCK == 0) {
         out.setSpan(TypefaceSpan("monospace"), start, end, spanFlags)
         out.setSpan(MarkdownCodeBackgroundSpan(24), start, end, spanFlags)
       }
       if (bits and CODE_BLOCK != 0) {
+        // The block surface is drawn once per visual line below. Per-token backgrounds create
+        // visible stair-steps and extra draw work for syntax-highlighted fences.
         out.setSpan(TypefaceSpan("monospace"), start, end, spanFlags)
-        out.setSpan(MarkdownCodeBackgroundSpan(18), start, end, spanFlags)
       }
       tokenSpan(bits)?.let { out.setSpan(it, start, end, spanFlags) }
       urls.getOrNull(i)?.takeIf { bits and LINK != 0 && isSafeUrl(it) }?.let { out.setSpan(MarkdownUrlSpan(it), start, end, spanFlags) }
@@ -179,9 +217,21 @@ internal class StreamTextMarkdown @DoNotStrip constructor(
     }
     // Syntax-token runs share CODE_BLOCK. Add each paragraph margin once, outside the per-token
     // loop, so a token-dense or very long line remains linear to format.
+    val paragraphLanguages = codeLanguageLabels(codeBlockMargins)
     for ((start, end) in codeBlockMargins) {
-      out.setSpan(LeadingMarginSpan.Standard(dp(24)), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+      // Margin spans must stay paragraph-scoped. The surface itself is attached once below for
+      // each contiguous block, which keeps its rounded outer corners seamless across lines.
+      out.setSpan(LeadingMarginSpan.Standard(dp(8)), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
     }
+    for (section in codeBlockSections(codeBlockMargins, paragraphLanguages)) {
+      out.setSpan(MarkdownCodeBlockSpan(section.start, section.end, section.label), section.start, section.end,
+          Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+      if (section.label != null) out.setSpan(MarkdownCodeHeaderSpan(section.start,
+          if (style.lineHeight > 0f) ceil(PixelUtil.toPixelFromDIP(style.lineHeight).toDouble()).toInt() else 0),
+          section.start, section.firstParagraphEnd,
+          Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+    }
+    for (marker in taskMarkers) out.setSpan(MarkdownTaskSpan(marker.checked), marker.start, marker.start + 3, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
     for (decoration in paragraphDecorations) {
       if (decoration.quote) {
         out.setSpan(LeadingMarginSpan.Standard(dp(18)), decoration.start, decoration.end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
@@ -213,6 +263,95 @@ internal class StreamTextMarkdown @DoNotStrip constructor(
     }
   }
 
+  /** Draws a single code surface per visual line; no per-token object or paint allocation. */
+  private class MarkdownCodeBlockSpan(
+      private val blockStart: Int, private val blockEnd: Int, private val label: String?,
+  ) : LineBackgroundSpan {
+    private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val bounds = RectF()
+    private val path = Path()
+    private val cornerRadii = FloatArray(8)
+    override fun drawBackground(canvas: Canvas, paint: Paint, left: Int, right: Int, top: Int, baseline: Int,
+        bottom: Int, text: CharSequence, start: Int, end: Int, lineNum: Int) {
+      this.paint.color = (paint.color and 0x00ffffff) or 0x24000000
+      bounds.set(left.toFloat(), top.toFloat(), right.toFloat(), bottom.toFloat())
+      val radius = dp(4).toFloat()
+      val first = start == blockStart
+      val last = end >= blockEnd
+      if (first || last) {
+        path.reset()
+        val topRadius = if (first) radius else 0f
+        val bottomRadius = if (last) radius else 0f
+        cornerRadii[0] = topRadius; cornerRadii[1] = topRadius
+        cornerRadii[2] = topRadius; cornerRadii[3] = topRadius
+        cornerRadii[4] = bottomRadius; cornerRadii[5] = bottomRadius
+        cornerRadii[6] = bottomRadius; cornerRadii[7] = bottomRadius
+        path.addRoundRect(bounds, cornerRadii, Path.Direction.CW)
+        canvas.drawPath(path, this.paint)
+      } else canvas.drawRect(bounds, this.paint)
+      if (label != null && first) {
+        this.paint.color = (paint.color and 0x00ffffff) or 0xb0000000.toInt()
+        this.paint.textSize = paint.textSize.coerceAtMost(dp(10).toFloat())
+        // The header span below reserves this band only on the section's first line.
+        canvas.drawText(label, left + dp(8).toFloat(), top + dp(4).toFloat() + this.paint.textSize, this.paint)
+      }
+    }
+  }
+
+  /** Adds a compact language-header band only at the start of a fenced-language section. */
+  /**
+   * Owns the first fenced paragraph's metrics. It overwrites metrics on every visual line, so
+   * StaticLayout cannot carry a header-adjusted ascent into a wrapped continuation. The ordinary
+   * line-height span recognizes this span and yields for this paragraph, independent of Android's
+   * span invocation order.
+   */
+  internal class MarkdownCodeHeaderSpan(private val headerOffset: Int, private val lineHeight: Int) : LineHeightSpan.WithDensity {
+    override fun chooseHeight(text: CharSequence, start: Int, end: Int, spanStartV: Int, v: Int,
+        fm: Paint.FontMetricsInt, paint: TextPaint) = setMetrics(start, fm, paint)
+
+    override fun chooseHeight(text: CharSequence, start: Int, end: Int, spanStartV: Int, v: Int,
+        fm: Paint.FontMetricsInt) = setMetrics(start, fm, null)
+
+    private fun setMetrics(lineStart: Int, fm: Paint.FontMetricsInt, paint: TextPaint?) {
+      if (paint != null) {
+        paint.getFontMetricsInt(fm)
+        if (lineHeight > 0) {
+          val leading = lineHeight - (-fm.ascent + fm.descent)
+          fm.ascent -= ceil(leading / 2.0f).toInt()
+          fm.descent += floor(leading / 2.0f).toInt()
+        }
+        fm.top = fm.ascent
+        fm.bottom = fm.descent
+      }
+      if (lineStart == headerOffset) {
+        // 4dp label top padding + its 10dp cap + 6dp breathing room before the first glyph.
+        // StaticLayout otherwise carries an inflated ascent into subsequent visual wraps while
+        // the paragraph-scoped header span remains active.
+        val header = dp(20)
+        fm.ascent -= header
+        fm.top -= header
+      }
+    }
+  }
+
+  private class MarkdownTaskSpan(private val checked: Boolean) : ReplacementSpan() {
+    private val stroke = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeWidth = dp(1).toFloat() }
+    private val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
+    override fun getSize(paint: Paint, text: CharSequence, start: Int, end: Int, fm: Paint.FontMetricsInt?): Int = dp(20)
+    override fun draw(canvas: Canvas, text: CharSequence, start: Int, end: Int, x: Float, top: Int, y: Int, bottom: Int, paint: Paint) {
+      val size = dp(14).toFloat(); val left = x + dp(2); val boxTop = y - paint.textSize * .72f
+      stroke.color = paint.color
+      if (checked) { fill.color = paint.color; canvas.drawRoundRect(left, boxTop, left + size, boxTop + size, dp(3).toFloat(), dp(3).toFloat(), fill) }
+      else canvas.drawRoundRect(left, boxTop, left + size, boxTop + size, dp(3).toFloat(), dp(3).toFloat(), stroke)
+      if (checked) {
+        stroke.color = if ((paint.color and 0x00ffffff) > 0x7f7f7f) 0xff101010.toInt() else 0xffffffff.toInt()
+        stroke.strokeWidth = dp(2).toFloat(); stroke.style = Paint.Style.STROKE
+        canvas.drawLine(left + size * .22f, boxTop + size * .54f, left + size * .43f, boxTop + size * .74f, stroke)
+        canvas.drawLine(left + size * .43f, boxTop + size * .74f, left + size * .80f, boxTop + size * .29f, stroke)
+      }
+    }
+  }
+
   private class MarkdownQuoteSpan : CharacterStyle() {
     override fun updateDrawState(paint: TextPaint) {
       val from = paint.color
@@ -232,17 +371,7 @@ internal class StreamTextMarkdown @DoNotStrip constructor(
   /** Syntax colors are paint-relative, so theme/color changes do not invalidate parsed Markdown. */
   private class MarkdownTokenSpan(private val kind: Int) : CharacterStyle() {
     override fun updateDrawState(paint: TextPaint) {
-      val base = paint.color
-      val target = when (kind) {
-        TOKEN_KEYWORD -> 0xff8b5cf6.toInt()
-        TOKEN_STRING -> 0xff16a34a.toInt()
-        TOKEN_COMMENT -> 0xff6b7280.toInt()
-        TOKEN_NUMBER -> 0xffd97706.toInt()
-        else -> 0xff0284c7.toInt()
-      }
-      // Preserve a readable relationship to the active text color rather than baking a theme.
-      fun c(shift: Int) = (((base ushr shift and 0xff) * 0.35f) + ((target ushr shift and 0xff) * 0.65f)).toInt()
-      paint.color = (base and -0x1000000) or (c(16) shl 16) or (c(8) shl 8) or c(0)
+      paint.color = syntaxColor(paint.color, kind)
     }
   }
 
@@ -255,8 +384,138 @@ internal class StreamTextMarkdown @DoNotStrip constructor(
     else -> null
   }
 
+  /**
+   * Finds one language token for every code paragraph in a single ordered pass. A long fenced
+   * block can contain thousands of paragraphs and syntax runs, so searching runs per paragraph
+   * would turn formatting into quadratic work.
+   */
+  private fun codeLanguageLabels(ranges: List<Pair<Int, Int>>): List<String?> {
+    if (ranges.isEmpty()) return emptyList()
+    val result = ArrayList<String?>(ranges.size)
+    var run = 0
+    for ((start, end) in ranges) {
+      while (run < starts.size && starts[run] + lengths.getOrElse(run) { 0 } <= start) run++
+      var candidate = run
+      var label: String? = null
+      while (candidate < starts.size && starts[candidate] < end) {
+        if (starts[candidate] + lengths.getOrElse(candidate) { 0 } > start) {
+          label = when (flags[candidate] and LANGUAGE_MASK) {
+            LANGUAGE_TYPESCRIPT -> "TS"
+            LANGUAGE_JSON -> "JSON"
+            LANGUAGE_JAVASCRIPT -> "JS"
+            LANGUAGE_PYTHON -> "PY"
+            else -> null
+          }
+          if (label != null) break
+        }
+        candidate++
+      }
+      result.add(label)
+    }
+    return result
+  }
+
   companion object {
     internal data class ParagraphDecoration(val start: Int, val end: Int, val quote: Boolean, val indent: Int)
+    internal data class TaskMarker(val start: Int, val checked: Boolean)
+    internal data class CodeBlockSection(val start: Int, val end: Int, val label: String?, val firstParagraphEnd: Int)
+
+    /** Paint-relative palette with a contrast branch for light and dark surfaces. */
+    internal fun syntaxColor(base: Int, kind: Int): Int {
+      // Dark text means a light surface; bright text means a dark surface.
+      val lightSurface = ((base ushr 16 and 0xff) * 299 + (base ushr 8 and 0xff) * 587 + (base and 0xff) * 114) < 128000
+      val target = if (lightSurface) when (kind) {
+        TOKEN_KEYWORD -> 0xff6d28d9.toInt(); TOKEN_STRING -> 0xff15803d.toInt(); TOKEN_COMMENT -> 0xff52525b.toInt()
+        TOKEN_NUMBER -> 0xffb45309.toInt(); else -> 0xff0369a1.toInt()
+      } else when (kind) {
+        TOKEN_KEYWORD -> 0xffa78bfa.toInt(); TOKEN_STRING -> 0xff4ade80.toInt(); TOKEN_COMMENT -> 0xffc4c4cc.toInt()
+        TOKEN_NUMBER -> 0xfffbbf24.toInt(); else -> 0xff38bdf8.toInt()
+      }
+      fun component(shift: Int) = (((base ushr shift and 0xff) * .20f) + ((target ushr shift and 0xff) * .80f)).toInt()
+      return (base and -0x1000000) or (component(16) shl 16) or (component(8) shl 8) or component(0)
+    }
+
+    const val LANGUAGE_JAVASCRIPT = 1 shl 8
+    const val LANGUAGE_TYPESCRIPT = 1 shl 9
+    const val LANGUAGE_JSON = 1 shl 10
+    const val LANGUAGE_PYTHON = 1 shl 11
+    const val LANGUAGE_MASK = 15 shl 8
+
+    /** Finds GFM markers only in parser-confirmed list content; prose and fenced code stay literal. */
+    internal fun taskMarkers(
+        text: String, starts: IntArray, lengths: IntArray, flags: IntArray, indents: IntArray,
+    ): List<TaskMarker> {
+      if (indents.none { it > 0 }) return emptyList()
+      val result = ArrayList<TaskMarker>()
+      var line = 0
+      var run = 0
+      while (line < text.length) {
+        val end = text.indexOf('\n', line).let { if (it < 0) text.length else it }
+        var at = line
+        while (at < end && text[at] == ' ') at++
+        // MD4C's normalized display text retains a quote marker before a GFM task marker.
+        if (at < end && text[at] == '>') {
+          at++
+          while (at < end && text[at] == ' ') at++
+        }
+        while (run < starts.size && starts[run] + lengths.getOrElse(run) { 0 } <= at) run++
+        var candidate = run
+        var parserConfirmedList = false
+        while (candidate < starts.size && starts[candidate] <= at) {
+          if (starts[candidate] + lengths.getOrElse(candidate) { 0 } > at &&
+              indents.getOrElse(candidate) { 0 } > 0 && flags.getOrElse(candidate) { 0 } and CODE_BLOCK == 0) {
+            parserConfirmedList = true
+            break
+          }
+          candidate++
+        }
+        if (parserConfirmedList && at + 3 <= end && text[at] == '[' && (text[at + 1] == ' ' || text[at + 1] == 'x' || text[at + 1] == 'X') && text[at + 2] == ']' && (at + 3 == end || text[at + 3] == ' ')) {
+          result.add(TaskMarker(at, text[at + 1] != ' '))
+        }
+        line = end + 1
+      }
+      return result
+    }
+    /** Keeps one label for a contiguous fenced-language section, not one label per code line. */
+    internal fun codeLanguageSectionLabels(ranges: List<Pair<Int, Int>>, labels: List<String?>): List<String?> {
+      val result = ArrayList<String?>(ranges.size)
+      var previousEnd = -2
+      var previousLabel: String? = null
+      for (index in ranges.indices) {
+        val label = labels.getOrNull(index)
+        result.add(label?.takeIf { ranges[index].first != previousEnd + 1 || it != previousLabel })
+        previousEnd = ranges[index].second
+        previousLabel = label
+      }
+      return result
+    }
+
+    /** Coalesces same-language adjacent code paragraphs without scanning syntax-token runs again. */
+    internal fun codeBlockSections(ranges: List<Pair<Int, Int>>, labels: List<String?>): List<CodeBlockSection> {
+      if (ranges.isEmpty()) return emptyList()
+      val result = ArrayList<CodeBlockSection>()
+      var start = ranges[0].first
+      var end = ranges[0].second
+      var firstParagraphEnd = end
+      var label = labels.getOrNull(0)
+      for (index in 1 until ranges.size) {
+        val range = ranges[index]
+        val nextLabel = labels.getOrNull(index)
+        // Syntax tokenization is sparse: a comment-only or punctuation-only paragraph may carry
+        // no language bit. Keep it on the surrounding fence surface, adopting the first known
+        // label, while a different explicit label still starts a new fence section.
+        if (range.first == end + 1 && (label == null || nextLabel == null || nextLabel == label)) {
+          end = range.second
+          if (label == null) label = nextLabel
+        } else {
+          result.add(CodeBlockSection(start, end, label, firstParagraphEnd))
+          start = range.first; end = range.second; firstParagraphEnd = end; label = nextLabel
+        }
+      }
+      result.add(CodeBlockSection(start, end, label, firstParagraphEnd))
+      return result
+    }
+
     fun plain(text: String) = StreamTextMarkdown(text, IntArray(0), IntArray(0), IntArray(0), IntArray(0), IntArray(0), emptyArray())
     const val BOLD = 1
     const val ITALIC = 2
@@ -302,6 +561,36 @@ internal class StreamTextMarkdown @DoNotStrip constructor(
         lineStart = lineEnd + 1
       }
       return result
+    }
+
+    /**
+     * Rewinds an offset in a contiguous fenced-code cluster to that cluster's first run.
+     * Parser runs are ordered and syntax highlighting only splits a code run into adjacent
+     * pieces, so this is one allocation-free pass. It deliberately does not scan every source
+     * paragraph on the UI thread while a stream is updating.
+     */
+    internal fun codeBlockClusterStart(
+        text: String, starts: IntArray, lengths: IntArray, flags: IntArray, offset: Int,
+    ): Int {
+      val at = offset.coerceIn(0, text.length)
+      var clusterStart = -1
+      var clusterEnd = -1
+      for (index in starts.indices) {
+        if (flags.getOrElse(index) { 0 } and CODE_BLOCK == 0) continue
+        val start = starts[index].coerceIn(0, text.length)
+        val end = (start + lengths.getOrElse(index) { 0 }).coerceIn(start, text.length)
+        if (clusterStart < 0 || start > clusterEnd) {
+          // Include the exclusive end: streaming a just-closed fence can put the paragraph
+          // boundary there while the former code span still owns that boundary.
+          if (at in clusterStart..clusterEnd) return clusterStart
+          if (at < start) return at
+          clusterStart = start
+          clusterEnd = end
+        } else if (end > clusterEnd) {
+          clusterEnd = end
+        }
+      }
+      return if (at in clusterStart..clusterEnd) clusterStart else at
     }
 
     /** One quote/list decoration per paragraph, independent of how the parser tokenizes it. */

@@ -1,12 +1,73 @@
 import UIKit
 
-private let streamTextMarkdownTokenColors: [(UInt32, UIColor)] = [
-    (UInt32(STMD_RUN_TOKEN_KEYWORD), UIColor(red: 0.62, green: 0.33, blue: 0.85, alpha: 1)),
-    (UInt32(STMD_RUN_TOKEN_STRING), UIColor(red: 0.12, green: 0.57, blue: 0.35, alpha: 1)),
-    (UInt32(STMD_RUN_TOKEN_COMMENT), UIColor(red: 0.45, green: 0.50, blue: 0.55, alpha: 1)),
-    (UInt32(STMD_RUN_TOKEN_NUMBER), UIColor(red: 0.80, green: 0.43, blue: 0.18, alpha: 1)),
-    (UInt32(STMD_RUN_TOKEN_TYPE), UIColor(red: 0.15, green: 0.52, blue: 0.75, alpha: 1)),
+let streamTextMarkdownCodeBlockAttribute = NSAttributedString.Key("StreamTextMarkdownCodeBlock")
+
+private func streamTextMarkdownUsesLightSurface(_ color: UIColor) -> Bool {
+  let resolved = color.resolvedColor(with: UITraitCollection.current)
+  var red: CGFloat = 0, green: CGFloat = 0, blue: CGFloat = 0, alpha: CGFloat = 0
+  guard resolved.getRed(&red, green: &green, blue: &blue, alpha: &alpha) else { return false }
+  // A dark requested foreground implies a light host surface. This tracks explicit RN colors,
+  // unlike UIUserInterfaceStyle, which does not change when the demo toggles its own background.
+  return 0.2126 * red + 0.7152 * green + 0.0722 * blue < 0.48
+}
+
+private let streamTextMarkdownTokenMask = UInt32(STMD_RUN_TOKEN_KEYWORD | STMD_RUN_TOKEN_STRING |
+  STMD_RUN_TOKEN_COMMENT | STMD_RUN_TOKEN_NUMBER | STMD_RUN_TOKEN_TYPE)
+
+private enum StreamTextMarkdownTokenPalette {
+  static let light: [(UInt32, UIColor)] = [
+      (UInt32(STMD_RUN_TOKEN_KEYWORD), UIColor(red: 0.43, green: 0.18, blue: 0.70, alpha: 1)),
+      (UInt32(STMD_RUN_TOKEN_STRING), UIColor(red: 0.00, green: 0.42, blue: 0.22, alpha: 1)),
+      (UInt32(STMD_RUN_TOKEN_COMMENT), UIColor(red: 0.31, green: 0.36, blue: 0.43, alpha: 1)),
+      (UInt32(STMD_RUN_TOKEN_NUMBER), UIColor(red: 0.67, green: 0.29, blue: 0.02, alpha: 1)),
+      (UInt32(STMD_RUN_TOKEN_TYPE), UIColor(red: 0.00, green: 0.34, blue: 0.63, alpha: 1)),
   ]
+  static let dark: [(UInt32, UIColor)] = [
+    (UInt32(STMD_RUN_TOKEN_KEYWORD), UIColor(red: 0.76, green: 0.60, blue: 1, alpha: 1)),
+    (UInt32(STMD_RUN_TOKEN_STRING), UIColor(red: 0.35, green: 0.90, blue: 0.59, alpha: 1)),
+    (UInt32(STMD_RUN_TOKEN_COMMENT), UIColor(red: 0.67, green: 0.72, blue: 0.80, alpha: 1)),
+    (UInt32(STMD_RUN_TOKEN_NUMBER), UIColor(red: 1.00, green: 0.76, blue: 0.35, alpha: 1)),
+    (UInt32(STMD_RUN_TOKEN_TYPE), UIColor(red: 0.38, green: 0.72, blue: 1, alpha: 1)),
+  ]
+}
+
+private func streamTextMarkdownTokenColor(flags: UInt32, base: UIColor) -> UIColor? {
+  // Most Markdown runs have no syntax token. Avoid dynamic-color resolution and five UIColor
+  // allocations for that hot streaming path; both palettes are immutable process-wide values.
+  guard flags & streamTextMarkdownTokenMask != 0 else { return nil }
+  let palette = streamTextMarkdownUsesLightSurface(base)
+    ? StreamTextMarkdownTokenPalette.light : StreamTextMarkdownTokenPalette.dark
+  for (flag, color) in palette where flags & flag != 0 { return color }
+  return nil
+}
+
+final class StreamTextMarkdownCodeStyle: NSObject {
+  let language: String
+  let lightSurface: Bool
+  let background: UIColor
+  let labelColor: UIColor
+  init(language: String, foreground: UIColor) {
+    self.language = language
+    lightSurface = streamTextMarkdownUsesLightSurface(foreground)
+    background = lightSurface ? UIColor(white: 0.08, alpha: 0.07) : UIColor(white: 1, alpha: 0.12)
+    labelColor = lightSurface ? UIColor(red: 0.25, green: 0.29, blue: 0.36, alpha: 1) : UIColor(red: 0.75, green: 0.80, blue: 0.88, alpha: 1)
+  }
+  override func isEqual(_ object: Any?) -> Bool {
+    guard let other = object as? StreamTextMarkdownCodeStyle else { return false }
+    return language == other.language && lightSurface == other.lightSurface
+  }
+  override var hash: Int { language.hashValue ^ (lightSurface ? 1 : 0) }
+}
+
+func streamTextMarkdownLanguageLabel(_ flags: UInt32) -> String {
+  switch flags & UInt32(STMD_RUN_LANGUAGE_MASK) {
+  case UInt32(STMD_RUN_LANGUAGE_JAVASCRIPT): return "JAVASCRIPT"
+  case UInt32(STMD_RUN_LANGUAGE_TYPESCRIPT): return "TYPESCRIPT"
+  case UInt32(STMD_RUN_LANGUAGE_JSON): return "JSON"
+  case UInt32(STMD_RUN_LANGUAGE_PYTHON): return "PYTHON"
+  default: return "CODE"
+  }
+}
 
 
 // Markdown is deliberately kept off the main thread. The C parser owns its output only until its
@@ -46,6 +107,13 @@ struct StreamTextMarkdownResult {
   var changedStart: Int = 0
 }
 
+/// Tables and asynchronously loaded images need their live attachment lifecycle. Fenced code and
+/// task controls use the same custom TextKit layout manager in the prepared canvas, so they retain
+/// the completed-layout cache rather than forcing another parser pass on every mount.
+func streamTextMarkdownRequiresLiveTextKit(_ result: StreamTextMarkdownResult) -> Bool {
+  !result.blocks.isEmpty
+}
+
 /// Synchronous only for the caller's worker thread (prepared-layout construction); streaming uses
 /// `StreamTextMarkdownPipeline` below. The C document is copied before the parser is reused.
 func streamTextMarkdownParse(_ data: Data, github: Bool) -> StreamTextMarkdownResult? {
@@ -55,10 +123,12 @@ func streamTextMarkdownParse(_ data: Data, github: Bool) -> StreamTextMarkdownRe
 }
 
 private func streamTextMarkdownParse(_ parser: OpaquePointer, _ data: Data,
-                                     github: Bool) -> StreamTextMarkdownResult? {
+                                     github: Bool, streamingFinal: Bool? = nil) -> StreamTextMarkdownResult? {
   return data.withUnsafeBytes { (bytes: UnsafeRawBufferPointer) -> StreamTextMarkdownResult? in
     let utf8 = bytes.bindMemory(to: CChar.self).baseAddress
-    guard let document = stmd_parse(parser, utf8, data.count, github), document.pointee.error == 0 else { return nil }
+    let document = streamingFinal.map { stmd_parse_streaming(parser, utf8, data.count, github, $0) }
+      ?? stmd_parse(parser, utf8, data.count, github)
+    guard let document, document.pointee.error == 0 else { return nil }
     let string = document.pointee.text.map {
       String(decoding: UnsafeBufferPointer(start: $0, count: document.pointee.textLength), as: UTF16.self)
     } ?? ""
@@ -145,8 +215,43 @@ func streamTextMarkdownAttributes(for run: StreamTextMarkdownRun,
     if run.flags & UInt32(STMD_RUN_QUOTE) != 0 { paragraph.headIndent += baseFont.pointSize }
     attributes[.paragraphStyle] = paragraph
   }
-  for (flag, color) in streamTextMarkdownTokenColors where run.flags & flag != 0 { attributes[.foregroundColor] = color; break }
+  if run.flags & UInt32(STMD_RUN_CODE_BLOCK) != 0 {
+    attributes[streamTextMarkdownCodeBlockAttribute] = StreamTextMarkdownCodeStyle(
+      language: streamTextMarkdownLanguageLabel(run.flags), foreground: base[.foregroundColor] as? UIColor ?? .label)
+  }
+  if let tokenColor = streamTextMarkdownTokenColor(flags: run.flags,
+    base: base[.foregroundColor] as? UIColor ?? .label) { attributes[.foregroundColor] = tokenColor }
   return attributes
+}
+
+/// Apply code-surface insets once per paragraph, with vertical breathing room only at a fenced
+/// block's outer edges. Doing it per syntax token would make every code line look double-spaced.
+func streamTextMarkdownStyleCodeBlocks(_ output: NSMutableAttributedString) {
+  guard output.length > 0 else { return }
+  let string = output.string as NSString
+  var paragraphs: [(range: NSRange, code: Bool)] = []
+  var cursor = 0
+  while cursor < string.length {
+    let range = string.lineRange(for: NSRange(location: cursor, length: 0))
+    let code = output.attribute(streamTextMarkdownCodeBlockAttribute, at: range.location, effectiveRange: nil) != nil
+    paragraphs.append((range, code))
+    cursor = NSMaxRange(range)
+  }
+  for index in paragraphs.indices where paragraphs[index].code {
+    let range = paragraphs[index].range
+    let previousIsCode = index > 0 && paragraphs[index - 1].code
+    let nextIsCode = index + 1 < paragraphs.count && paragraphs[index + 1].code
+    let current = output.attribute(.paragraphStyle, at: range.location, effectiveRange: nil) as? NSParagraphStyle
+    let paragraph = current?.mutableCopy() as? NSMutableParagraphStyle ?? NSMutableParagraphStyle()
+    paragraph.firstLineHeadIndent += 8
+    paragraph.headIndent += 8
+    paragraph.tailIndent -= 8
+    // This is a one-time fenced-block header band for its language label, never an interior
+    // code-line spacing change.
+    paragraph.paragraphSpacingBefore = previousIsCode ? 0 : max(paragraph.paragraphSpacingBefore, 26)
+    paragraph.paragraphSpacing = nextIsCode ? 0 : max(paragraph.paragraphSpacing, 5)
+    output.addAttribute(.paragraphStyle, value: paragraph, range: range)
+  }
 }
 
 func streamTextMarkdownAttributed(_ result: StreamTextMarkdownResult,
@@ -172,7 +277,11 @@ func streamTextMarkdownAttributed(_ result: StreamTextMarkdownResult,
     output.addAttributes(attributes,
                          range: NSRange(location: run.range.location, length: end - run.range.location))
   }
+  if result.runs.contains(where: { $0.flags & UInt32(STMD_RUN_CODE_BLOCK) != 0 }) {
+    streamTextMarkdownStyleCodeBlocks(output)
+  }
   streamTextMarkdownAttachBlocks(result.blocks, to: output, offset: 0, base: base, width: width)
+  streamTextMarkdownAttachTaskMarkers(result.runs, to: output, base: base)
   return output
 }
 
@@ -183,6 +292,7 @@ struct StreamTextMarkdownUpdate {
   let start: Int
   let suffix: NSAttributedString
   let sourceBytes: Int
+  let final: Bool
   let revision: Int
 }
 
@@ -197,6 +307,7 @@ final class StreamTextMarkdownPipeline {
   private struct Job {
     let data: Data
     let github: Bool
+    let final: Bool
     let revision: Int
     let attributes: [NSAttributedString.Key: Any]
     let width: CGFloat
@@ -212,12 +323,12 @@ final class StreamTextMarkdownPipeline {
 
   deinit { if let parser { stmd_destroy(parser) } }
 
-  func schedule(_ data: Data, github: Bool, revision: Int,
+  func schedule(_ data: Data, github: Bool, final: Bool, revision: Int,
                 attributes: [NSAttributedString.Key: Any], width: CGFloat,
                 deliver: @escaping (StreamTextMarkdownUpdate) -> Void) {
     let start: Bool = lock.withLock {
       guard !cancelled else { return false }
-      pending = Job(data: data, github: github, revision: revision, attributes: attributes, width: width, deliver: deliver)
+      pending = Job(data: data, github: github, final: final, revision: revision, attributes: attributes, width: width, deliver: deliver)
       guard !active else { return false }
       active = true
       return true
@@ -234,7 +345,9 @@ final class StreamTextMarkdownPipeline {
       return job
     }
     guard let job else { return }
-    let parsed = parser.flatMap { streamTextMarkdownParse($0, job.data, github: job.github) }
+    // Finality is part of the input identity: an open stream intentionally withholds incomplete
+    // syntax, while its terminal parse must restore those literal bytes even when no byte changed.
+    let parsed = parser.flatMap { streamTextMarkdownParse($0, job.data, github: job.github, streamingFinal: job.final) }
     var result: StreamTextMarkdownResult
     if let parsed { result = parsed } else {
       var raw = String(decoding: job.data, as: UTF8.self)
@@ -248,6 +361,34 @@ final class StreamTextMarkdownPipeline {
     }
     // Paragraph attributes/layout require invalidating the changed paragraph, not the document.
     while start > 0 && text.character(at: start - 1) != 10 { start -= 1 }
+    // A streamed parse can change the final line of a fenced block. Rebuilding only that line
+    // would leave the old block's bottom spacing in the retained prefix and treat the new line
+    // as a new block (adding its header spacing). Find its contiguous CODE_BLOCK run cluster in
+    // one pass: repeatedly searching every run for every earlier code line is quadratic on a
+    // large fence.
+    var clusterStart: Int?
+    var clusterEnd = 0
+    var codeBoundaryStart: Int?
+    let boundary = NSRange(location: max(0, start - 1), length: min(2, text.length - max(0, start - 1)))
+    for run in result.runs where run.flags & UInt32(STMD_RUN_CODE_BLOCK) != 0 {
+      let runEnd = NSMaxRange(run.range)
+      // Only overlapping code runs are one fenced block. A plain separator can be one character
+      // between adjacent fences; treating `clusterEnd + 1` as contiguous would reprocess every
+      // earlier fence in a long document.
+      if let currentStart = clusterStart, run.range.location <= clusterEnd {
+        clusterEnd = max(clusterEnd, runEnd)
+        if NSIntersectionRange(NSRange(location: currentStart, length: clusterEnd - currentStart), boundary).length > 0 {
+          codeBoundaryStart = currentStart
+        }
+      } else {
+        clusterStart = run.range.location
+        clusterEnd = runEnd
+        if NSIntersectionRange(run.range, boundary).length > 0 { codeBoundaryStart = run.range.location }
+      }
+    }
+    if let codeBoundaryStart, codeBoundaryStart < text.length {
+      start = text.lineRange(for: NSRange(location: codeBoundaryStart, length: 0)).location
+    }
     parsedBefore = parsed != nil
     let suffix = NSMutableAttributedString(string: text.substring(from: start), attributes: job.attributes)
     // Cache styles within this patch: repeated paragraphs should not construct the same UIFont
@@ -271,9 +412,21 @@ final class StreamTextMarkdownPipeline {
       }
       suffix.addAttributes(attributes, range: NSRange(location: from - start, length: end - from))
     }
+    if result.runs.contains(where: {
+      $0.flags & UInt32(STMD_RUN_CODE_BLOCK) != 0 && NSMaxRange($0.range) > start
+    }) {
+      streamTextMarkdownStyleCodeBlocks(suffix)
+    }
     streamTextMarkdownAttachBlocks(result.blocks, to: suffix, offset: start, base: job.attributes, width: job.width)
+    let localRuns = result.runs.compactMap { run -> StreamTextMarkdownRun? in
+      let from = max(start, run.range.location), to = min(text.length, NSMaxRange(run.range))
+      guard to > from else { return nil }
+      var local = run; local.range = NSRange(location: from - start, length: to - from)
+      return local
+    }
+    streamTextMarkdownAttachTaskMarkers(localRuns, to: suffix, base: job.attributes)
     let update = StreamTextMarkdownUpdate(result: result, start: start, suffix: suffix,
-                                          sourceBytes: job.data.count, revision: job.revision)
+                                          sourceBytes: job.data.count, final: job.final, revision: job.revision)
     DispatchQueue.main.async { [self] in
       if !lock.withLock({ cancelled }) { job.deliver(update) }
       // One in-flight result per view, including UI delivery. Memory stays bounded if UI is busy.

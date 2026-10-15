@@ -1,5 +1,6 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { Platform, Pressable, ScrollView, Text, View } from 'react-native';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { Platform, Pressable, ScrollView, Text, View, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
+import { StreamScrollFollow } from './StreamScrollFollow';
 import { StreamText, streamFetch, useStreamTextRef, type TextStream } from 'react-native-text-stream';
 
 const host = Platform.OS === 'android' ? '10.0.2.2' : '127.0.0.1';
@@ -63,43 +64,85 @@ export function MarkdownVisualStress({ onBack }: { onBack: () => void }) {
   </View>;
 }
 
-/** English announcement: the response is streamed by native networking, without JS chunk delivery. */
+/** English announcement: native networking, parsing and rendering; JS only controls the demo viewport. */
 export function MarkdownAnnouncement({ onBack }: { onBack: () => void }) {
   const ref = useStreamTextRef();
   const scroll = useRef<ScrollView>(null);
   const active = useRef<TextStream | null>(null);
+  const follow = useRef(new StreamScrollFollow());
+  const frame = useRef<number | null>(null);
   const [state, setState] = useState('ready');
-  useEffect(() => () => active.current?.abort(), []);
+  const [showLatest, setShowLatest] = useState(false);
+  const cancelFollow = useCallback(() => {
+    if (frame.current !== null) cancelAnimationFrame(frame.current);
+    frame.current = null;
+  }, []);
+  const followLatest = useCallback(() => {
+    if (!follow.current.shouldFollow || frame.current !== null) return;
+    // Coalesce layout callbacks. Never restart a scroll animation for each token.
+    frame.current = requestAnimationFrame(() => {
+      frame.current = null;
+      if (follow.current.shouldFollow) scroll.current?.scrollToEnd({ animated: false });
+    });
+  }, []);
+  useEffect(() => () => { active.current?.abort(); cancelFollow(); }, [cancelFollow]);
+  const beginGesture = () => { follow.current.beginGesture(); cancelFollow(); };
+  const endGesture = () => { follow.current.endGesture(); setShowLatest(!follow.current.following); followLatest(); };
+  const observeScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const { contentOffset, layoutMeasurement, contentSize } = event.nativeEvent;
+    const previous = follow.current.following;
+    follow.current.observe(contentOffset.y, layoutMeasurement.height, contentSize.height);
+    if (previous !== follow.current.following) setShowLatest(!follow.current.following);
+  };
   const start = () => {
-    active.current?.abort(); ref.clear(); scroll.current?.scrollTo({ y: 0, animated: false }); setState('streaming');
-    const stream = streamFetch(`http://${host}:9882/visual?case=announce&chunk=8&interval=150&run=${Date.now()}`);
+    active.current?.abort(); cancelFollow(); follow.current.reset(); setShowLatest(false);
+    ref.clear(); scroll.current?.scrollTo({ y: 0, animated: false }); setState('streaming');
+    const stream = streamFetch(`http://${host}:9882/visual?case=announce&chunk=8&interval=100&run=${Date.now()}`);
     active.current = stream; ref.attach(stream);
   };
-  return <View style={{ flex: 1, backgroundColor: '#0B1020', paddingHorizontal: 22, paddingTop: 20 }}>
+  const resume = () => { follow.current.resume(); setShowLatest(false); followLatest(); };
+  return <View style={{ flex: 1, backgroundColor: '#0B1020', paddingHorizontal: 18, paddingTop: 10 }}>
     <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-      <Text style={{ color: '#A997FF', fontWeight: '800', fontSize: 15, letterSpacing: 1.5 }}>STREAMTEXT</Text>
-      <Text style={{ color: '#7C8DAA', fontSize: 11 }}>REACT NATIVE</Text>
+      <Text style={{ color: '#B7A8FF', fontWeight: '800', fontSize: 13, letterSpacing: 1.5 }}>STREAMTEXT</Text>
+      <Text style={{ color: '#A5B3CB', fontSize: 11 }}>REACT NATIVE · iOS + Android</Text>
     </View>
-    <Text style={{ color: '#F2F5FF', fontSize: 32, fontWeight: '800', letterSpacing: -1, marginTop: 20 }}>Rich answers.{"\n"}Native streaming.</Text>
-    <Text style={{ color: '#A6B5CE', fontSize: 14, marginTop: 8, marginBottom: 20 }}>Introducing rich Markdown for StreamText.</Text>
-    <View style={{ backgroundColor: '#1C2540', padding: 14, borderRadius: 12, marginBottom: 14 }}>
-      <Text style={{ color: '#D2DCF0', fontSize: 13, lineHeight: 18 }}>Turn my focus app idea into a launch plan, with a UI direction and starter code.</Text>
+    <Text style={{ color: '#F2F5FF', fontSize: 26, fontWeight: '800', letterSpacing: -0.7, marginTop: 10 }}>Markdown. In motion.</Text>
+    <Text style={{ color: '#B2BED3', fontSize: 12, marginTop: 4, marginBottom: 12 }}>Rich answers, streamed and rendered natively.</Text>
+    <View style={{ backgroundColor: '#1C2540', padding: 12, borderRadius: 12, marginBottom: 12 }}>
+      <Text style={{ color: '#DCE4F3', fontSize: 13, lineHeight: 18 }}>Turn my focus app idea into a launch plan, with a UI direction and starter code.</Text>
     </View>
-    <View style={{ flex: 1, backgroundColor: '#131D30', borderRadius: 18, borderWidth: 1, borderColor: '#26364F', overflow: 'hidden' }}>
-      <View style={{ padding: 16, borderBottomWidth: 1, borderColor: '#26364F', flexDirection: 'row', justifyContent: 'space-between' }}>
+    <View style={{ flex: 1, backgroundColor: '#131D30', borderRadius: 16, borderWidth: 1, borderColor: '#33435E', overflow: 'hidden' }}>
+      <View style={{ padding: 12, borderBottomWidth: 1, borderColor: '#33435E', flexDirection: 'row', justifyContent: 'space-between' }}>
         <Text style={{ color: '#E8EEFA', fontSize: 13, fontWeight: '600' }}>Daylight · Product agent</Text>
-        <Text style={{ color: '#79E2C6', fontSize: 11 }}>{state === 'done' ? 'COMPLETE ✓' : state === 'streaming' ? '● STREAMING' : 'READY'}</Text>
+        <Text accessibilityLiveRegion="polite" style={{ color: state === 'error' ? '#FFB4AB' : '#8BE6CE', fontSize: 10 }}>{state === 'done' ? 'COMPLETE ✓' : state === 'streaming' ? '● STREAMING' : state === 'error' ? 'RETRY' : 'READY'}</Text>
       </View>
-      <ScrollView ref={scroll} contentContainerStyle={{ padding: 16, paddingBottom: 24 }}
-        onContentSizeChange={() => { if (state !== 'ready') scroll.current?.scrollToEnd({ animated: true }); }}>
+      <ScrollView ref={scroll} contentContainerStyle={{ padding: 14, paddingBottom: 24 }} scrollEventThrottle={32}
+        onContentSizeChange={followLatest} onScroll={observeScroll}
+        onScrollBeginDrag={beginGesture} onScrollEndDrag={endGesture}
+        onMomentumScrollBegin={beginGesture} onMomentumScrollEnd={endGesture}>
         <StreamText ref={ref} format="markdown" markdownFlavor="gfm" fontSize={16} lineHeight={24} color="#EDF2FC"
-          onStatusChange={status => { if (status === 'done' || status === 'error') setState(status); }} />
+          onStatusChange={status => {
+            if (status === 'done') setState('done');
+            else if (status === 'error' || status === 'cancelled' || status === 'truncated') setState('error');
+          }} />
       </ScrollView>
+      {showLatest && <Pressable accessibilityRole="button" accessibilityLabel="Jump to latest" onPress={resume}
+        style={{ position: 'absolute', bottom: 12, alignSelf: 'center', backgroundColor: '#E4DDFF', paddingHorizontal: 14, paddingVertical: 9, borderRadius: 20 }}>
+        <Text style={{ color: '#17112E', fontSize: 12, fontWeight: '600' }}>↓ Latest</Text>
+      </Pressable>}
+      {(state === 'ready' || state === 'error') && <Pressable accessibilityRole="button" accessibilityLabel="Generate launch plan" onPress={start}
+        style={{ position: 'absolute', bottom: 18, left: 18, right: 18, backgroundColor: '#B7A8FF', padding: 12, borderRadius: 12 }}>
+        <Text style={{ color: '#101426', textAlign: 'center', fontWeight: '700' }}>Generate launch plan</Text>
+      </Pressable>}
     </View>
-    <Text style={{ color: '#A6B5CE', textAlign: 'center', fontSize: 12, paddingVertical: 16 }}>react-native-text-stream · iOS + Android</Text>
-    {state === 'ready' && <Pressable accessibilityLabel="Record demo" onPress={start} style={{ backgroundColor: '#A997FF', padding: 14, borderRadius: 12, marginBottom: 10 }}>
-      <Text style={{ color: '#101426', textAlign: 'center', fontWeight: '700' }}>Generate launch plan</Text>
-    </Pressable>}
-    {state === 'done' && <Pressable accessibilityLabel="Back to visual tests" onPress={onBack} style={{ position: 'absolute', top: 0, right: 0, width: 40, height: 35 }} />}
+    <View style={{ minHeight: 38, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+      <Text style={{ color: '#B2BED3', fontSize: 11 }}>react-native-text-stream</Text>
+      {state === 'done' && <Pressable accessibilityRole="button" accessibilityLabel="Replay response" onPress={start} hitSlop={8}>
+        <Text style={{ color: '#C0B2FF', fontSize: 11 }}>Replay ↻</Text>
+      </Pressable>}
+      <Pressable accessibilityRole="button" accessibilityLabel="Back to visual tests" onPress={onBack} hitSlop={8}>
+        <Text style={{ color: '#B2BED3', fontSize: 11 }}>Native Markdown</Text>
+      </Pressable>
+    </View>
   </View>;
 }

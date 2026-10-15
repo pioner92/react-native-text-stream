@@ -73,7 +73,8 @@ public final class StreamTextPreparedLayout: NSObject {
   @objc public convenience init?(markdownUTF8 utf8: UnsafePointer<UInt8>, count: Int, bytes: UInt64,
                                  github: Bool, style: StreamTextStyle, width: CGFloat) {
     let data = Data(bytes: utf8, count: count)
-    guard let result = streamTextMarkdownParse(data, github: github), result.blocks.isEmpty else { return nil }
+    guard let result = streamTextMarkdownParse(data, github: github),
+          !streamTextMarkdownRequiresLiveTextKit(result) else { return nil }
     self.init(text: streamTextMarkdownAttributed(result, base: style.attributes()), markdownResult: result,
               bytes: bytes, style: style, width: width)
   }
@@ -216,7 +217,9 @@ private struct LineGeometry {
 /// TextKit 1, set up as the renderer's text view.
 private final class TextKitLines {
   private let storage = NSTextStorage()
-  private let layoutManager = NSLayoutManager()
+  // Match the live view's fenced-code surfaces. It remains TextKit-only and is used entirely on
+  // the preparation queue, so completed Markdown still comes from the cache without main work.
+  private let layoutManager = StreamTextMarkdownLayoutManager()
   private let container: NSTextContainer
   /// Tiles may draw off the main thread; NSLayoutManager is not safe for concurrent use.
   private let lock = NSLock()
@@ -892,9 +895,12 @@ final class StreamTextCanvas: UIView {
       // Off screen: the end, as before.
       let text = layout.text.string as NSString
       let length = text.length
-      guard length > Self.accessibleTailCharacters else { return text as String }
+      guard length > Self.accessibleTailCharacters else {
+        return streamTextMarkdownAccessibleText(layout.text, range: NSRange(location: 0, length: length))
+      }
       let start = text.rangeOfComposedCharacterSequence(at: length - Self.accessibleTailCharacters).location
-      return "…" + text.substring(from: start)
+      return "…" + streamTextMarkdownAccessibleText(layout.text,
+        range: NSRange(location: start, length: length - start))
     }
     set {}
   }
@@ -917,7 +923,8 @@ final class StreamTextCanvas: UIView {
           let first = lines.firstIndex(where: { $0.frame.maxY > visible.minY }),
           let last = lines.lastIndex(where: { $0.frame.minY < visible.maxY }), first <= last else { return nil }
     let start = lines[first].range.location
-    return (layout.text.string as NSString).substring(with: NSRange(location: start, length: NSMaxRange(lines[last].range) - start))
+    return streamTextMarkdownAccessibleText(layout.text,
+      range: NSRange(location: start, length: NSMaxRange(lines[last].range) - start))
   }
 }
 
@@ -933,7 +940,7 @@ extension StreamTextCanvas: UIAccessibilityReadingContent {
   func accessibilityContent(forLineNumber lineNumber: Int) -> String? {
     let lines = layout.lineBoxes
     guard lines.indices.contains(lineNumber) else { return nil }
-    return (layout.text.string as NSString).substring(with: lines[lineNumber].range)
+    return streamTextMarkdownAccessibleText(layout.text, range: lines[lineNumber].range)
       .trimmingCharacters(in: .newlines)
   }
 

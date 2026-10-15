@@ -1,9 +1,41 @@
 package com.textstream
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class StreamTextMarkdownTest {
+
+  @Test fun syntaxPaletteKeepsFourPointFiveContrastOnLightAndDarkSurfaces() {
+    fun channel(color: Int, shift: Int): Double {
+      val linear = ((color ushr shift) and 0xff) / 255.0
+      return if (linear <= .04045) linear / 12.92 else Math.pow((linear + .055) / 1.055, 2.4)
+    }
+    fun luminance(color: Int) = .2126 * channel(color, 16) + .7152 * channel(color, 8) + .0722 * channel(color, 0)
+    fun contrast(a: Int, b: Int): Double {
+      val (bright, dark) = listOf(luminance(a), luminance(b)).sortedDescending()
+      return (bright + .05) / (dark + .05)
+    }
+    fun over(foreground: Int, background: Int): Int {
+      val alpha = (foreground ushr 24 and 0xff) / 255.0
+      fun channel(shift: Int): Int {
+        val front = foreground ushr shift and 0xff
+        val back = background ushr shift and 0xff
+        return (front * alpha + back * (1.0 - alpha)).toInt()
+      }
+      return 0xff000000.toInt() or (channel(16) shl 16) or (channel(8) shl 8) or channel(0)
+    }
+    val kinds = intArrayOf(StreamTextMarkdown.TOKEN_KEYWORD, StreamTextMarkdown.TOKEN_STRING,
+        StreamTextMarkdown.TOKEN_COMMENT, StreamTextMarkdown.TOKEN_NUMBER, StreamTextMarkdown.TOKEN_TYPE)
+    // MarkdownCodeBlockSpan draws the current text RGB with alpha 0x24 over the page. Verify
+    // contrast against this real composited surface, not only the page behind it.
+    val lightSurface = over(0x24101217, 0xffffffff.toInt())
+    val darkSurface = over(0x24f2f4f8, 0xff0b1020.toInt())
+    for (kind in kinds) {
+      assertTrue("light $kind", contrast(StreamTextMarkdown.syntaxColor(0xff101217.toInt(), kind), lightSurface) >= 4.5)
+      assertTrue("dark $kind", contrast(StreamTextMarkdown.syntaxColor(0xfff2f4f8.toInt(), kind), darkSurface) >= 4.5)
+    }
+  }
 
   @Test fun codeTokensUseOneParagraphMargin() {
     val margins = StreamTextMarkdown.codeBlockMarginRanges(
@@ -22,6 +54,40 @@ class StreamTextMarkdownTest {
     assertEquals(listOf(0 to 7, 8 to 13, 14 to 18), margins)
   }
 
+  @Test fun codeBlockClusterRewindsSuffixToFirstFenceParagraph() {
+    val text = "before\nconst answer = streamFetch(\n  '/plan'\n)\nafter"
+    val starts = intArrayOf(7, 35, 45)
+    // Native code runs include each source-body newline; the fence separator itself is plain.
+    val lengths = intArrayOf(28, 10, 2)
+    val flags = intArrayOf(StreamTextMarkdown.CODE_BLOCK, StreamTextMarkdown.CODE_BLOCK, StreamTextMarkdown.CODE_BLOCK)
+    // A parser run can span more than one physical code paragraph; a later suffix must still
+    // replace the first one so its single surface/header cannot overlap the new suffix spans.
+    assertEquals(7, StreamTextMarkdown.codeBlockClusterStart(text, starts, lengths, flags, 35))
+    assertEquals(7, StreamTextMarkdown.codeBlockClusterStart(text, starts, lengths, flags, 45))
+    // A plain separator between adjacent fences is a real gap, so they must not become one
+    // retained suffix section merely because their paragraphs sit next to each other.
+    val separateFences = "alpha\n\nbeta\n"
+    val fenceStarts = intArrayOf(0, 7)
+    val fenceLengths = intArrayOf(6, 5)
+    val fenceFlags = intArrayOf(StreamTextMarkdown.CODE_BLOCK, StreamTextMarkdown.CODE_BLOCK)
+    assertEquals(0, StreamTextMarkdown.codeBlockClusterStart(separateFences, fenceStarts, fenceLengths, fenceFlags, 6))
+    assertEquals(7, StreamTextMarkdown.codeBlockClusterStart(separateFences, fenceStarts, fenceLengths, fenceFlags, 7))
+  }
+
+  @Test fun codeLanguageHeaderAppearsOnceForAContiguousFence() {
+    assertEquals(listOf("JS", null, "TS"), StreamTextMarkdown.codeLanguageSectionLabels(
+        listOf(0 to 13, 14 to 27, 30 to 40), listOf("JS", "JS", "TS")))
+  }
+
+  @Test fun codeSurfaceKeepsSparseLanguageMetadataInOneContiguousSection() {
+    val sections = StreamTextMarkdown.codeBlockSections(
+        listOf(0 to 9, 10 to 19, 20 to 29, 31 to 40), listOf("TS", null, "TS", "JSON"))
+    assertEquals(listOf<StreamTextMarkdown.Companion.CodeBlockSection>(
+        StreamTextMarkdown.Companion.CodeBlockSection(0, 29, "TS", 9),
+        StreamTextMarkdown.Companion.CodeBlockSection(31, 40, "JSON", 40),
+    ), sections)
+  }
+
   @Test fun multilineCodeRunKeepsMarginsForEveryCoveredParagraph() {
     val margins = StreamTextMarkdown.codeBlockMarginRanges(
         "one\ntwo\nplain", intArrayOf(0), intArrayOf(7), intArrayOf(StreamTextMarkdown.CODE_BLOCK))
@@ -34,6 +100,24 @@ class StreamTextMarkdownTest {
         intArrayOf(StreamTextMarkdown.QUOTE, StreamTextMarkdown.QUOTE, 0, 0), intArrayOf(0, 0, 2, 2))
     assertEquals(listOf("0:13:true:0", "14:23:false:2"),
         decorations.map { "${it.start}:${it.end}:${it.quote}:${it.indent}" })
+  }
+
+  @Test fun taskMarkersRecognizeOnlyLineContentEdges() {
+    assertEquals(listOf("0:true", "9:false", "20:true"),
+        StreamTextMarkdown.taskMarkers("[x] done\n[ ] todo\n> [X] quoted\ninline [x] stays text",
+            intArrayOf(0, 9, 18, 27), intArrayOf(8, 8, 12, 21), IntArray(4), intArrayOf(1, 1, 1, 0))
+            .map { "${it.start}:${it.checked}" })
+  }
+
+  @Test fun taskMarkersHandleLargeListsWithoutScanningEveryRunPerLine() {
+    val text = buildString { repeat(1000) { append("[x] row-").append(it).append('\n') } }
+    val starts = IntArray(1000)
+    var offset = 0
+    repeat(1000) { index -> starts[index] = offset; offset += "[x] row-$index\n".length }
+    val markers = StreamTextMarkdown.taskMarkers(text, starts, IntArray(1000) { 8 }, IntArray(1000), IntArray(1000) { 1 })
+    assertEquals(1000, markers.size)
+    assertEquals(0, markers.first().start)
+    assertEquals(starts.last(), markers.last().start)
   }
   private fun cell(text: String = "cell", flags: Int = 0, url: String? = null, alignment: Int = 1, header: Boolean = false) =
       StreamTextMarkdown.RichCell(text, intArrayOf(0), intArrayOf(text.length), intArrayOf(flags),
@@ -52,6 +136,22 @@ class StreamTextMarkdownTest {
     val longTable = rich(table(cell("🚀".repeat(5000)))).accessibleReading(0, 100).text
     org.junit.Assert.assertTrue(longTable.length <= 100)
     org.junit.Assert.assertFalse(Character.isHighSurrogate(longTable.last()))
+  }
+
+  @Test fun accessibleReadingDescribesParserConfirmedTaskState() {
+    val text = "[x] done\n[ ] todo\nprose [x] stays"
+    val document = document(text, intArrayOf(0, 9, 18), intArrayOf(8, 8, 17), IntArray(3),
+        IntArray(3), intArrayOf(1, 1, 0), arrayOf(null, null, null))
+    assertEquals("Checked task done\nUnchecked task todo\nprose [x] stays", document.accessibleReading(0, 200).text)
+  }
+
+  @Test fun accessibleReadingKeepsSemanticExpansionInsideTheVisibleSourceRange() {
+    val text = "[x] done\n[ ] next\noffscreen"
+    val document = document(text, intArrayOf(0, 9, 18), intArrayOf(8, 8, 9), IntArray(3),
+        IntArray(3), intArrayOf(1, 1, 0), arrayOf(null, null, null))
+    val visible = document.accessibleReading(0, 200, sourceEnd = 17).text
+    assertEquals("Checked task done\nUnchecked task next", visible)
+    assertTrue("visible range must not bleed into later source", !visible.contains("offscreen"))
   }
 
   @Test fun tableMetadataChangesInvalidateTheUnchangedPlaceholder() {

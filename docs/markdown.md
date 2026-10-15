@@ -24,7 +24,8 @@ code, ordered/unordered/nested lists, task markers, blockquotes and links. GFM t
 render as native grids with header styling, column alignment and wrapped cells.
 The grid fits the available width and reflows when the view resizes.
 
-Fenced code uses a monospace font. An explicit `js`/`javascript`/`jsx`,
+Fenced code uses a monospace font, a separate native surface and a language label.
+Read-only task items use native checkbox markers. An explicit `js`/`javascript`/`jsx`,
 `ts`/`typescript`/`tsx`, `json`, or `py`/`python` language enables native lexical
 highlighting of keywords, strings, comments, numbers and TypeScript primitive types.
 Unknown or missing languages remain plain monospace. This is a bounded lexical
@@ -43,10 +44,13 @@ this API yet. Task markers are read-only. HTML rendering, math, diagrams and
 horizontal table scrolling are not included. Native selection represents a table
 or image as an attachment; `getText()` remains the way to retrieve the full source.
 
-An unfinished construct is parsed according to its currently available prefix.
-For example, an unmatched `**` can remain literal until the closing delimiter
-arrives. This version does not invent missing Markdown delimiters. A reference
-link definition may change an earlier paragraph when it arrives.
+While a source is open, a bounded trailing-syntax projection keeps unfinished
+emphasis/code readable, hides incomplete link/image destinations and withholds
+ambiguous table headers or partial rows. This affects presentation only. At any
+terminal status the exact source is parsed again, including when no new byte
+arrived; unmatched syntax then follows normal CommonMark/GFM literal behavior.
+Prepared content also uses that exact final parse. A reference link definition
+may still change an earlier paragraph when it arrives.
 
 `getText()` and `TextStream.text()` return the **original source**, including
 Markdown punctuation. Status event byte counts also refer to UTF-8 source bytes,
@@ -83,6 +87,9 @@ processing every network chunk separately would repeatedly scan the accumulated
 prefix. Coalescing limits how often snapshots are processed; it does not change
 that algorithmic cost. A very long single paragraph can also require substantial
 native layout work. Do not apply the plain-text benchmark figures to Markdown.
+The progressive projection examines a bounded tail, but applying it can copy the
+accumulated prefix and inspect fence context across the source. It does not remove
+the full-snapshot cost.
 
 ## Verification
 
@@ -136,6 +143,9 @@ See [measured parser costs](markdown-performance.md).
 
 The dedicated devices are `StreamText Markdown` (iPhone 17 Pro Max, iOS 26.5)
 and `StreamText_Markdown_Tests` (Pixel 8, Android 15 arm64 emulator).
+
+See [streaming polish validation](markdown-streaming-polish.md) for the subsequent
+partial-syntax, task-marker, code-surface and announcement-video pass.
 # Performance evidence
 
 See [rich Markdown performance evidence](markdown-rich-performance.md).

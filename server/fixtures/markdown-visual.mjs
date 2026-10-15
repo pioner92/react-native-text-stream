@@ -33,23 +33,33 @@ Use warm paper, forest text, and sunlit accents. Lead with \`Today’s focus\`, 
   2. Review completion notes weekly
   3. Keep only habits people return to
 
-| Moment | Daylight choice | Why it matters |
-| :--- | :---: | ---: |
-| Morning | One focus card | reduces decision fatigue |
-| Midday | Gentle reset | makes drift recoverable |
-| Evening | Two-line reflection | closes the loop |
+| When | Experience | Purpose |
+| :--- | :--- | :--- |
+| Morning | One focus card | Find clarity |
+| Midday | Gentle reset | Start again |
+| Evening | Brief reflection | Close the loop |
 
 > “A focus app earns trust when it leaves people with more attention than it takes.”
 
 ## Starter shape
 
 \`\`\`ts
-type Focus = { title: string; minutes: number; done: boolean };
-const begin = (focus: Focus) => ({ ...focus, minutes: 25 });
+type Focus = {
+  title: string;
+  minutes: number;
+};
+const begin = (
+  title: string
+): Focus => ({
+  title, minutes: 25
+});
 \`\`\`
 
 \`\`\`json
-{ "theme": "daylight", "dailyFocusLimit": 1 }
+{
+  "theme": "daylight",
+  "dailyFocusLimit": 1
+}
 \`\`\`
 
 Start with the ritual, measure *returning calm*, and let the product grow from there.` }

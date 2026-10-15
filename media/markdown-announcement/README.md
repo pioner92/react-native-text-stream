@@ -1,7 +1,7 @@
 # StreamText rich Markdown announcement
 
-Final local export: `streamtext-rich-markdown-twitter.mp4` — 34.03 seconds,
-1080×1920, 30 fps, H.264/yuv420p, 3.58 MB. Full decoding verified without errors.
+Final local export: `streamtext-rich-markdown-twitter-v2.mp4` — 23.00 seconds,
+1080×1920, 30 fps, H.264/yuv420p, 2.43 MB. Full decoding verified without errors.
 
 English simulated product-agent answer: “Turn my focus app idea into a launch
 plan, with a UI direction and starter code.” It develops the fictional Daylight
@@ -9,7 +9,7 @@ focus app, including a local concept illustration, formatted prose, checklist,
 nested launch steps, comparison table, quote, link and highlighted TS/JSON code.
 
 The app uses the production native `streamFetch` → `StreamText` Markdown path.
-The loopback server emits eight UTF-8 bytes every 150 ms (about 28 seconds for
+The loopback server emits eight UTF-8 bytes every 100 ms (about 19 seconds for
 this fixture); no live AI generation is claimed. Auto-scrolling belongs to the
 example screen, while Markdown parsing/layout/image loading are native.
 
@@ -24,3 +24,8 @@ requested. Raw capture and exported video remain local, untracked artifacts.
 
 See `docs/markdown-visual-stress.md` for the wider iOS/Android test matrix and
 renderer defects caught before recording.
+
+The v2 pass adds inset language headers, a 6–8 pt/dp label-to-code gap and 4 pt/dp
+corners, fixes transitional emphasis/table syntax, and respects manual scrolling.
+Review evidence and limits: `docs/markdown-streaming-polish.md`. The earlier export
+and intermediate takes are retained locally; use the `twitter-v2` file above.

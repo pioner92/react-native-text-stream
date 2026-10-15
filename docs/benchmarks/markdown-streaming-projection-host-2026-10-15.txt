@@ -1,0 +1,21 @@
+# Host-only parser run recorded while native builds were active; do not compare it as an isolated machine benchmark.
+retained markdown 5120 bytes: 79.6618 MB/s
+create markdown 5120 bytes: 79.9552 MB/s
+streaming final-shaped 5120 bytes: 78.0716 MB/s; projected incomplete tail: 77.6385 MB/s
+delta 17 after 5120 bytes: 0.060791 ms, changed 1864 UTF-16
+delta 128 after 5120 bytes: 0.060666 ms, changed 1824 UTF-16
+delta 1024 after 5120 bytes: 0.058417 ms, changed 1495 UTF-16
+stream 17 -> 5120 bytes: 302 parses, 10.3122 ms total, p50/p95/p99 0.036125/0.058459/0.084041 ms, source amplification 151.912x
+stream 128 -> 5120 bytes: 40 parses, 1.24671 ms total, p50/p95/p99 0.03/0.056625/0.059292 ms, source amplification 20.5x
+stream 1024 -> 5120 bytes: 5 parses, 0.179791 ms total, p50/p95/p99 0.035833/0.047459/0.047459 ms, source amplification 3x
+retained markdown 102400 bytes: 85.869 MB/s
+create markdown 102400 bytes: 83.3799 MB/s
+streaming final-shaped 102400 bytes: 82.4286 MB/s; projected incomplete tail: 83.1733 MB/s
+streaming held-tail 102423 bytes: 83.4009 MB/s (full-prefix parse plus active-tail projection path)
+delta 17 after 102400 bytes: 1.16008 ms, changed 37406 UTF-16
+delta 128 after 102400 bytes: 1.15892 ms, changed 37367 UTF-16
+delta 1024 after 102400 bytes: 1.16746 ms, changed 37038 UTF-16
+stream 17 -> 102400 bytes: 6024 parses, 3926.18 ms total, p50/p95/p99 0.608708/1.2175/2.51271 ms, source amplification 3012.74x
+stream 128 -> 102400 bytes: 800 parses, 498.667 ms total, p50/p95/p99 0.592583/1.18754/1.64275 ms, source amplification 400.5x
+stream 1024 -> 102400 bytes: 100 parses, 61.3989 ms total, p50/p95/p99 0.601958/1.12888/1.17246 ms, source amplification 50.5x
+Markdown syntax lexer checks passed

@@ -288,10 +288,11 @@ struct JStreamTextNative : jni::JavaClass<JStreamTextNative> {
   }
 
   /** MD4C output materialized as primitive arrays; invoked only on StreamTextMarkdown workers. */
-  static jni::local_ref<JStreamTextMarkdown> parseMarkdown(
+  static jni::local_ref<JStreamTextMarkdown> parseMarkdownStreaming(
       jni::alias_ref<jclass>,
       jni::alias_ref<jstring> markdown,
-      jboolean github) {
+      jboolean github,
+      jboolean final) {
     if (!markdown) return nullptr;
     const auto input = markdown->toStdString();
     // The fixed Markdown worker pool owns at most two of these. Keeping MD4C's vectors avoids
@@ -300,8 +301,8 @@ struct JStreamTextNative : jni::JavaClass<JStreamTextNative> {
     STMarkdownParser *parser = holder.parser;
     if (!parser) parser = holder.parser = stmd_create();
     if (!parser) return nullptr;
-    const STMarkdownDocument *document = stmd_parse_decoded(
-        parser, input.data(), input.size(), github == JNI_TRUE);
+    const STMarkdownDocument *document = stmd_parse_decoded_streaming(
+        parser, input.data(), input.size(), github == JNI_TRUE, final == JNI_TRUE);
     if (!document || document->textLength > static_cast<size_t>(INT32_MAX) ||
         document->runCount > static_cast<size_t>(INT32_MAX)) {
       return nullptr;
@@ -395,7 +396,7 @@ struct JStreamTextNative : jni::JavaClass<JStreamTextNative> {
         makeNativeMethod("capacity", JStreamTextNative::capacity),
         makeNativeMethod("committed", JStreamTextNative::committed),
         makeNativeMethod("status", JStreamTextNative::status),
-        makeNativeMethod("parseMarkdown", JStreamTextNative::parseMarkdown),
+        makeNativeMethod("parseMarkdownStreaming", JStreamTextNative::parseMarkdownStreaming),
     });
   }
 };

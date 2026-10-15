@@ -116,7 +116,7 @@ class StreamTextPreparedLayout private constructor(
       val rawText = out.toString()
       val markdown = format == "markdown"
       // This runs on the existing prepare worker; spans and StaticLayout are ready before mount.
-      val document = if (markdown) StreamTextNative.parseMarkdown(rawText, markdownFlavor == "gfm") else null
+      val document = if (markdown) StreamTextNative.parseMarkdownStreaming(rawText, markdownFlavor == "gfm", true) else null
       // Rich attachments require view-owned loading and width-aware layout; a prepared canvas
       // cannot safely cache mutable image spans or a table measured before its view has a width.
       if (document?.hasRichBlocks == true) return null

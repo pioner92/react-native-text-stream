@@ -133,8 +133,8 @@ class StreamTextView(context: Context) : ReactViewGroup(context) {
   private var markdownRevision = 0L
   private var markdownParseScheduled = false
   private var pendingMarkdownTerminal: Pair<String, Long>? = null
-  private val markdownWorker = StreamTextMarkdownWorker { revision, bytes, document, styled, changedStart, acknowledge ->
-    post { applyMarkdown(revision, bytes, document, styled, changedStart); acknowledge() }
+  private val markdownWorker = StreamTextMarkdownWorker { revision, bytes, final, document, styled, changedStart, acknowledge ->
+    post { applyMarkdown(revision, bytes, final, document, styled, changedStart); acknowledge() }
   }
   private val chunk = ByteArray(SLICE_BYTES)
   private val watcher = StreamTextWatcher { watcherWoke() }
@@ -691,16 +691,20 @@ class StreamTextView(context: Context) : ReactViewGroup(context) {
       markdownParseScheduled = false
       if (!markdownEnabled) return@postDelayed
       val revision = markdownRevision
-      markdownWorker.submit(markdownSource.toString(), revision, offset, githubMarkdown, paint.color, layoutWidth.coerceAtLeast(1), style)
+      markdownWorker.submit(markdownSource.toString(), revision, offset, githubMarkdown, paint.color, layoutWidth.coerceAtLeast(1), style, final = finished)
     }, delay)
   }
 
-  private fun applyMarkdown(revision: Long, bytes: Long, document: StreamTextMarkdown, styled: CharSequence, changedStart: Int) {
+  private fun applyMarkdown(revision: Long, bytes: Long, final: Boolean, document: StreamTextMarkdown, styled: CharSequence, changedStart: Int) {
     if (!markdownEnabled || revision != markdownRevision) return
     markdownDocument = document
     // An unfinished delimiter can restyle earlier text. A frozen prefix would therefore be stale.
     selection.dismiss()
     var safeStart = changedStart.coerceIn(0, styled.length)
+    // A fenced-code surface/header span covers all adjacent code paragraphs. Replacing only the
+    // changed token would retain a clipped prefix span and overlap it with the new suffix.
+    // Do this before paragraph rewind: a list or quote marker can precede the code run.
+    safeStart = document.codeBlockClusterStart(safeStart)
     // DynamicLayout reflows paragraphs. Start at one, and never cut between UTF-16 surrogates.
     while (safeStart > 0 && styled[safeStart - 1] != '\n') safeStart--
     if (safeStart in 1 until styled.length && Character.isLowSurrogate(styled[safeStart]) && Character.isHighSurrogate(styled[safeStart - 1])) safeStart--
@@ -739,7 +743,7 @@ class StreamTextView(context: Context) : ReactViewGroup(context) {
     if (displayLogKey != null) unloggedShown = bytes
     reportHeight()
     pendingMarkdownTerminal?.let { (status, terminalBytes) ->
-      if (bytes >= terminalBytes) {
+      if (final && bytes >= terminalBytes) {
         pendingMarkdownTerminal = null
         if (displayLogKey != null) unloggedShown = terminalBytes
         reportStatus(status, terminalBytes)
@@ -1205,6 +1209,12 @@ class StreamTextView(context: Context) : ReactViewGroup(context) {
         val first = layout.getLineForVertical(max(top, 0))
         val last = layout.getLineForVertical(min(bottom, layout.height))
         val from = layout.getLineStart(first)
+        // A prepared Markdown canvas stores its original parsed document alongside the styled
+        // text. Read its semantic projection here instead of the display glyphs: task boxes and
+        // rich-object replacement characters otherwise leak into TalkBack only on canvas paths.
+        prepared.markdownDocument?.let { document ->
+          return document.accessibleReading(from, ACCESSIBLE_TAIL_CHARS, layout.getLineEnd(last))
+        }
         return StreamTextReading(
             prepared.text.substring(from, layout.getLineEnd(last)), IntArray(last - first + 1) { layout.getLineStart(first + it) - from })
       }
@@ -1219,7 +1229,10 @@ class StreamTextView(context: Context) : ReactViewGroup(context) {
     var start = max(length - ACCESSIBLE_TAIL_CHARS, 0)
     // Not from the middle of a surrogate pair.
     if (start > 0 && Character.isLowSurrogate(shown[start])) start++
-    if (markdownDocument?.hasRichBlocks == true) {
+    // Markdown carries semantic replacements for task markers as well as rich attachments.
+    // Do this for every parsed Markdown document so a prepared canvas and a streaming layout
+    // expose the same TalkBack value.
+    if (markdownDocument != null) {
       return markdownDocument!!.accessibleReading(start, ACCESSIBLE_TAIL_CHARS)
     }
     val prefix = if (start > 0) "…" else ""

@@ -2,9 +2,9 @@
   "host": "macOS-26.6.2-arm64-arm-64bit-Mach-O",
   "architecture": "arm64",
   "compiler": "Apple clang version 21.0.0 (clang-2100.1.1.101)",
-  "baselineCommit": "867c2657f4bd128c97b33e5fed9948782377673a",
-  "currentCommit": "867c2657f4bd128c97b33e5fed9948782377673a",
-  "currentParserSha256": "69b3a9c9e37b05b8790187d15e3da1f35f19afa8dbf4e303d8b5fd97d68b4eaa",
+  "baselineCommit": "964ee455cfac99eaf866893bb26c9cb9cbd2689f",
+  "currentCommit": "964ee455cfac99eaf866893bb26c9cb9cbd2689f",
+  "currentParserSha256": "d6d89386d0e44257f87872bfd7263f336047515343f0073f3fbfc1d22d60c366",
   "iterationsPerBatch": 20,
   "batches": 5,
   "warmupParses": 5,
@@ -15,286 +15,308 @@
         "case": "ordinary-5120",
         "sourceBytes": 5180,
         "freshParser": false,
-        "medianMs": 0.0394979,
+        "mode": "final",
+        "medianMs": 0.0385313,
         "batchesMs": [
-          0.0394979,
-          0.0404041,
-          0.0405709,
-          0.0388459,
-          0.037902
+          0.0385313,
+          0.0445083,
+          0.0396604,
+          0.0374625,
+          0.0378146
         ]
       },
       {
         "case": "ordinary-5120",
         "sourceBytes": 5180,
         "freshParser": true,
-        "medianMs": 0.0386312,
+        "mode": "final",
+        "medianMs": 0.038475,
         "batchesMs": [
-          0.0388084,
-          0.0407667,
-          0.0386042,
-          0.0385937,
-          0.0386312
+          0.0394833,
+          0.038475,
+          0.0381083,
+          0.0383645,
+          0.040377
         ]
       },
       {
         "case": "ordinary-102400",
         "sourceBytes": 102410,
         "freshParser": false,
-        "medianMs": 0.757713,
+        "mode": "final",
+        "medianMs": 0.815919,
         "batchesMs": [
-          0.746577,
-          0.757713,
-          0.774071,
-          0.735183,
-          0.759304
+          0.793917,
+          0.784058,
+          0.831094,
+          0.954579,
+          0.815919
         ]
       },
       {
         "case": "ordinary-102400",
         "sourceBytes": 102410,
         "freshParser": true,
-        "medianMs": 0.725071,
+        "mode": "final",
+        "medianMs": 0.729381,
         "batchesMs": [
-          0.737544,
-          0.725071,
-          0.70101,
-          0.716377,
-          0.739381
+          0.737585,
+          0.732954,
+          0.72765,
+          0.729381,
+          0.727248
         ]
       },
       {
         "case": "tables-5120",
         "sourceBytes": 5187,
         "freshParser": false,
-        "medianMs": 0.04675,
+        "mode": "final",
+        "medianMs": 0.100127,
         "batchesMs": [
-          0.04675,
-          0.0465979,
-          0.0466792,
-          0.0470208,
-          0.0469333
+          0.100044,
+          0.100137,
+          0.100181,
+          0.100065,
+          0.100127
         ]
       },
       {
         "case": "tables-5120",
         "sourceBytes": 5187,
         "freshParser": true,
-        "medianMs": 0.0467958,
+        "mode": "final",
+        "medianMs": 0.142804,
         "batchesMs": [
-          0.0496666,
-          0.04575,
-          0.0464104,
-          0.0468937,
-          0.0467958
+          0.12046,
+          0.142804,
+          0.151971,
+          0.142023,
+          0.149471
         ]
       },
       {
         "case": "tables-102400",
         "sourceBytes": 102466,
         "freshParser": false,
-        "medianMs": 0.959406,
+        "mode": "final",
+        "medianMs": 2.19573,
         "batchesMs": [
-          0.950133,
-          0.977337,
-          0.975058,
-          0.959406,
-          0.932252
+          2.21046,
+          2.15391,
+          2.18806,
+          2.22845,
+          2.19573
         ]
       },
       {
         "case": "tables-102400",
         "sourceBytes": 102466,
         "freshParser": true,
-        "medianMs": 0.963331,
+        "mode": "final",
+        "medianMs": 2.51196,
         "batchesMs": [
-          0.965969,
-          0.972179,
-          0.938265,
-          0.931373,
-          0.963331
+          2.68792,
+          2.55334,
+          2.51196,
+          2.50046,
+          2.46907
         ]
       },
       {
         "case": "syntax-5120",
         "sourceBytes": 5166,
         "freshParser": false,
-        "medianMs": 0.017225,
+        "mode": "final",
+        "medianMs": 0.0552937,
         "batchesMs": [
-          0.0165625,
-          0.0164812,
-          0.017225,
-          0.0183333,
-          0.0177062
+          0.0554584,
+          0.0551937,
+          0.0548604,
+          0.0553729,
+          0.0552937
         ]
       },
       {
         "case": "syntax-5120",
         "sourceBytes": 5166,
         "freshParser": true,
-        "medianMs": 0.0173709,
+        "mode": "final",
+        "medianMs": 0.0541041,
         "batchesMs": [
-          0.0178333,
-          0.0173709,
-          0.0176063,
-          0.0169792,
-          0.0168896
+          0.0543438,
+          0.053923,
+          0.0539334,
+          0.0542062,
+          0.0541041
         ]
       },
       {
         "case": "syntax-102400",
         "sourceBytes": 102418,
         "freshParser": false,
-        "medianMs": 0.324431,
+        "mode": "final",
+        "medianMs": 1.12426,
         "batchesMs": [
-          0.324431,
-          0.31919,
-          0.324773,
-          0.322881,
-          0.326465
+          1.12426,
+          1.1576,
+          1.1399,
+          1.11078,
+          1.11083
         ]
       },
       {
         "case": "syntax-102400",
         "sourceBytes": 102418,
         "freshParser": true,
-        "medianMs": 0.326431,
+        "mode": "final",
+        "medianMs": 1.0828,
         "batchesMs": [
-          0.33005,
-          0.326431,
-          0.324883,
-          0.325912,
-          0.33319
+          1.34317,
+          1.06153,
+          1.0828,
+          1.07287,
+          1.13264
         ]
       },
       {
         "case": "images-5120",
         "sourceBytes": 5152,
         "freshParser": false,
-        "medianMs": 0.04,
+        "mode": "final",
+        "medianMs": 0.0559021,
         "batchesMs": [
-          0.04,
-          0.0371542,
-          0.0383271,
-          0.0410459,
-          0.0419354
+          0.0558146,
+          0.0559937,
+          0.0555271,
+          0.0563,
+          0.0559021
         ]
       },
       {
         "case": "images-5120",
         "sourceBytes": 5152,
         "freshParser": true,
-        "medianMs": 0.0370209,
+        "mode": "final",
+        "medianMs": 0.063425,
         "batchesMs": [
-          0.0371187,
-          0.0390604,
-          0.0370209,
-          0.0353438,
-          0.0351917
+          0.0645084,
+          0.0635208,
+          0.0634062,
+          0.063425,
+          0.063175
         ]
       },
       {
         "case": "images-102400",
         "sourceBytes": 102442,
         "freshParser": false,
-        "medianMs": 0.666521,
+        "mode": "final",
+        "medianMs": 1.10765,
         "batchesMs": [
-          0.666521,
-          0.66591,
-          0.665402,
-          0.687312,
-          0.678871
+          1.12547,
+          1.09914,
+          1.10765,
+          1.09463,
+          1.1446
         ]
       },
       {
         "case": "images-102400",
         "sourceBytes": 102442,
         "freshParser": true,
-        "medianMs": 0.702329,
+        "mode": "final",
+        "medianMs": 1.25287,
         "batchesMs": [
-          0.702329,
-          0.695796,
-          0.683031,
-          0.725785,
-          0.736323
+          1.26429,
+          1.23675,
+          1.25287,
+          1.24224,
+          1.29816
         ]
       },
       {
         "case": "fences-100",
         "sourceBytes": 2500,
         "freshParser": false,
-        "medianMs": 0.0113542,
+        "mode": "final",
+        "medianMs": 0.0351458,
         "batchesMs": [
-          0.0111854,
-          0.0111687,
-          0.0113542,
-          0.0145979,
-          0.0121791
+          0.037375,
+          0.0346042,
+          0.0350437,
+          0.0351458,
+          0.0357355
         ]
       },
       {
         "case": "fences-100",
         "sourceBytes": 2500,
         "freshParser": true,
-        "medianMs": 0.0114562,
+        "mode": "final",
+        "medianMs": 0.0348209,
         "batchesMs": [
-          0.0119875,
-          0.0115896,
-          0.0114125,
-          0.0114521,
-          0.0114562
+          0.0350229,
+          0.0343354,
+          0.0343792,
+          0.0348209,
+          0.0438209
         ]
       },
       {
         "case": "fences-500",
         "sourceBytes": 12500,
         "freshParser": false,
-        "medianMs": 0.0538042,
+        "mode": "final",
+        "medianMs": 0.184106,
         "batchesMs": [
-          0.0540937,
-          0.0538042,
-          0.0541146,
-          0.0536959,
-          0.0530958
+          0.177846,
+          0.183463,
+          0.187858,
+          0.186871,
+          0.184106
         ]
       },
       {
         "case": "fences-500",
         "sourceBytes": 12500,
         "freshParser": true,
-        "medianMs": 0.0565063,
+        "mode": "final",
+        "medianMs": 0.181358,
         "batchesMs": [
-          0.0541562,
-          0.0562833,
-          0.0614625,
-          0.0565063,
-          0.0575291
+          0.179877,
+          0.181358,
+          0.181712,
+          0.188102,
+          0.176227
         ]
       },
       {
         "case": "fences-1000",
         "sourceBytes": 25000,
         "freshParser": false,
-        "medianMs": 0.1175,
+        "mode": "final",
+        "medianMs": 0.357342,
         "batchesMs": [
-          0.111804,
-          0.113942,
-          0.11849,
-          0.117692,
-          0.1175
+          0.356687,
+          0.35975,
+          0.357792,
+          0.356783,
+          0.357342
         ]
       },
       {
         "case": "fences-1000",
         "sourceBytes": 25000,
         "freshParser": true,
-        "medianMs": 0.119223,
+        "mode": "final",
+        "medianMs": 0.344044,
         "batchesMs": [
-          0.114944,
-          0.119321,
-          0.12939,
-          0.119223,
-          0.11451
+          0.344044,
+          0.34251,
+          0.342621,
+          0.348,
+          0.351652
         ]
       }
     ],
@@ -303,289 +325,619 @@
         "case": "ordinary-5120",
         "sourceBytes": 5180,
         "freshParser": false,
-        "medianMs": 0.05175,
+        "mode": "final",
+        "medianMs": 0.0386,
         "batchesMs": [
-          0.086302,
-          0.0618938,
-          0.05175,
-          0.0471229,
-          0.0367813
+          0.0386,
+          0.0384938,
+          0.0409562,
+          0.0381833,
+          0.0401709
+        ]
+      },
+      {
+        "case": "ordinary-5120",
+        "sourceBytes": 5180,
+        "freshParser": false,
+        "mode": "streaming",
+        "medianMs": 0.0385792,
+        "batchesMs": [
+          0.0381541,
+          0.0385416,
+          0.0385792,
+          0.0385979,
+          0.0432063
         ]
       },
       {
         "case": "ordinary-5120",
         "sourceBytes": 5180,
         "freshParser": true,
-        "medianMs": 0.0399542,
+        "mode": "final",
+        "medianMs": 0.0395083,
         "batchesMs": [
+          0.0399,
+          0.0392583,
+          0.0390334,
+          0.0398187,
+          0.0395083
+        ]
+      },
+      {
+        "case": "ordinary-5120",
+        "sourceBytes": 5180,
+        "freshParser": true,
+        "mode": "streaming",
+        "medianMs": 0.0391667,
+        "batchesMs": [
+          0.0387395,
+          0.0391667,
+          0.0384354,
+          0.0454792,
+          0.0429021
+        ]
+      },
+      {
+        "case": "ordinary-102400",
+        "sourceBytes": 102410,
+        "freshParser": false,
+        "mode": "final",
+        "medianMs": 0.788681,
+        "batchesMs": [
+          0.797863,
+          0.788681,
+          0.789769,
+          0.786183,
+          0.786902
+        ]
+      },
+      {
+        "case": "ordinary-102400",
+        "sourceBytes": 102410,
+        "freshParser": false,
+        "mode": "streaming",
+        "medianMs": 0.794017,
+        "batchesMs": [
+          0.786369,
+          0.782056,
+          0.794017,
+          0.858206,
+          0.836681
+        ]
+      },
+      {
+        "case": "ordinary-102400",
+        "sourceBytes": 102410,
+        "freshParser": true,
+        "mode": "final",
+        "medianMs": 0.783473,
+        "batchesMs": [
+          0.811346,
+          0.761133,
+          0.797192,
+          0.783473,
+          0.748673
+        ]
+      },
+      {
+        "case": "ordinary-102400",
+        "sourceBytes": 102410,
+        "freshParser": true,
+        "mode": "streaming",
+        "medianMs": 0.729627,
+        "batchesMs": [
+          0.794735,
+          0.729627,
+          0.729017,
+          0.726523,
+          0.738152
+        ]
+      },
+      {
+        "case": "tables-5120",
+        "sourceBytes": 5187,
+        "freshParser": false,
+        "mode": "final",
+        "medianMs": 0.109496,
+        "batchesMs": [
+          0.103556,
+          0.109496,
+          0.115219,
+          0.118071,
+          0.102956
+        ]
+      },
+      {
+        "case": "tables-5120",
+        "sourceBytes": 5187,
+        "freshParser": false,
+        "mode": "streaming",
+        "medianMs": 0.105319,
+        "batchesMs": [
+          0.105319,
+          0.102958,
+          0.102577,
+          0.112867,
+          0.117848
+        ]
+      },
+      {
+        "case": "tables-5120",
+        "sourceBytes": 5187,
+        "freshParser": true,
+        "mode": "final",
+        "medianMs": 0.124998,
+        "batchesMs": [
+          0.135892,
+          0.124967,
+          0.144773,
+          0.124867,
+          0.124998
+        ]
+      },
+      {
+        "case": "tables-5120",
+        "sourceBytes": 5187,
+        "freshParser": true,
+        "mode": "streaming",
+        "medianMs": 0.125612,
+        "batchesMs": [
+          0.125612,
+          0.130562,
+          0.131469,
+          0.12511,
+          0.125304
+        ]
+      },
+      {
+        "case": "tables-102400",
+        "sourceBytes": 102466,
+        "freshParser": false,
+        "mode": "final",
+        "medianMs": 2.10575,
+        "batchesMs": [
+          2.08425,
+          2.10575,
+          2.03518,
+          2.1889,
+          2.15531
+        ]
+      },
+      {
+        "case": "tables-102400",
+        "sourceBytes": 102466,
+        "freshParser": false,
+        "mode": "streaming",
+        "medianMs": 2.59999,
+        "batchesMs": [
+          2.09646,
+          5.03406,
+          2.59999,
+          2.43211,
+          4.14355
+        ]
+      },
+      {
+        "case": "tables-102400",
+        "sourceBytes": 102466,
+        "freshParser": true,
+        "mode": "final",
+        "medianMs": 3.18066,
+        "batchesMs": [
+          5.73986,
+          4.51384,
+          2.8688,
+          3.18066,
+          3.07683
+        ]
+      },
+      {
+        "case": "tables-102400",
+        "sourceBytes": 102466,
+        "freshParser": true,
+        "mode": "streaming",
+        "medianMs": 2.42841,
+        "batchesMs": [
+          2.41541,
+          2.51045,
+          2.40597,
+          2.42841,
+          2.44833
+        ]
+      },
+      {
+        "case": "syntax-5120",
+        "sourceBytes": 5166,
+        "freshParser": false,
+        "mode": "final",
+        "medianMs": 0.0573229,
+        "batchesMs": [
+          0.0572708,
+          0.0574208,
+          0.0573708,
+          0.0573229,
+          0.0568729
+        ]
+      },
+      {
+        "case": "syntax-5120",
+        "sourceBytes": 5166,
+        "freshParser": false,
+        "mode": "streaming",
+        "medianMs": 0.0575104,
+        "batchesMs": [
+          0.0564895,
+          0.0575104,
+          0.0574937,
+          0.0577125,
+          0.0579521
+        ]
+      },
+      {
+        "case": "syntax-5120",
+        "sourceBytes": 5166,
+        "freshParser": true,
+        "mode": "final",
+        "medianMs": 0.0568271,
+        "batchesMs": [
+          0.0568271,
+          0.057148,
+          0.0571667,
+          0.0567041,
+          0.056825
+        ]
+      },
+      {
+        "case": "syntax-5120",
+        "sourceBytes": 5166,
+        "freshParser": true,
+        "mode": "streaming",
+        "medianMs": 0.0566729,
+        "batchesMs": [
+          0.0566729,
+          0.0568417,
+          0.0598479,
+          0.0563021,
+          0.0560104
+        ]
+      },
+      {
+        "case": "syntax-102400",
+        "sourceBytes": 102418,
+        "freshParser": false,
+        "mode": "final",
+        "medianMs": 1.16196,
+        "batchesMs": [
+          1.13583,
+          1.23391,
+          1.23366,
+          1.16196,
+          1.15375
+        ]
+      },
+      {
+        "case": "syntax-102400",
+        "sourceBytes": 102418,
+        "freshParser": false,
+        "mode": "streaming",
+        "medianMs": 1.19457,
+        "batchesMs": [
+          1.19457,
+          1.21873,
+          1.20213,
+          1.13807,
+          1.11163
+        ]
+      },
+      {
+        "case": "syntax-102400",
+        "sourceBytes": 102418,
+        "freshParser": true,
+        "mode": "final",
+        "medianMs": 1.10352,
+        "batchesMs": [
+          1.12854,
+          1.09748,
+          1.10352,
+          1.11487,
+          1.08422
+        ]
+      },
+      {
+        "case": "syntax-102400",
+        "sourceBytes": 102418,
+        "freshParser": true,
+        "mode": "streaming",
+        "medianMs": 1.12076,
+        "batchesMs": [
+          1.14125,
+          1.12076,
+          1.0934,
+          1.08082,
+          1.16512
+        ]
+      },
+      {
+        "case": "images-5120",
+        "sourceBytes": 5152,
+        "freshParser": false,
+        "mode": "final",
+        "medianMs": 0.0554396,
+        "batchesMs": [
+          0.05475,
+          0.0548208,
+          0.0555562,
+          0.0557104,
+          0.0554396
+        ]
+      },
+      {
+        "case": "images-5120",
+        "sourceBytes": 5152,
+        "freshParser": false,
+        "mode": "streaming",
+        "medianMs": 0.0550375,
+        "batchesMs": [
+          0.055825,
+          0.0552562,
+          0.0550375,
+          0.0548937,
+          0.0546188
+        ]
+      },
+      {
+        "case": "images-5120",
+        "sourceBytes": 5152,
+        "freshParser": true,
+        "mode": "final",
+        "medianMs": 0.0625958,
+        "batchesMs": [
+          0.0625958,
+          0.0626771,
+          0.0624875,
+          0.0627083,
+          0.0623104
+        ]
+      },
+      {
+        "case": "images-5120",
+        "sourceBytes": 5152,
+        "freshParser": true,
+        "mode": "streaming",
+        "medianMs": 0.0632938,
+        "batchesMs": [
+          0.06585,
+          0.0631979,
+          0.0632938,
+          0.0661771,
+          0.0632125
+        ]
+      },
+      {
+        "case": "images-102400",
+        "sourceBytes": 102442,
+        "freshParser": false,
+        "mode": "final",
+        "medianMs": 1.1139,
+        "batchesMs": [
+          1.10966,
+          1.1139,
+          1.2592,
+          1.30326,
+          1.09043
+        ]
+      },
+      {
+        "case": "images-102400",
+        "sourceBytes": 102442,
+        "freshParser": false,
+        "mode": "streaming",
+        "medianMs": 1.09421,
+        "batchesMs": [
+          1.07719,
+          1.12936,
+          1.0994,
+          1.09421,
+          1.08914
+        ]
+      },
+      {
+        "case": "images-102400",
+        "sourceBytes": 102442,
+        "freshParser": true,
+        "mode": "final",
+        "medianMs": 1.37985,
+        "batchesMs": [
+          1.75644,
+          1.40979,
+          1.30508,
+          1.37985,
+          1.35203
+        ]
+      },
+      {
+        "case": "images-102400",
+        "sourceBytes": 102442,
+        "freshParser": true,
+        "mode": "streaming",
+        "medianMs": 1.2288,
+        "batchesMs": [
+          1.25738,
+          1.22127,
+          1.22779,
+          1.2288,
+          1.27091
+        ]
+      },
+      {
+        "case": "fences-100",
+        "sourceBytes": 2500,
+        "freshParser": false,
+        "mode": "final",
+        "medianMs": 0.0367938,
+        "batchesMs": [
+          0.036702,
+          0.036175,
+          0.0367938,
+          0.0388104,
+          0.0410417
+        ]
+      },
+      {
+        "case": "fences-100",
+        "sourceBytes": 2500,
+        "freshParser": false,
+        "mode": "streaming",
+        "medianMs": 0.0379437,
+        "batchesMs": [
+          0.0375313,
+          0.0374271,
+          0.0381416,
           0.0379437,
-          0.0417271,
-          0.040925,
-          0.0399542,
-          0.0378521
-        ]
-      },
-      {
-        "case": "ordinary-102400",
-        "sourceBytes": 102410,
-        "freshParser": false,
-        "medianMs": 0.75334,
-        "batchesMs": [
-          0.748015,
-          0.768571,
-          0.778085,
-          0.75334,
-          0.743631
-        ]
-      },
-      {
-        "case": "ordinary-102400",
-        "sourceBytes": 102410,
-        "freshParser": true,
-        "medianMs": 0.728665,
-        "batchesMs": [
-          0.728665,
-          0.763588,
-          0.734467,
-          0.720237,
-          0.727615
-        ]
-      },
-      {
-        "case": "tables-5120",
-        "sourceBytes": 5187,
-        "freshParser": false,
-        "medianMs": 0.104631,
-        "batchesMs": [
-          0.107865,
-          0.103354,
-          0.103123,
-          0.104631,
-          0.109819
-        ]
-      },
-      {
-        "case": "tables-5120",
-        "sourceBytes": 5187,
-        "freshParser": true,
-        "medianMs": 0.122767,
-        "batchesMs": [
-          0.122804,
-          0.122767,
-          0.124388,
-          0.12139,
-          0.122298
-        ]
-      },
-      {
-        "case": "tables-102400",
-        "sourceBytes": 102466,
-        "freshParser": false,
-        "medianMs": 2.07002,
-        "batchesMs": [
-          2.05648,
-          2.05674,
-          2.09851,
-          2.10233,
-          2.07002
-        ]
-      },
-      {
-        "case": "tables-102400",
-        "sourceBytes": 102466,
-        "freshParser": true,
-        "medianMs": 2.43069,
-        "batchesMs": [
-          2.43069,
-          2.387,
-          2.4184,
-          2.46176,
-          2.4813
-        ]
-      },
-      {
-        "case": "syntax-5120",
-        "sourceBytes": 5166,
-        "freshParser": false,
-        "medianMs": 0.0546438,
-        "batchesMs": [
-          0.0546438,
-          0.0540646,
-          0.0555833,
-          0.054427,
-          0.0549292
-        ]
-      },
-      {
-        "case": "syntax-5120",
-        "sourceBytes": 5166,
-        "freshParser": true,
-        "medianMs": 0.0547458,
-        "batchesMs": [
-          0.0541312,
-          0.0538895,
-          0.0547458,
-          0.0581812,
-          0.0552791
-        ]
-      },
-      {
-        "case": "syntax-102400",
-        "sourceBytes": 102418,
-        "freshParser": false,
-        "medianMs": 1.11938,
-        "batchesMs": [
-          1.09734,
-          1.11739,
-          1.13994,
-          1.14743,
-          1.11938
-        ]
-      },
-      {
-        "case": "syntax-102400",
-        "sourceBytes": 102418,
-        "freshParser": true,
-        "medianMs": 1.06216,
-        "batchesMs": [
-          1.06216,
-          1.08948,
-          1.04634,
-          1.06035,
-          1.07138
-        ]
-      },
-      {
-        "case": "images-5120",
-        "sourceBytes": 5152,
-        "freshParser": false,
-        "medianMs": 0.0565479,
-        "batchesMs": [
-          0.0541562,
-          0.0565479,
-          0.057175,
-          0.0588792,
-          0.05405
-        ]
-      },
-      {
-        "case": "images-5120",
-        "sourceBytes": 5152,
-        "freshParser": true,
-        "medianMs": 0.0613042,
-        "batchesMs": [
-          0.0628875,
-          0.0610354,
-          0.0620708,
-          0.0613042,
-          0.0610021
-        ]
-      },
-      {
-        "case": "images-102400",
-        "sourceBytes": 102442,
-        "freshParser": false,
-        "medianMs": 1.07433,
-        "batchesMs": [
-          1.05653,
-          1.07433,
-          1.1057,
-          1.06922,
-          1.09522
-        ]
-      },
-      {
-        "case": "images-102400",
-        "sourceBytes": 102442,
-        "freshParser": true,
-        "medianMs": 1.22775,
-        "batchesMs": [
-          1.2143,
-          1.23181,
-          1.22273,
-          1.22775,
-          1.23776
-        ]
-      },
-      {
-        "case": "fences-100",
-        "sourceBytes": 2500,
-        "freshParser": false,
-        "medianMs": 0.0405646,
-        "batchesMs": [
-          0.03465,
-          0.0343313,
-          0.0409687,
-          0.0405646,
-          0.0418146
+          0.0427312
         ]
       },
       {
         "case": "fences-100",
         "sourceBytes": 2500,
         "freshParser": true,
-        "medianMs": 0.0365812,
+        "mode": "final",
+        "medianMs": 0.0364521,
         "batchesMs": [
-          0.0375188,
-          0.0397396,
-          0.0365812,
-          0.036025,
-          0.0346979
+          0.0364667,
+          0.0364521,
+          0.0360333,
+          0.0447229,
+          0.0358125
+        ]
+      },
+      {
+        "case": "fences-100",
+        "sourceBytes": 2500,
+        "freshParser": true,
+        "mode": "streaming",
+        "medianMs": 0.0371792,
+        "batchesMs": [
+          0.0360958,
+          0.0375584,
+          0.0362104,
+          0.0371792,
+          0.0403604
         ]
       },
       {
         "case": "fences-500",
         "sourceBytes": 12500,
         "freshParser": false,
-        "medianMs": 0.187029,
+        "mode": "final",
+        "medianMs": 0.190615,
         "batchesMs": [
-          0.189296,
-          0.183971,
-          0.175279,
-          0.193013,
-          0.187029
+          0.191823,
+          0.190067,
+          0.189263,
+          0.190615,
+          0.190848
+        ]
+      },
+      {
+        "case": "fences-500",
+        "sourceBytes": 12500,
+        "freshParser": false,
+        "mode": "streaming",
+        "medianMs": 0.192112,
+        "batchesMs": [
+          0.191837,
+          0.189473,
+          0.198819,
+          0.192112,
+          0.19255
         ]
       },
       {
         "case": "fences-500",
         "sourceBytes": 12500,
         "freshParser": true,
-        "medianMs": 0.184252,
+        "mode": "final",
+        "medianMs": 0.179881,
         "batchesMs": [
-          0.174652,
-          0.184327,
-          0.184252,
-          0.172104,
-          0.195221
+          0.179881,
+          0.18014,
+          0.180135,
+          0.179531,
+          0.179879
+        ]
+      },
+      {
+        "case": "fences-500",
+        "sourceBytes": 12500,
+        "freshParser": true,
+        "mode": "streaming",
+        "medianMs": 0.179681,
+        "batchesMs": [
+          0.179104,
+          0.179815,
+          0.179096,
+          0.179681,
+          0.180198
         ]
       },
       {
         "case": "fences-1000",
         "sourceBytes": 25000,
         "freshParser": false,
-        "medianMs": 0.360619,
+        "mode": "final",
+        "medianMs": 0.367521,
         "batchesMs": [
-          0.361687,
-          0.360619,
-          0.373671,
-          0.351779,
-          0.354725
+          0.367321,
+          0.367219,
+          0.367719,
+          0.367521,
+          0.469698
+        ]
+      },
+      {
+        "case": "fences-1000",
+        "sourceBytes": 25000,
+        "freshParser": false,
+        "mode": "streaming",
+        "medianMs": 0.371771,
+        "batchesMs": [
+          0.431542,
+          0.449485,
+          0.37115,
+          0.371613,
+          0.371771
         ]
       },
       {
         "case": "fences-1000",
         "sourceBytes": 25000,
         "freshParser": true,
-        "medianMs": 0.340358,
+        "mode": "final",
+        "medianMs": 0.363896,
         "batchesMs": [
-          0.338462,
-          0.339,
-          0.350669,
-          0.340358,
-          0.340431
+          0.363896,
+          0.357002,
+          0.458573,
+          0.574271,
+          0.357608
+        ]
+      },
+      {
+        "case": "fences-1000",
+        "sourceBytes": 25000,
+        "freshParser": true,
+        "mode": "streaming",
+        "medianMs": 0.363285,
+        "batchesMs": [
+          0.357321,
+          0.358463,
+          0.363285,
+          0.377498,
+          0.369769
         ]
       }
     ]
   },
-  "limitations": "Host parser snapshot timing only, not mobile rendering or network latency. Baseline flattens tables and images and does not highlight code; feature workloads do different work. Fresh includes parser creation/destruction, not a cold process or cold CPU cache."
+  "limitations": "Host parser snapshot timing only, not mobile rendering or network latency. Baseline and current rich final snapshots share the same workload revision; current also measures progressive final=false mode. Markdown remains a full-prefix MD4C parse. When a bounded incomplete-tail projection is active it can additionally copy the retained prefix and scan source to avoid changing fenced-code semantics; this report does not claim incremental parsing. Fresh includes parser creation/destruction, not a cold process or cold CPU cache. This refresh ran while native builds were active, so it is evidence for this host run and not a universal performance claim."
 }

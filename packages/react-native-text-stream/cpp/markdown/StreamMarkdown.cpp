@@ -7,6 +7,7 @@ extern "C" {
 #include "vendor/md4c/md4c.h"
 
 #include <algorithm>
+#include <cctype>
 #include <cstring>
 #include <deque>
 #include <string>
@@ -53,6 +54,331 @@ struct STMarkdownParser {
 
 namespace {
 
+constexpr size_t kStreamingTailBytes = 8192;
+
+static bool isSpace(char c) {
+  return c == ' ' || c == '\t' || c == '\r';
+}
+
+static bool previousLineStart(const char* input, size_t start, size_t lowerBound, size_t* result) {
+  if (start == 0) { *result = 0; return true; }
+  size_t at = start - 1;
+  while (at > lowerBound && input[at - 1] != '\n') --at;
+  // Do not let a table candidate walk back through an arbitrarily long
+  // previous line. Its origin is outside the bounded projection window.
+  if (at == lowerBound && lowerBound != 0 && input[at - 1] != '\n') return false;
+  *result = at;
+  return true;
+}
+
+static size_t lineEnd(const char* input, size_t end) {
+  return end > 0 && input[end - 1] == '\n' ? end - 1 : end;
+}
+
+static bool isPotentialTableDelimiter(const char* input, size_t start, size_t end) {
+  bool pipe = false;
+  for (size_t i = start; i < end; ++i) {
+    const char c = input[i];
+    if (c == '|') pipe = true;
+    else if (c == '-') continue;
+    else if (c != ':' && !isSpace(c)) return false;
+  }
+  return pipe;
+}
+
+static bool isCompleteTableDelimiter(const char* input, size_t start, size_t end) {
+  while (start < end && isSpace(input[start])) ++start;
+  while (end > start && isSpace(input[end - 1])) --end;
+  if (start < end && input[start] == '|') ++start;
+  if (end > start && input[end - 1] == '|') --end;
+  bool any = false;
+  for (size_t part = start; part <= end;) {
+    size_t nextSeparator = part;
+    while (nextSeparator < end && input[nextSeparator] != '|') ++nextSeparator;
+    size_t contentEnd = nextSeparator;
+    while (part < contentEnd && isSpace(input[part])) ++part;
+    while (contentEnd > part && isSpace(input[contentEnd - 1])) --contentEnd;
+    if (part == contentEnd) return false;
+    if (input[part] == ':') ++part;
+    if (contentEnd > part && input[contentEnd - 1] == ':') --contentEnd;
+    size_t dashes = 0;
+    while (part < contentEnd && input[part] == '-') { ++dashes; ++part; }
+    // Wait for the canonical three-dash delimiter while streaming. MD4C also
+    // accepts shorter forms, but delaying those avoids a grid/plain-text flip.
+    if (part != contentEnd || dashes < 3) return false;
+    any = true;
+    if (nextSeparator == end) break;
+    part = nextSeparator + 1;
+  }
+  return any;
+}
+
+enum class TailKind { none, strong, strike, emphasis, code, linkLabel, linkTarget };
+struct TailProjection {
+  size_t start;
+  TailKind kind;
+  char markers[4];
+  unsigned char widths[4];
+  unsigned char closerCount;
+};
+
+// This is deliberately a single forward pass over at most one final line.
+// It never walks backward over escape runs, which keeps adversarial backslash
+// tails linear. Fenced blocks are protected by a parse probe below.
+static TailProjection unfinishedInline(const char* input, size_t start, size_t end) {
+  constexpr size_t none = static_cast<size_t>(-1);
+  size_t bracket = none, pairedLink = none, strong = none, strike = none, emphasis = none, code = none;
+  char emphasisMarker = 0;
+  size_t codeCount = 0;
+  size_t linkParenDepth = 0;
+  bool strongPendingClose = false;
+  bool strikePendingClose = false;
+  bool escaped = false;
+  bool finalByteEscaped = false;
+  bool finalBytePartOfPair = false;
+  for (size_t i = start; i < end; ++i) {
+    const char c = input[i];
+    if (escaped) {
+      if (i + 1 == end) finalByteEscaped = true;
+      escaped = false;
+      continue;
+    }
+    if (c == '\\') { escaped = true; continue; }
+    if (c == '`') {
+      size_t count = 1; while (i + count < end && input[i + count] == '`') ++count;
+      if (code == none) { code = i; codeCount = count; }
+      else if (count == codeCount) { code = none; codeCount = 0; }
+      i += count - 1;
+      continue;
+    }
+    if (code != none) continue;
+    if (c == '[') { bracket = i > start && input[i - 1] == '!' ? i - 1 : i; pairedLink = none; continue; }
+    if (c == ']' && bracket != none) {
+      if (i + 1 < end && input[i + 1] == '(') { pairedLink = bracket; linkParenDepth = 1; ++i; }
+      else if (i + 1 < end) bracket = none;
+      continue;
+    }
+    if (pairedLink != none && c == '(') { ++linkParenDepth; continue; }
+    if (c == ')' && pairedLink != none) {
+      if (--linkParenDepth == 0) bracket = pairedLink = none;
+      continue;
+    }
+    if (i + 1 < end && c == '~' && input[i + 1] == '~') {
+      if (i + 2 == end) finalBytePartOfPair = true;
+      strike = strike == none ? i : none;
+      ++i;
+      continue;
+    }
+    if (c == '~' && strike != none && i + 1 == end) { strikePendingClose = true; continue; }
+    if (i + 1 < end && (c == '*' || c == '_') && input[i + 1] == c) {
+      if (i + 2 == end) finalBytePartOfPair = true;
+      strong = strong == none ? i : none;
+      ++i;
+      continue;
+    }
+    if (c == '*' || c == '_') {
+      // The first byte of a strong closer is common in a byte stream. Treat
+      // it as a pending strong close, not a nested emphasis opener.
+      if (strong != none && c == input[strong] && i + 1 == end) { strongPendingClose = true; continue; }
+      if (emphasis != none && c == emphasisMarker) {
+        if (i + 1 == end) finalBytePartOfPair = true;
+        emphasis = none;
+        emphasisMarker = 0;
+      }
+      else if (c != '_' || i == start || !std::isalnum(static_cast<unsigned char>(input[i - 1]))) {
+        emphasis = i; emphasisMarker = c;
+      }
+    }
+  }
+  if (pairedLink != none) return {pairedLink, TailKind::linkTarget, {}, {}, 0};
+  if (bracket != none) return {bracket, TailKind::linkLabel, {}, {}, 0};
+  if (code != none) return {code, TailKind::code, {'`'}, {static_cast<unsigned char>(codeCount)}, 1};
+  struct Delimiter { size_t start; char marker; unsigned char width; } active[3];
+  size_t activeCount = 0;
+  if (strong != none) active[activeCount++] = {strong, input[strong], static_cast<unsigned char>(strongPendingClose ? 1 : 2)};
+  if (strike != none) active[activeCount++] = {strike, '~', static_cast<unsigned char>(strikePendingClose ? 1 : 2)};
+  if (emphasis != none) active[activeCount++] = {emphasis, emphasisMarker, 1};
+  if (activeCount == 0) {
+    // Withhold a lone unescaped marker at the transport boundary. It may be
+    // the first byte of a pair, and Markdown has no readable payload yet.
+    if (end > start && !finalByteEscaped && !finalBytePartOfPair &&
+        (input[end - 1] == '*' || input[end - 1] == '~')) {
+      return {end - 1, TailKind::emphasis, {}, {}, 0};
+    }
+    return {end, TailKind::none, {}, {}, 0};
+  }
+  // A closing delimiter closes the innermost still-open span first.
+  for (size_t i = 0; i < activeCount; ++i) {
+    for (size_t j = i + 1; j < activeCount; ++j) {
+      if (active[i].start < active[j].start) std::swap(active[i], active[j]);
+    }
+  }
+  TailProjection result{active[activeCount - 1].start, TailKind::strong, {}, {}, static_cast<unsigned char>(activeCount)};
+  for (size_t i = 0; i < activeCount; ++i) {
+    result.markers[i] = active[i].marker;
+    result.widths[i] = active[i].width;
+    result.start = std::min(result.start, active[i].start);
+  }
+  return result;
+}
+
+static bool makeStreamingProjection(const char* input, size_t length, std::string* output) {
+  if (length == 0) return false;
+  const size_t boundedStart = length > kStreamingTailBytes ? length - kStreamingTailBytes : 0;
+  size_t currentStart = length;
+  while (currentStart > boundedStart && input[currentStart - 1] != '\n') --currentStart;
+  // A megabyte-long line is intentionally left to the final parser rather
+  // than making the progressive tail scan or projection unbounded.
+  if (currentStart == boundedStart && boundedStart != 0 && input[currentStart - 1] != '\n') return false;
+  // MD4C does not materialize a table until it has a row after the delimiter.
+  // Keep header and delimiter hidden through that transition, then leave every
+  // later row to the normal parser.
+  bool confirmedTable = false;
+  bool sawRowAfterDelimiter = false;
+  for (size_t end = currentStart; end > boundedStart;) {
+    size_t start = 0;
+    if (!previousLineStart(input, end, boundedStart, &start)) break;
+    const size_t rowEnd = lineEnd(input, end);
+    if (std::memchr(input + start, '|', rowEnd - start) == nullptr) break;
+    if (isCompleteTableDelimiter(input, start, rowEnd)) {
+      confirmedTable = sawRowAfterDelimiter;
+      break;
+    }
+    sawRowAfterDelimiter = true;
+    if (start == 0 || start == end) break;
+    end = start;
+  }
+  if (!confirmedTable) {
+    // The first data-row byte follows an already complete delimiter. MD4C
+    // still exposes the header as plain text at this point, so retain the
+    // whole candidate until that row is complete.
+    if (currentStart < length && currentStart > 0) {
+      size_t delimiter = 0;
+      if (previousLineStart(input, currentStart, boundedStart, &delimiter) &&
+          isCompleteTableDelimiter(input, delimiter, lineEnd(input, currentStart))) {
+        size_t header = 0;
+        if (delimiter > 0 && previousLineStart(input, delimiter, boundedStart, &header) &&
+            std::memchr(input + header, '|', delimiter - header) != nullptr) {
+          output->assign(input, header);
+          return true;
+        }
+      }
+    }
+    // A complete delimiter followed by its newline still has no data row.
+    // Resolve this direct case before walking older lines.
+    if (currentStart == length && currentStart > 0) {
+      size_t delimiter = 0;
+      if (previousLineStart(input, currentStart, boundedStart, &delimiter) &&
+          isPotentialTableDelimiter(input, delimiter, lineEnd(input, currentStart))) {
+        size_t header = 0;
+        if (delimiter > 0 && previousLineStart(input, delimiter, boundedStart, &header) &&
+            std::memchr(input + header, '|', delimiter - header) != nullptr) {
+          output->assign(input, header);
+          return true;
+        }
+      }
+    }
+    // Locate the pending delimiter, whether it is the current fragment or a
+    // completed line followed by the first row. Its preceding pipe line is
+    // the header to suppress.
+    size_t delimiterStart = currentStart;
+    size_t delimiterLimit = length;
+    for (;;) {
+      const size_t candidateEnd = lineEnd(input, delimiterLimit);
+      if (candidateEnd < delimiterStart) break;
+      if (std::memchr(input + delimiterStart, '|', candidateEnd - delimiterStart) == nullptr) break;
+      if (isPotentialTableDelimiter(input, delimiterStart, candidateEnd)) {
+        size_t header = 0;
+        if (delimiterStart > 0 && previousLineStart(input, delimiterStart, boundedStart, &header) &&
+            std::memchr(input + header, '|', delimiterStart - header) != nullptr) {
+          output->assign(input, header);
+          return true;
+        }
+      }
+      if (delimiterStart == 0 || delimiterStart <= boundedStart) break;
+      delimiterLimit = delimiterStart;
+      if (!previousLineStart(input, delimiterStart, boundedStart, &delimiterStart)) break;
+    }
+    if (currentStart == length && currentStart > 0) {
+      size_t header = 0;
+      if (previousLineStart(input, currentStart, boundedStart, &header) &&
+          std::memchr(input + header, '|', currentStart - header) != nullptr) {
+        output->assign(input, header);
+        return true;
+      }
+    }
+  }
+  // Hold the plausible header from the first pipe too. This prevents a raw
+  // header from flashing while the transport is still delivering its delimiter.
+  size_t lineContent = currentStart;
+  while (lineContent < length && input[lineContent] == ' ') ++lineContent;
+  if (!confirmedTable && lineContent < length && input[lineContent] == '|' &&
+      std::memchr(input + lineContent, '|', length - lineContent) != nullptr) {
+    output->assign(input, currentStart);
+    return true;
+  }
+  if (length > currentStart && input[length - 1] == '!' &&
+      (length == currentStart + 1 || input[length - 2] != '\\')) {
+    output->assign(input, length - 1);
+    return true;
+  }
+  const TailProjection tail = unfinishedInline(input, currentStart, length);
+  if (tail.kind == TailKind::none) return false;
+  output->assign(input, tail.start);
+  const size_t openerWidth = (input[tail.start] == '*' || input[tail.start] == '_' || input[tail.start] == '~') &&
+      tail.start + 1 < length && input[tail.start + 1] == input[tail.start] ? 2 : 1;
+  // A delimiter by itself has no readable payload. Withhold it rather than
+  // manufacturing a visible doubled marker.
+  if (tail.start + openerWidth == length) return true;
+  if (tail.kind == TailKind::strong || tail.kind == TailKind::strike || tail.kind == TailKind::emphasis) {
+    // A Markdown closing delimiter cannot follow whitespace. Preserve a
+    // streamed trailing space outside the provisional styled span instead.
+    size_t payloadEnd = length;
+    while (payloadEnd > tail.start && isSpace(input[payloadEnd - 1])) --payloadEnd;
+    output->append(input + tail.start, payloadEnd - tail.start);
+    for (size_t i = 0; i < tail.closerCount; ++i) output->append(tail.widths[i], tail.markers[i]);
+    output->append(input + payloadEnd, length - payloadEnd);
+  } else if (tail.kind == TailKind::code) {
+    output->append(input + tail.start, length - tail.start);
+    output->append(tail.widths[0], '`');
+  }
+  else {
+    const size_t marker = input[tail.start] == '!' ? 2 : 1;
+    const size_t labelStart = tail.start + marker;
+    size_t closing = tail.kind == TailKind::linkTarget
+        ? static_cast<size_t>(std::find(input + labelStart, input + length, ']') - input)
+        : length;
+    if (tail.kind == TailKind::linkLabel && closing > labelStart && input[closing - 1] == ']') --closing;
+    // A half-link/image is rendered as its readable label, never its URL.
+    output->append(input + labelStart, closing - labelStart);
+  }
+  return true;
+}
+
+// Used only after the bounded tail scan found a construct worth projecting.
+// Matching marker kind and width avoids treating an in-code shorter fence as a
+// closing delimiter.
+static bool hasOpenFencedBlock(const char* input, size_t length) {
+  char marker = 0;
+  size_t markerCount = 0;
+  for (size_t start = 0; start < length;) {
+    size_t end = start;
+    while (end < length && input[end] != '\n') ++end;
+    size_t at = start;
+    while (at < end && input[at] == ' ') ++at;
+    if (at < end && input[at] == '>') { ++at; if (at < end && input[at] == ' ') ++at; }
+    size_t count = 0;
+    const char c = at < end ? input[at] : 0;
+    while (at + count < end && input[at + count] == c) ++count;
+    if ((c == '`' || c == '~') && count >= 3) {
+      if (marker == 0) { marker = c; markerCount = count; }
+      else if (marker == c && count >= markerCount) { marker = 0; markerCount = 0; }
+    }
+    start = end == length ? length : end + 1;
+  }
+  return marker != 0;
+}
+
 static void appendCodepoint(STMarkdownParser* p, unsigned cp) {
   if (cp == 0 || cp > 0x10ffff || (cp >= 0xd800 && cp <= 0xdfff)) cp = 0xfffd;
   if (cp <= 0xffff) { p->text.push_back(static_cast<uint16_t>(cp)); return; }
@@ -66,6 +392,16 @@ static void appendUtf8Codepoint(std::string& out, unsigned cp) {
   else if (cp < 0x800) { out.push_back(static_cast<char>(0xc0 | (cp >> 6))); out.push_back(static_cast<char>(0x80 | (cp & 0x3f))); }
   else if (cp < 0x10000) { out.push_back(static_cast<char>(0xe0 | (cp >> 12))); out.push_back(static_cast<char>(0x80 | ((cp >> 6) & 0x3f))); out.push_back(static_cast<char>(0x80 | (cp & 0x3f))); }
   else { out.push_back(static_cast<char>(0xf0 | (cp >> 18))); out.push_back(static_cast<char>(0x80 | ((cp >> 12) & 0x3f))); out.push_back(static_cast<char>(0x80 | ((cp >> 6) & 0x3f))); out.push_back(static_cast<char>(0x80 | (cp & 0x3f))); }
+}
+
+static uint32_t codeLanguageFlag(stmd::Language language) {
+  switch (language) {
+    case stmd::Language::javascript: return STMD_RUN_LANGUAGE_JAVASCRIPT;
+    case stmd::Language::typescript: return STMD_RUN_LANGUAGE_TYPESCRIPT;
+    case stmd::Language::json: return STMD_RUN_LANGUAGE_JSON;
+    case stmd::Language::python: return STMD_RUN_LANGUAGE_PYTHON;
+    default: return 0;
+  }
 }
 
 static void appendUtf8(STMarkdownParser* p, const char* s, size_t n) {
@@ -318,8 +654,12 @@ static int enterBlock(MD_BLOCKTYPE type, void* detail, void* userdata) {
     }
     case MD_BLOCK_H: p->heading = static_cast<int>(static_cast<MD_BLOCK_H_DETAIL*>(detail)->level); break;
     case MD_BLOCK_CODE: {
-      ++p->codeDepth; p->flags |= STMD_RUN_CODE_BLOCK | STMD_RUN_CODE; newline(p); p->codeStart = p->text.size(); p->codeRunStart = p->runs.empty() ? 0 : p->runs.size() - 1;
-      const auto* code = static_cast<MD_BLOCK_CODE_DETAIL*>(detail); p->codeLanguage = stmd::syntaxLanguage(attribute(code ? &code->lang : nullptr)); break;
+      ++p->codeDepth;
+      const auto* code = static_cast<MD_BLOCK_CODE_DETAIL*>(detail);
+      p->codeLanguage = stmd::syntaxLanguage(attribute(code ? &code->lang : nullptr));
+      p->flags |= STMD_RUN_CODE_BLOCK | STMD_RUN_CODE | codeLanguageFlag(p->codeLanguage);
+      newline(p); p->codeStart = p->text.size(); p->codeRunStart = p->runs.empty() ? 0 : p->runs.size() - 1;
+      break;
     }
     case MD_BLOCK_TABLE: {
       const auto* table = static_cast<MD_BLOCK_TABLE_DETAIL*>(detail);
@@ -359,9 +699,13 @@ static int leaveBlock(MD_BLOCKTYPE type, void*, void* userdata) {
     case MD_BLOCK_CODE:
       if (p->codeDepth == 1) highlightCode(p, p->codeStart, p->text.size(), p->codeRunStart, p->codeLanguage);
       --p->codeDepth;
-      p->flags &= ~STMD_RUN_CODE_BLOCK;
+      p->flags &= ~(STMD_RUN_CODE_BLOCK | STMD_RUN_LANGUAGE_MASK);
       if (p->inlineCodeDepth == 0) p->flags &= ~STMD_RUN_CODE;
-      newline(p);
+      // MD4C includes a fence body's trailing line ending in the code run.
+      // Keep a plain separator so adjacent same-language blocks cannot coalesce
+      // into one visual group on the platform side.
+      if (!p->text.empty() && p->text.back() == '\n') appendText(p, "\n", 1);
+      else newline(p);
       break;
     case MD_BLOCK_TH: case MD_BLOCK_TD:
       if (p->tableDepth) p->activeCell = static_cast<size_t>(-1);
@@ -448,7 +792,9 @@ static int textCallback(MD_TEXTTYPE type, const MD_CHAR* text, MD_SIZE size, voi
 
 extern "C" STMarkdownParser* stmd_create(void) { return new STMarkdownParser(); }
 extern "C" void stmd_destroy(STMarkdownParser* parser) { delete parser; }
-static const STMarkdownDocument* parse(STMarkdownParser* p, const char* utf8, size_t length, bool github, bool stripBom) {
+static const STMarkdownDocument* parse(
+    STMarkdownParser* p, const char* utf8, size_t length, bool github,
+    bool stripBom, bool progressive, bool final) {
   if (!p) return nullptr;
   p->text.clear(); p->runs.clear(); p->urls.clear(); p->runUrls.clear(); p->blocks.clear(); p->blockUrls.clear(); p->blockAlts.clear(); p->tableOwned.clear(); p->tablePublic.clear(); p->tableBlockIndices.clear(); p->tableDepth = 0; p->activeTable = p->activeCell = static_cast<size_t>(-1); p->imageDepth = 0; p->activeImage = static_cast<size_t>(-1); p->imageAlt.clear(); p->document = {};
   p->flags = 0; p->heading = 0; p->listDepth = 0; p->lists.clear(); p->quoteDepth = 0; p->codeDepth = 0; p->boldDepth = p->italicDepth = p->strikeDepth = p->inlineCodeDepth = 0; p->rowHasCell = false;
@@ -460,7 +806,12 @@ static const STMarkdownDocument* parse(STMarkdownParser* p, const char* utf8, si
   // Match the streaming UTF-8 decoder: a single leading BOM is a transport
   // marker, not visible Markdown content. Later U+FEFF code points stay text.
   const char* input = utf8 ? utf8 : "";
-  size_t inputLength = length;
+  std::string projection;
+  if (progressive && !final && utf8 && makeStreamingProjection(utf8, length, &projection) &&
+      !hasOpenFencedBlock(utf8, length)) {
+    input = projection.data();
+  }
+  size_t inputLength = input == utf8 ? length : projection.size();
   if (stripBom && inputLength >= 3 && static_cast<unsigned char>(input[0]) == 0xef &&
       static_cast<unsigned char>(input[1]) == 0xbb && static_cast<unsigned char>(input[2]) == 0xbf) {
     input += 3;
@@ -480,8 +831,16 @@ static const STMarkdownDocument* parse(STMarkdownParser* p, const char* utf8, si
   return &p->document;
 }
 extern "C" const STMarkdownDocument* stmd_parse(STMarkdownParser* p, const char* utf8, size_t length, bool github) {
-  return parse(p, utf8, length, github, true);
+  return parse(p, utf8, length, github, true, false, true);
 }
 extern "C" const STMarkdownDocument* stmd_parse_decoded(STMarkdownParser* p, const char* utf8, size_t length, bool github) {
-  return parse(p, utf8, length, github, false);
+  return parse(p, utf8, length, github, false, false, true);
+}
+extern "C" const STMarkdownDocument* stmd_parse_streaming(
+    STMarkdownParser* p, const char* utf8, size_t length, bool github, bool final) {
+  return parse(p, utf8, length, github, true, true, final);
+}
+extern "C" const STMarkdownDocument* stmd_parse_decoded_streaming(
+    STMarkdownParser* p, const char* utf8, size_t length, bool github, bool final) {
+  return parse(p, utf8, length, github, false, true, final);
 }

@@ -10,6 +10,9 @@
 #include <utility>
 #include <vector>
 
+static std::string ascii(const STMarkdownDocument* d);
+static bool has(const STMarkdownDocument* d, uint32_t flag);
+
 struct RunCopy {
   size_t start, length;
   uint32_t flags;
@@ -20,31 +23,62 @@ struct RunCopy {
         heading == other.heading && indent == other.indent && url == other.url;
   }
 };
+struct CellCopy {
+  std::u16string text;
+  std::vector<RunCopy> runs;
+  uint32_t flags;
+  int alignment;
+  bool operator==(const CellCopy& other) const {
+    return text == other.text && runs == other.runs && flags == other.flags && alignment == other.alignment;
+  }
+};
+struct BlockCopy {
+  size_t start, length;
+  uint32_t kind;
+  size_t rows, columns;
+  std::string url;
+  std::u16string alt;
+  std::vector<CellCopy> cells;
+  bool operator==(const BlockCopy& other) const {
+    return start == other.start && length == other.length && kind == other.kind &&
+        rows == other.rows && columns == other.columns && url == other.url && alt == other.alt && cells == other.cells;
+  }
+};
 struct DocumentCopy {
   std::u16string text;
   std::vector<RunCopy> runs;
-  std::string blocks;
+  std::vector<BlockCopy> blocks;
 };
+static std::u16string copyUtf16(const uint16_t* text, size_t length) {
+  if (length == 0) return {};
+  assert(text);
+  return {reinterpret_cast<const char16_t*>(text), length};
+}
+static RunCopy copyRun(const STMarkdownRun& run) {
+  return {run.start, run.length, run.flags, run.headingLevel, run.indent, run.url ? run.url : ""};
+}
 static DocumentCopy copyDocument(const STMarkdownDocument* document) {
   assert(document && document->error == 0);
   DocumentCopy copy;
   if (document->textLength != 0) {
     assert(document->text);
-    copy.text.assign(reinterpret_cast<const char16_t*>(document->text), document->textLength);
+    copy.text = copyUtf16(document->text, document->textLength);
   }
   for (size_t i = 0; i < document->runCount; ++i) {
-    const auto& run = document->runs[i];
-    copy.runs.push_back({run.start, run.length, run.flags, run.headingLevel, run.indent, run.url ? run.url : ""});
+    copy.runs.push_back(copyRun(document->runs[i]));
   }
   for (size_t i = 0; i < document->blockCount; ++i) {
     const auto& block = document->blocks[i];
-    copy.blocks += std::to_string(block.start) + ":" + std::to_string(block.kind) + ":" + (block.url ? block.url : "") + ";";
-    for (size_t j = 0; j < block.altLength; ++j) copy.blocks += std::to_string(block.alt[j]) + ",";
+    BlockCopy blockCopy{block.start, block.length, block.kind, block.rowCount, block.columnCount,
+        block.url ? block.url : "", copyUtf16(block.alt, block.altLength), {}};
+    assert(block.rowCount == 0 || block.columnCount <= std::numeric_limits<size_t>::max() / block.rowCount);
     for (size_t j = 0; j < block.rowCount * block.columnCount; ++j) {
-      const auto& cell = block.cells[j]; copy.blocks += std::to_string(cell.flags) + "/" + std::to_string(cell.alignment) + "/";
-      for (size_t k = 0; k < cell.textLength; ++k) copy.blocks += std::to_string(cell.text[k]) + ",";
-      for (size_t k = 0; k < cell.runCount; ++k) copy.blocks += std::to_string(cell.runs[k].flags) + ":" + (cell.runs[k].url ? cell.runs[k].url : "") + ";";
+      const auto& cell = block.cells[j];
+      CellCopy cellCopy{copyUtf16(cell.text, cell.textLength), {}, cell.flags, cell.alignment};
+      for (size_t k = 0; k < cell.runCount; ++k) cellCopy.runs.push_back(copyRun(cell.runs[k]));
+      blockCopy.cells.push_back(std::move(cellCopy));
     }
+    copy.blocks.push_back(std::move(blockCopy));
   }
   return copy;
 }
@@ -85,10 +119,22 @@ static void applyPatch(StyledCopy& current, const DocumentCopy& next, size_t sta
   current.text.append(styled.text.begin() + start, styled.text.end());
   current.style.insert(current.style.end(), styled.style.begin() + start, styled.style.end());
 }
+static void applyBlockPatch(std::vector<BlockCopy>& current, const DocumentCopy& next, size_t start) {
+  const auto currentSplit = std::lower_bound(current.begin(), current.end(), start,
+      [](const BlockCopy& block, size_t position) { return block.start < position; });
+  const auto nextSplit = std::lower_bound(next.blocks.begin(), next.blocks.end(), start,
+      [](const BlockCopy& block, size_t position) { return block.start < position; });
+  // Metadata before changedStart must remain valid; the changed suffix is wholly replaced.
+  assert(std::equal(current.begin(), currentSplit, next.blocks.begin(), nextSplit));
+  current.erase(currentSplit, current.end());
+  current.insert(current.end(), nextSplit, next.blocks.end());
+  assert(current == next.blocks);
+}
 static void assertStreamSeam(const std::string& source, bool github) {
   auto* retained = stmd_create();
   assert(retained);
   StyledCopy visible;
+  std::vector<BlockCopy> visibleBlocks;
   for (size_t length = 0; length <= source.size(); ++length) {
     const auto* retainedDoc = stmd_parse(retained, source.data(), length, github);
     const auto actual = copyDocument(retainedDoc);
@@ -99,18 +145,140 @@ static void assertStreamSeam(const std::string& source, bool github) {
     assertSame(actual, expected);
     assert(retainedDoc->changedStartUTF16 <= actual.text.size());
     applyPatch(visible, actual, retainedDoc->changedStartUTF16);
+    applyBlockPatch(visibleBlocks, actual, retainedDoc->changedStartUTF16);
     const auto expectedStyled = styledCopy(actual);
     assert(visible.text == expectedStyled.text && visible.style == expectedStyled.style);
   }
   stmd_destroy(retained);
 }
 
+static void assertStreamingProjectionSeam(const std::string& source, bool github) {
+  auto* retained = stmd_create();
+  assert(retained);
+  StyledCopy visible;
+  std::vector<BlockCopy> visibleBlocks;
+  for (size_t length = 0; length <= source.size(); ++length) {
+    const auto* retainedDoc = stmd_parse_streaming(retained, source.data(), length, github, false);
+    const auto actual = copyDocument(retainedDoc);
+    auto* fresh = stmd_create();
+    assert(fresh);
+    const auto expected = copyDocument(stmd_parse_streaming(fresh, source.data(), length, github, false));
+    stmd_destroy(fresh);
+    assertSame(actual, expected);
+    assert(retainedDoc->sourceBytesConsumed == length);
+    assert(retainedDoc->changedStartUTF16 <= actual.text.size());
+    applyPatch(visible, actual, retainedDoc->changedStartUTF16);
+    applyBlockPatch(visibleBlocks, actual, retainedDoc->changedStartUTF16);
+    const auto expectedStyled = styledCopy(actual);
+    assert(visible.text == expectedStyled.text && visible.style == expectedStyled.style);
+  }
+  const auto final = copyDocument(stmd_parse_streaming(retained, source.data(), source.size(), github, true));
+  auto* freshFinal = stmd_create();
+  assert(freshFinal);
+  const auto literal = copyDocument(stmd_parse(freshFinal, source.data(), source.size(), github));
+  stmd_destroy(freshFinal);
+  assertSame(final, literal);
+  stmd_destroy(retained);
+}
+
+static void assertNoStreamingSyntaxFlash() {
+  auto* parser = stmd_create();
+  assert(parser);
+  const auto progressive = [&](const std::string& input) {
+    const auto* doc = stmd_parse_streaming(parser, input.data(), input.size(), true, false);
+    assert(doc && doc->error == 0 && doc->sourceBytesConsumed == input.size());
+    return ascii(doc);
+  };
+  const auto link = progressive("before [read](https://example.test");
+  assert(link.find("before read") != std::string::npos && link.find("https://") == std::string::npos && link.find('[') == std::string::npos);
+  const auto image = progressive("before ![cover](https://example.test/image.png");
+  assert(image.find("before cover") != std::string::npos && image.find("https://") == std::string::npos && image.find('!') == std::string::npos);
+  assert(progressive("before **emphasis").find("before emphasis") != std::string::npos);
+  for (const std::string& marker : {"Before *", "Before **", "Before `"}) {
+    const auto rendered = progressive(marker);
+    assert(rendered.find('*') == std::string::npos && rendered.find('`') == std::string::npos);
+  }
+  assert(progressive("**bold*").find("bold") != std::string::npos);
+  const auto imageLabel = progressive("before ![alt]");
+  assert(imageLabel.find('!') == std::string::npos && imageLabel.find('[') == std::string::npos && imageLabel.find(']') == std::string::npos);
+  const auto linkLabel = progressive("before [alt]");
+  assert(linkLabel.find('[') == std::string::npos && linkLabel.find(']') == std::string::npos);
+  const auto nested = progressive("before **bold *italic");
+  assert(nested.find("**") == std::string::npos && nested.find("italic") != std::string::npos);
+  const auto mixed = progressive("before ~~**mixed");
+  assert(mixed.find("~~") == std::string::npos && mixed.find("**") == std::string::npos);
+  assert(has(stmd_parse_streaming(parser, "before **bold *italic", 21, true, false), STMD_RUN_BOLD));
+  const auto partialTable = progressive("A | B\n| --");
+  assert(partialTable.find('A') == std::string::npos && partialTable.find('B') == std::string::npos);
+  assert(progressive("A | B\n").find('A') == std::string::npos);
+  assert(progressive("A | B\n|").find('A') == std::string::npos);
+  assert(progressive("prose\n| Header | ").find("Header") == std::string::npos);
+  const auto completeTable = progressive("prose\n\n| A | B |\n| --- | --- |");
+  assert(completeTable.find('|') == std::string::npos);
+  const auto tableRow = progressive("prose\n\n| A | B |\n| --- | --- |\n| one | two |\n");
+  assert(tableRow.find('|') == std::string::npos);
+  const std::string code = "```text\n![literal](https://example.test/image.png";
+  assert(progressive(code).find("![literal](https://example.test/image.png") != std::string::npos);
+  const std::string literal = "before [read](https://example.test";
+  const auto streamed = copyDocument(stmd_parse_streaming(parser, literal.data(), literal.size(), true, false));
+  const auto final = copyDocument(stmd_parse_streaming(parser, literal.data(), literal.size(), true, true));
+  assert(streamed.text.size() < final.text.size());
+  auto* fresh = stmd_create();
+  assertSame(final, copyDocument(stmd_parse(fresh, literal.data(), literal.size(), true)));
+  const auto completeItalic = progressive("complete *italic* before whitespace ");
+  assert(completeItalic.find("complete italic before whitespace") != std::string::npos);
+  assert(progressive("complete _italic_ before whitespace ").find("complete italic before whitespace") != std::string::npos);
+  assert(progressive("snake_case and $5 * 2").find("snake_case and $5 * 2") != std::string::npos);
+  assert(progressive("escaped \\*literal and `code * literal`").find("escaped *literal and code * literal") != std::string::npos);
+  assert(progressive("``code ` literal``").find("code ` literal") != std::string::npos);
+  stmd_destroy(fresh);
+  stmd_destroy(parser);
+}
+
+static void assertNoRawLinkOrImagePrefixes(const std::string& source) {
+  auto* parser = stmd_create();
+  assert(parser);
+  for (size_t length = 0; length <= source.size(); ++length) {
+    const auto* doc = stmd_parse_streaming(parser, source.data(), length, true, false);
+    assert(doc && doc->error == 0);
+    const auto visible = ascii(doc);
+    assert(visible.find('[') == std::string::npos && visible.find(']') == std::string::npos &&
+        visible.find('!') == std::string::npos && visible.find("https://") == std::string::npos);
+  }
+  stmd_destroy(parser);
+}
+
+static void assertAnnouncementPrefixProjection() {
+  const std::string emphasis =
+      "Daylight should feel like a quiet desk: **one meaningful intention**, a gentle timer, and a closing ritual. "
+      "*Avoid noisy streaks and leaderboards.* ~~More features~~ **more clarity** is the launch principle.";
+  const std::string table =
+      "Before the schedule:\n\n| When | Experience | Purpose |\n| :--- | :--- | :--- |\n"
+      "| Morning | One focus card | Find clarity |\n| Midday | Gentle reset | Start again |\n\n"
+      "A separate paragraph between tables.\n\n| Next | Owner |\n| :--- | ---: |\n| Review | Team |\n";
+  auto* parser = stmd_create();
+  assert(parser);
+  for (const auto* source : {&emphasis, &table}) {
+    for (size_t length = 0; length <= source->size(); ++length) {
+      const auto* doc = stmd_parse_streaming(parser, source->data(), length, true, false);
+      assert(doc && doc->error == 0);
+      const auto visible = ascii(doc);
+      if (source == &emphasis) {
+        // This fixture contains no literal stars or tildes: each such byte
+        // belongs to Markdown syntax and must never flash while streaming.
+        assert(visible.find('*') == std::string::npos && visible.find('~') == std::string::npos);
+      } else {
+        assert(visible.find('|') == std::string::npos);
+      }
+    }
+  }
+  stmd_destroy(parser);
+}
+
 static uint32_t nextRandom(uint32_t& state) {
   state ^= state << 13; state ^= state >> 17; state ^= state << 5;
   return state;
 }
-static std::string ascii(const STMarkdownDocument* d);
-static bool has(const STMarkdownDocument* d, uint32_t flag);
 static void fuzzDeterministic() {
   uint32_t state = 0x51a7e5u;
   for (int sample = 0; sample < 128; ++sample) {
@@ -269,14 +437,28 @@ int main(int argc, char** argv) {
     if (i) assert(doc->runs[i - 1].start + doc->runs[i - 1].length <= doc->runs[i].start);
   }
   assert(keyword && stringToken && comment);
+  assert(has(doc, STMD_RUN_LANGUAGE_JAVASCRIPT));
   // Adjacent code blocks can coalesce a plain CODE run; both must still get tokenized.
   const std::string adjacentCode = "```unknown\nplain\n```\n```js\nconst next = 1;\n```\n";
   doc = stmd_parse(parser, adjacentCode.data(), adjacentCode.size(), true);
   assert(has(doc, STMD_RUN_TOKEN_KEYWORD) && has(doc, STMD_RUN_TOKEN_NUMBER));
+  const std::string separatedCode = "```js\nconst first = 1;\n```\n\n```js\nconst second = 2;\n```\n";
+  doc = stmd_parse(parser, separatedCode.data(), separatedCode.size(), true);
+  bool plainCodeSeparator = false;
+  for (size_t i = 0; i < doc->runCount; ++i) {
+    const auto& run = doc->runs[i];
+    if ((run.flags & STMD_RUN_CODE_BLOCK) == 0 && run.length != 0) {
+      for (size_t at = run.start; at < run.start + run.length; ++at) {
+        if (doc->text[at] == '\n') plainCodeSeparator = true;
+      }
+    }
+  }
+  assert(plainCodeSeparator);
   const std::string languageBefore = "```unknown\nplain\n```\n```unknown\nconst next = 1;\n```\n";
   stmd_parse(parser, languageBefore.data(), languageBefore.size(), true);
   doc = stmd_parse(parser, adjacentCode.data(), adjacentCode.size(), true);
-  assert(doc->changedStartUTF16 == 6); // only the second code body changes style
+  const std::u16string languageText(doc->text, doc->text + doc->textLength);
+  assert(doc->changedStartUTF16 == languageText.find(u"const next")); // only the second code body changes style
   doc = stmd_parse(parser, adjacentCode.data(), adjacentCode.size(), true);
   assert(doc->changedStartUTF16 == doc->textLength);
   // Identical U+FFFC text must still invalidate precisely the changed attachment.
@@ -325,6 +507,33 @@ int main(int argc, char** argv) {
       {"~~literal in CommonMark~~\n\n[ref][r]\n\n[r]: /where\n", false},
   };
   for (const auto& streaming : streamingCases) assertStreamSeam(streaming.first, streaming.second);
+  const std::vector<std::pair<std::string, bool>> incompleteStreamingCases = {
+      {"A [link](https://example.test/path) then ![image](https://example.test/a.png", true},
+      {"before **unfinished strong", true},
+      {"before _unfinished italic", true},
+      {"A | B\n| --", true},
+      {"```js\nconst literal = \"![not image](x\";\n", true},
+      {"escaped \\[literal](x) and `![literal](x`", true},
+      {"![escaped \\[label\\]](https://example.test/a_(b)", true},
+      {"prose\n| Header |\n| ---", true},
+  };
+  for (const auto& streaming : incompleteStreamingCases) assertStreamingProjectionSeam(streaming.first, streaming.second);
+  assertNoStreamingSyntaxFlash();
+  assertNoRawLinkOrImagePrefixes("before [read](https://example.test/a_(b)) after");
+  assertNoRawLinkOrImagePrefixes("before ![alt](https://example.test/a_(b)) after");
+  assertAnnouncementPrefixProjection();
+  // The tail scanner must not backtrack quadratically over escapes or attempt
+  // a projection beyond its bounded single-line window.
+  std::string longTail(1024 * 1024, '\\');
+  longTail += "[not-a-link";
+  doc = stmd_parse_streaming(parser, longTail.data(), longTail.size(), true, false);
+  assert(doc && doc->error == 0 && doc->sourceBytesConsumed == longTail.size());
+  // A short candidate line after a huge predecessor must not scan backward
+  // beyond the streaming tail window while checking for a table header.
+  std::string longPreviousLine(1024 * 1024, 'x');
+  longPreviousLine += "\n| --";
+  doc = stmd_parse_streaming(parser, longPreviousLine.data(), longPreviousLine.size(), true, false);
+  assert(doc && doc->error == 0 && doc->sourceBytesConsumed == longPreviousLine.size());
 
   std::string deep;
   for (int depth = 0; depth < 96; ++depth) deep.append(static_cast<size_t>(depth) * 2, ' ').append("- nested\n");
@@ -352,6 +561,30 @@ int main(int argc, char** argv) {
       }
       const auto createSeconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - createStart).count();
       std::cout << "create markdown " << bytes << " bytes: " << (bytes * iterations / createSeconds / 1e6) << " MB/s\n";
+      const auto streamingStart = std::chrono::steady_clock::now();
+      for (int i = 0; i < iterations; ++i) {
+        assert(stmd_parse_streaming(parser, input.data(), input.size(), true, false)->error == 0);
+      }
+      const auto streamingSeconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - streamingStart).count();
+      std::string unfinished = input + "**incomplete";
+      const auto projectedStart = std::chrono::steady_clock::now();
+      for (int i = 0; i < iterations; ++i) {
+        assert(stmd_parse_streaming(parser, unfinished.data(), unfinished.size(), true, false)->error == 0);
+      }
+      const auto projectedSeconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - projectedStart).count();
+      std::cout << "streaming final-shaped " << bytes << " bytes: " << (bytes * iterations / streamingSeconds / 1e6)
+                << " MB/s; projected incomplete tail: " << (unfinished.size() * iterations / projectedSeconds / 1e6) << " MB/s\n";
+      if (bytes == 100 * 1024) {
+        std::string heldTail = input + "\n\n**stream remains open";
+        const auto heldStart = std::chrono::steady_clock::now();
+        for (int i = 0; i < iterations; ++i) {
+          assert(stmd_parse_streaming(parser, heldTail.data(), heldTail.size(), true, false)->error == 0);
+        }
+        const auto heldSeconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - heldStart).count();
+        std::cout << "streaming held-tail " << heldTail.size() << " bytes: "
+                  << (heldTail.size() * iterations / heldSeconds / 1e6)
+                  << " MB/s (full-prefix parse plus active-tail projection path)\n";
+      }
       for (size_t delta : {size_t(17), size_t(128), size_t(1024)}) {
         std::string streamed = input.substr(0, input.size() - delta);
         stmd_parse(parser, streamed.data(), streamed.size(), true);
