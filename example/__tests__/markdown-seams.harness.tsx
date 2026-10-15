@@ -36,6 +36,9 @@ describe('StreamText Markdown ownership seams', () => {
     const mounted = await render(view('commonmark', 14));
     ref.current!.attach(buffer('**retained**', TSB.done));
     const first = await waitForSnapshot(key, s => expect(s.text).toBe('retained\n'));
+    // The initial terminal callback must already belong to the first render. Otherwise a
+    // delayed callback could make the reformat assertion pass without exercising its event.
+    await waitFor(() => expect(events.at(-1)).toEqual(['done', 12]));
     events.length = 0;
     await mounted.rerender(view('gfm', 26));
     await waitForSnapshot(key, s => {

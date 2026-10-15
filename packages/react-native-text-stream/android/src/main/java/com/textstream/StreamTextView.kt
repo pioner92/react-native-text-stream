@@ -899,6 +899,14 @@ class StreamTextView(context: Context) : ReactViewGroup(context) {
       return
     }
     if (markdownEnabled) {
+      // A finished Markdown document is rendered again on this worker pass.  Its prior
+      // terminal event described the old flavor/style, so allow the completion of this pass
+      // to notify JS after the new spans and layout are visible.
+      val terminal = reportedStatus?.takeIf { finished && it != "idle" && it != "streaming" }
+      if (terminal != null) {
+        reportedStatus = null
+        pendingMarkdownTerminal = terminal to offset
+      }
       val prepared = canvas
       if (prepared != null && !flavorChanged) {
         // Keep a matching cached canvas; its deferred fallback schedules a full styled patch.
