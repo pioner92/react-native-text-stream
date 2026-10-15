@@ -4,6 +4,9 @@ All notable changes to StreamText are documented in this file.
 
 ## Unreleased
 
+- Native GFM table grids with wrapped/aligned cells, asynchronous HTTP(S) images,
+  and bounded lexical highlighting for JavaScript, TypeScript, JSON and Python fences.
+- Native rich-block metadata, width/lifecycle handling, and image download/decode/cache limits.
 - Native CommonMark/GFM rendering with `format="markdown"`, incremental updates and platform seam tests.
 - Native SSE/NDJSON framing with OpenAI Chat/Responses, Anthropic and Ollama text presets.
 - Custom JSON Pointer text extraction, bounded record size, terminal-marker completion and parser-aware request identity.

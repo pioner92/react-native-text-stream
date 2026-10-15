@@ -23,6 +23,7 @@ struct RunCopy {
 struct DocumentCopy {
   std::u16string text;
   std::vector<RunCopy> runs;
+  std::string blocks;
 };
 static DocumentCopy copyDocument(const STMarkdownDocument* document) {
   assert(document && document->error == 0);
@@ -35,11 +36,22 @@ static DocumentCopy copyDocument(const STMarkdownDocument* document) {
     const auto& run = document->runs[i];
     copy.runs.push_back({run.start, run.length, run.flags, run.headingLevel, run.indent, run.url ? run.url : ""});
   }
+  for (size_t i = 0; i < document->blockCount; ++i) {
+    const auto& block = document->blocks[i];
+    copy.blocks += std::to_string(block.start) + ":" + std::to_string(block.kind) + ":" + (block.url ? block.url : "") + ";";
+    for (size_t j = 0; j < block.altLength; ++j) copy.blocks += std::to_string(block.alt[j]) + ",";
+    for (size_t j = 0; j < block.rowCount * block.columnCount; ++j) {
+      const auto& cell = block.cells[j]; copy.blocks += std::to_string(cell.flags) + "/" + std::to_string(cell.alignment) + "/";
+      for (size_t k = 0; k < cell.textLength; ++k) copy.blocks += std::to_string(cell.text[k]) + ",";
+      for (size_t k = 0; k < cell.runCount; ++k) copy.blocks += std::to_string(cell.runs[k].flags) + ":" + (cell.runs[k].url ? cell.runs[k].url : "") + ";";
+    }
+  }
   return copy;
 }
 static void assertSame(const DocumentCopy& a, const DocumentCopy& b) {
   assert(a.text == b.text);
   assert(a.runs == b.runs);
+  assert(a.blocks == b.blocks);
 }
 struct StyledCopy {
   std::u16string text;
@@ -220,6 +232,71 @@ int main(int argc, char** argv) {
     if ((run.flags & (STMD_RUN_BOLD | STMD_RUN_ITALIC)) == (STMD_RUN_BOLD | STMD_RUN_ITALIC)) nestedStyle = true;
   }
   assert(decodedHref && nestedStyle);
+  const std::string image = "before ![caf\xc3\xa9](https://example.test/image.png) after";
+  doc = stmd_parse(parser, image.data(), image.size(), true);
+  assert(doc->error == 0 && doc->blockCount == 1 && doc->blocks[0].kind == STMD_BLOCK_IMAGE);
+  assert(doc->blocks[0].length == 1 && doc->blocks[0].url && std::string(doc->blocks[0].url) == "https://example.test/image.png");
+  assert(doc->blocks[0].altLength == 4 && doc->blocks[0].alt[0] == 'c');
+  const std::string encodedImage = "![a &amp; &#x1F680;](https://example.test/a.png)";
+  doc = stmd_parse(parser, encodedImage.data(), encodedImage.size(), true);
+  assert(doc->blockCount == 1 && doc->blocks[0].altLength == 6 && doc->blocks[0].alt[2] == '&');
+  const std::string literalAlt = "![`&amp;` \\&amp; &amp;](https://example.test/a.png)";
+  doc = stmd_parse(parser, literalAlt.data(), literalAlt.size(), true);
+  assert(std::u16string(doc->blocks[0].alt, doc->blocks[0].alt + doc->blocks[0].altLength) == u"&amp; &amp; &");
+  const std::string nestedImage = "![outer ![inner](https://example.test/inner.png) end](https://example.test/outer.png)";
+  doc = stmd_parse(parser, nestedImage.data(), nestedImage.size(), true);
+  assert(doc->blockCount == 1);
+  assert(std::u16string(doc->blocks[0].alt, doc->blocks[0].alt + doc->blocks[0].altLength) == u"outer inner end");
+  const std::string cellImage = "| Image |\n| --- |\n| ![safe &amp; alt](https://example.test/cell.png) |\n";
+  doc = stmd_parse(parser, cellImage.data(), cellImage.size(), true);
+  assert(doc->blockCount == 1 && doc->blocks[0].kind == STMD_BLOCK_TABLE);
+  const auto& imageCell = doc->blocks[0].cells[1];
+  assert(std::u16string(imageCell.text, imageCell.text + imageCell.textLength) == u"safe & alt");
+  const std::string table = "| left | center |\n|:-----|:------:|\n| **one** | [two](https://example.test) |\n";
+  doc = stmd_parse(parser, table.data(), table.size(), true);
+  assert(doc->error == 0 && doc->blockCount == 1 && doc->blocks[0].kind == STMD_BLOCK_TABLE);
+  const auto& tableBlock = doc->blocks[0];
+  assert(tableBlock.length == 1 && tableBlock.rowCount == 2 && tableBlock.columnCount == 2);
+  assert(tableBlock.cells && tableBlock.cells[0].flags == STMD_BLOCK_CELL_HEADER && tableBlock.cells[1].alignment == STMD_ALIGN_CENTER);
+  assert(tableBlock.cells[2].runs[0].flags & STMD_RUN_BOLD && tableBlock.cells[3].runs[0].flags & STMD_RUN_LINK);
+  const std::string code = "```js\nconst value = \"text\"; // note\n```\n";
+  doc = stmd_parse(parser, code.data(), code.size(), true);
+  bool keyword = false, stringToken = false, comment = false;
+  for (size_t i = 0; i < doc->runCount; ++i) {
+    keyword |= (doc->runs[i].flags & STMD_RUN_TOKEN_KEYWORD) != 0;
+    stringToken |= (doc->runs[i].flags & STMD_RUN_TOKEN_STRING) != 0;
+    comment |= (doc->runs[i].flags & STMD_RUN_TOKEN_COMMENT) != 0;
+    if (i) assert(doc->runs[i - 1].start + doc->runs[i - 1].length <= doc->runs[i].start);
+  }
+  assert(keyword && stringToken && comment);
+  // Adjacent code blocks can coalesce a plain CODE run; both must still get tokenized.
+  const std::string adjacentCode = "```unknown\nplain\n```\n```js\nconst next = 1;\n```\n";
+  doc = stmd_parse(parser, adjacentCode.data(), adjacentCode.size(), true);
+  assert(has(doc, STMD_RUN_TOKEN_KEYWORD) && has(doc, STMD_RUN_TOKEN_NUMBER));
+  const std::string languageBefore = "```unknown\nplain\n```\n```unknown\nconst next = 1;\n```\n";
+  stmd_parse(parser, languageBefore.data(), languageBefore.size(), true);
+  doc = stmd_parse(parser, adjacentCode.data(), adjacentCode.size(), true);
+  assert(doc->changedStartUTF16 == 6); // only the second code body changes style
+  doc = stmd_parse(parser, adjacentCode.data(), adjacentCode.size(), true);
+  assert(doc->changedStartUTF16 == doc->textLength);
+  // Identical U+FFFC text must still invalidate precisely the changed attachment.
+  const std::string stablePrefix = "![first](https://example.test/a.png)\n\ntext\n\n";
+  auto metadataChange = [&](const std::string& before, const std::string& after) {
+    const std::string initial = stablePrefix + before;
+    const std::string final = stablePrefix + after;
+    stmd_parse(parser, initial.data(), initial.size(), true);
+    const auto* changed = stmd_parse(parser, final.data(), final.size(), true);
+    assert(changed->blockCount == 2 && changed->changedStartUTF16 == changed->blocks[1].start);
+    const auto* same = stmd_parse(parser, final.data(), final.size(), true);
+    assert(same->changedStartUTF16 == same->textLength);
+  };
+  metadataChange("![old](https://example.test/a)", "![new](https://example.test/a)");
+  metadataChange("![same](https://example.test/a)", "![same](https://example.test/b)");
+  metadataChange("| A |\n| --- |\n| old |", "| A |\n| --- |\n| new |");
+  metadataChange("| A |\n| --- |\n| same |", "| A |\n| --- |\n| **same** |");
+  metadataChange("| A |\n| :--- |\n| same |", "| A |\n| ---: |\n| same |");
+  metadataChange("| A |\n| --- |\n| [x](https://example.test/a) |", "| A |\n| --- |\n| [x](https://example.test/b) |");
+  for (const auto& rich : {literalAlt, nestedImage, cellImage, table, code, adjacentCode}) assertStreamSeam(rich, true);
   std::string hostile(512, '>');
   hostile += " invalid: \xf0\x28\x8c\x28 &#x110000; &#999999999999999999999;\n";
   doc = stmd_parse(parser, hostile.data(), hostile.size(), true);

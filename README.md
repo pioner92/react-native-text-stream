@@ -39,7 +39,7 @@ export function Answer({ url }: { url: string }) {
 By default your endpoint returns **plain UTF-8 text**. StreamText handles the native request
 and rendering. Select a native SSE/NDJSON parser with `parser: { provider: 'openai-chat' }`;
 see the [protocol guide](docs/protocols.md) for providers and custom fields. Opt into native Markdown with
-`format="markdown" markdownFlavor="gfm"`; see the [Markdown guide](docs/markdown.md)
+`format="markdown" markdownFlavor="gfm"` for styled text, table grids, async images and fenced-code highlighting; see the [Markdown guide](docs/markdown.md)
 for supported elements and performance limits.
 
 ## Why StreamText?
@@ -193,7 +193,6 @@ See [setup and compatibility details](docs/getting-started.md).
 ## Roadmap
 
 - A JavaScript chunk-input API for existing SDKs and other transports.
-- Richer Markdown blocks: table grids, images and code syntax highlighting.
 - A broader validated compatibility matrix.
 
 These are planned directions, not currently supported features or release commitments.

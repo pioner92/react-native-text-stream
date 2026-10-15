@@ -1,0 +1,591 @@
+{
+  "host": "macOS-26.6.2-arm64-arm-64bit-Mach-O",
+  "architecture": "arm64",
+  "compiler": "Apple clang version 21.0.0 (clang-2100.1.1.101)",
+  "baselineCommit": "867c2657f4bd128c97b33e5fed9948782377673a",
+  "currentCommit": "867c2657f4bd128c97b33e5fed9948782377673a",
+  "currentParserSha256": "69b3a9c9e37b05b8790187d15e3da1f35f19afa8dbf4e303d8b5fd97d68b4eaa",
+  "iterationsPerBatch": 20,
+  "batches": 5,
+  "warmupParses": 5,
+  "compileTimeExcluded": true,
+  "measurements": {
+    "baseline": [
+      {
+        "case": "ordinary-5120",
+        "sourceBytes": 5180,
+        "freshParser": false,
+        "medianMs": 0.0394979,
+        "batchesMs": [
+          0.0394979,
+          0.0404041,
+          0.0405709,
+          0.0388459,
+          0.037902
+        ]
+      },
+      {
+        "case": "ordinary-5120",
+        "sourceBytes": 5180,
+        "freshParser": true,
+        "medianMs": 0.0386312,
+        "batchesMs": [
+          0.0388084,
+          0.0407667,
+          0.0386042,
+          0.0385937,
+          0.0386312
+        ]
+      },
+      {
+        "case": "ordinary-102400",
+        "sourceBytes": 102410,
+        "freshParser": false,
+        "medianMs": 0.757713,
+        "batchesMs": [
+          0.746577,
+          0.757713,
+          0.774071,
+          0.735183,
+          0.759304
+        ]
+      },
+      {
+        "case": "ordinary-102400",
+        "sourceBytes": 102410,
+        "freshParser": true,
+        "medianMs": 0.725071,
+        "batchesMs": [
+          0.737544,
+          0.725071,
+          0.70101,
+          0.716377,
+          0.739381
+        ]
+      },
+      {
+        "case": "tables-5120",
+        "sourceBytes": 5187,
+        "freshParser": false,
+        "medianMs": 0.04675,
+        "batchesMs": [
+          0.04675,
+          0.0465979,
+          0.0466792,
+          0.0470208,
+          0.0469333
+        ]
+      },
+      {
+        "case": "tables-5120",
+        "sourceBytes": 5187,
+        "freshParser": true,
+        "medianMs": 0.0467958,
+        "batchesMs": [
+          0.0496666,
+          0.04575,
+          0.0464104,
+          0.0468937,
+          0.0467958
+        ]
+      },
+      {
+        "case": "tables-102400",
+        "sourceBytes": 102466,
+        "freshParser": false,
+        "medianMs": 0.959406,
+        "batchesMs": [
+          0.950133,
+          0.977337,
+          0.975058,
+          0.959406,
+          0.932252
+        ]
+      },
+      {
+        "case": "tables-102400",
+        "sourceBytes": 102466,
+        "freshParser": true,
+        "medianMs": 0.963331,
+        "batchesMs": [
+          0.965969,
+          0.972179,
+          0.938265,
+          0.931373,
+          0.963331
+        ]
+      },
+      {
+        "case": "syntax-5120",
+        "sourceBytes": 5166,
+        "freshParser": false,
+        "medianMs": 0.017225,
+        "batchesMs": [
+          0.0165625,
+          0.0164812,
+          0.017225,
+          0.0183333,
+          0.0177062
+        ]
+      },
+      {
+        "case": "syntax-5120",
+        "sourceBytes": 5166,
+        "freshParser": true,
+        "medianMs": 0.0173709,
+        "batchesMs": [
+          0.0178333,
+          0.0173709,
+          0.0176063,
+          0.0169792,
+          0.0168896
+        ]
+      },
+      {
+        "case": "syntax-102400",
+        "sourceBytes": 102418,
+        "freshParser": false,
+        "medianMs": 0.324431,
+        "batchesMs": [
+          0.324431,
+          0.31919,
+          0.324773,
+          0.322881,
+          0.326465
+        ]
+      },
+      {
+        "case": "syntax-102400",
+        "sourceBytes": 102418,
+        "freshParser": true,
+        "medianMs": 0.326431,
+        "batchesMs": [
+          0.33005,
+          0.326431,
+          0.324883,
+          0.325912,
+          0.33319
+        ]
+      },
+      {
+        "case": "images-5120",
+        "sourceBytes": 5152,
+        "freshParser": false,
+        "medianMs": 0.04,
+        "batchesMs": [
+          0.04,
+          0.0371542,
+          0.0383271,
+          0.0410459,
+          0.0419354
+        ]
+      },
+      {
+        "case": "images-5120",
+        "sourceBytes": 5152,
+        "freshParser": true,
+        "medianMs": 0.0370209,
+        "batchesMs": [
+          0.0371187,
+          0.0390604,
+          0.0370209,
+          0.0353438,
+          0.0351917
+        ]
+      },
+      {
+        "case": "images-102400",
+        "sourceBytes": 102442,
+        "freshParser": false,
+        "medianMs": 0.666521,
+        "batchesMs": [
+          0.666521,
+          0.66591,
+          0.665402,
+          0.687312,
+          0.678871
+        ]
+      },
+      {
+        "case": "images-102400",
+        "sourceBytes": 102442,
+        "freshParser": true,
+        "medianMs": 0.702329,
+        "batchesMs": [
+          0.702329,
+          0.695796,
+          0.683031,
+          0.725785,
+          0.736323
+        ]
+      },
+      {
+        "case": "fences-100",
+        "sourceBytes": 2500,
+        "freshParser": false,
+        "medianMs": 0.0113542,
+        "batchesMs": [
+          0.0111854,
+          0.0111687,
+          0.0113542,
+          0.0145979,
+          0.0121791
+        ]
+      },
+      {
+        "case": "fences-100",
+        "sourceBytes": 2500,
+        "freshParser": true,
+        "medianMs": 0.0114562,
+        "batchesMs": [
+          0.0119875,
+          0.0115896,
+          0.0114125,
+          0.0114521,
+          0.0114562
+        ]
+      },
+      {
+        "case": "fences-500",
+        "sourceBytes": 12500,
+        "freshParser": false,
+        "medianMs": 0.0538042,
+        "batchesMs": [
+          0.0540937,
+          0.0538042,
+          0.0541146,
+          0.0536959,
+          0.0530958
+        ]
+      },
+      {
+        "case": "fences-500",
+        "sourceBytes": 12500,
+        "freshParser": true,
+        "medianMs": 0.0565063,
+        "batchesMs": [
+          0.0541562,
+          0.0562833,
+          0.0614625,
+          0.0565063,
+          0.0575291
+        ]
+      },
+      {
+        "case": "fences-1000",
+        "sourceBytes": 25000,
+        "freshParser": false,
+        "medianMs": 0.1175,
+        "batchesMs": [
+          0.111804,
+          0.113942,
+          0.11849,
+          0.117692,
+          0.1175
+        ]
+      },
+      {
+        "case": "fences-1000",
+        "sourceBytes": 25000,
+        "freshParser": true,
+        "medianMs": 0.119223,
+        "batchesMs": [
+          0.114944,
+          0.119321,
+          0.12939,
+          0.119223,
+          0.11451
+        ]
+      }
+    ],
+    "current": [
+      {
+        "case": "ordinary-5120",
+        "sourceBytes": 5180,
+        "freshParser": false,
+        "medianMs": 0.05175,
+        "batchesMs": [
+          0.086302,
+          0.0618938,
+          0.05175,
+          0.0471229,
+          0.0367813
+        ]
+      },
+      {
+        "case": "ordinary-5120",
+        "sourceBytes": 5180,
+        "freshParser": true,
+        "medianMs": 0.0399542,
+        "batchesMs": [
+          0.0379437,
+          0.0417271,
+          0.040925,
+          0.0399542,
+          0.0378521
+        ]
+      },
+      {
+        "case": "ordinary-102400",
+        "sourceBytes": 102410,
+        "freshParser": false,
+        "medianMs": 0.75334,
+        "batchesMs": [
+          0.748015,
+          0.768571,
+          0.778085,
+          0.75334,
+          0.743631
+        ]
+      },
+      {
+        "case": "ordinary-102400",
+        "sourceBytes": 102410,
+        "freshParser": true,
+        "medianMs": 0.728665,
+        "batchesMs": [
+          0.728665,
+          0.763588,
+          0.734467,
+          0.720237,
+          0.727615
+        ]
+      },
+      {
+        "case": "tables-5120",
+        "sourceBytes": 5187,
+        "freshParser": false,
+        "medianMs": 0.104631,
+        "batchesMs": [
+          0.107865,
+          0.103354,
+          0.103123,
+          0.104631,
+          0.109819
+        ]
+      },
+      {
+        "case": "tables-5120",
+        "sourceBytes": 5187,
+        "freshParser": true,
+        "medianMs": 0.122767,
+        "batchesMs": [
+          0.122804,
+          0.122767,
+          0.124388,
+          0.12139,
+          0.122298
+        ]
+      },
+      {
+        "case": "tables-102400",
+        "sourceBytes": 102466,
+        "freshParser": false,
+        "medianMs": 2.07002,
+        "batchesMs": [
+          2.05648,
+          2.05674,
+          2.09851,
+          2.10233,
+          2.07002
+        ]
+      },
+      {
+        "case": "tables-102400",
+        "sourceBytes": 102466,
+        "freshParser": true,
+        "medianMs": 2.43069,
+        "batchesMs": [
+          2.43069,
+          2.387,
+          2.4184,
+          2.46176,
+          2.4813
+        ]
+      },
+      {
+        "case": "syntax-5120",
+        "sourceBytes": 5166,
+        "freshParser": false,
+        "medianMs": 0.0546438,
+        "batchesMs": [
+          0.0546438,
+          0.0540646,
+          0.0555833,
+          0.054427,
+          0.0549292
+        ]
+      },
+      {
+        "case": "syntax-5120",
+        "sourceBytes": 5166,
+        "freshParser": true,
+        "medianMs": 0.0547458,
+        "batchesMs": [
+          0.0541312,
+          0.0538895,
+          0.0547458,
+          0.0581812,
+          0.0552791
+        ]
+      },
+      {
+        "case": "syntax-102400",
+        "sourceBytes": 102418,
+        "freshParser": false,
+        "medianMs": 1.11938,
+        "batchesMs": [
+          1.09734,
+          1.11739,
+          1.13994,
+          1.14743,
+          1.11938
+        ]
+      },
+      {
+        "case": "syntax-102400",
+        "sourceBytes": 102418,
+        "freshParser": true,
+        "medianMs": 1.06216,
+        "batchesMs": [
+          1.06216,
+          1.08948,
+          1.04634,
+          1.06035,
+          1.07138
+        ]
+      },
+      {
+        "case": "images-5120",
+        "sourceBytes": 5152,
+        "freshParser": false,
+        "medianMs": 0.0565479,
+        "batchesMs": [
+          0.0541562,
+          0.0565479,
+          0.057175,
+          0.0588792,
+          0.05405
+        ]
+      },
+      {
+        "case": "images-5120",
+        "sourceBytes": 5152,
+        "freshParser": true,
+        "medianMs": 0.0613042,
+        "batchesMs": [
+          0.0628875,
+          0.0610354,
+          0.0620708,
+          0.0613042,
+          0.0610021
+        ]
+      },
+      {
+        "case": "images-102400",
+        "sourceBytes": 102442,
+        "freshParser": false,
+        "medianMs": 1.07433,
+        "batchesMs": [
+          1.05653,
+          1.07433,
+          1.1057,
+          1.06922,
+          1.09522
+        ]
+      },
+      {
+        "case": "images-102400",
+        "sourceBytes": 102442,
+        "freshParser": true,
+        "medianMs": 1.22775,
+        "batchesMs": [
+          1.2143,
+          1.23181,
+          1.22273,
+          1.22775,
+          1.23776
+        ]
+      },
+      {
+        "case": "fences-100",
+        "sourceBytes": 2500,
+        "freshParser": false,
+        "medianMs": 0.0405646,
+        "batchesMs": [
+          0.03465,
+          0.0343313,
+          0.0409687,
+          0.0405646,
+          0.0418146
+        ]
+      },
+      {
+        "case": "fences-100",
+        "sourceBytes": 2500,
+        "freshParser": true,
+        "medianMs": 0.0365812,
+        "batchesMs": [
+          0.0375188,
+          0.0397396,
+          0.0365812,
+          0.036025,
+          0.0346979
+        ]
+      },
+      {
+        "case": "fences-500",
+        "sourceBytes": 12500,
+        "freshParser": false,
+        "medianMs": 0.187029,
+        "batchesMs": [
+          0.189296,
+          0.183971,
+          0.175279,
+          0.193013,
+          0.187029
+        ]
+      },
+      {
+        "case": "fences-500",
+        "sourceBytes": 12500,
+        "freshParser": true,
+        "medianMs": 0.184252,
+        "batchesMs": [
+          0.174652,
+          0.184327,
+          0.184252,
+          0.172104,
+          0.195221
+        ]
+      },
+      {
+        "case": "fences-1000",
+        "sourceBytes": 25000,
+        "freshParser": false,
+        "medianMs": 0.360619,
+        "batchesMs": [
+          0.361687,
+          0.360619,
+          0.373671,
+          0.351779,
+          0.354725
+        ]
+      },
+      {
+        "case": "fences-1000",
+        "sourceBytes": 25000,
+        "freshParser": true,
+        "medianMs": 0.340358,
+        "batchesMs": [
+          0.338462,
+          0.339,
+          0.350669,
+          0.340358,
+          0.340431
+        ]
+      }
+    ]
+  },
+  "limitations": "Host parser snapshot timing only, not mobile rendering or network latency. Baseline flattens tables and images and does not highlight code; feature workloads do different work. Fresh includes parser creation/destruction, not a cold process or cold CPU cache."
+}

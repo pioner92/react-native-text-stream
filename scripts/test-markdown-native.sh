@@ -20,3 +20,5 @@ cc $c_flags -c "$root/packages/react-native-text-stream/cpp/markdown/vendor/md4c
 cc $c_flags -c "$root/packages/react-native-text-stream/cpp/markdown/vendor/md4c/entity.c" -o "$build_dir/entity.o"
 c++ $cxx_flags "$root/packages/react-native-text-stream/cpp/markdown/StreamMarkdown.cpp" "$root/tests/native/markdown_test.cpp" "$build_dir/md4c.o" "$build_dir/entity.o" -o "$build_dir/markdown_test"
 "$build_dir/markdown_test" "$@"
+c++ $cxx_flags -I"$root/packages/react-native-text-stream/cpp/markdown" "$root/tests/native/markdown_syntax_test.cpp" -o "$build_dir/markdown_syntax_test"
+"$build_dir/markdown_syntax_test"

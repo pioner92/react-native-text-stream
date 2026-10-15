@@ -73,7 +73,7 @@ public final class StreamTextPreparedLayout: NSObject {
   @objc public convenience init?(markdownUTF8 utf8: UnsafePointer<UInt8>, count: Int, bytes: UInt64,
                                  github: Bool, style: StreamTextStyle, width: CGFloat) {
     let data = Data(bytes: utf8, count: count)
-    guard let result = streamTextMarkdownParse(data, github: github) else { return nil }
+    guard let result = streamTextMarkdownParse(data, github: github), result.blocks.isEmpty else { return nil }
     self.init(text: streamTextMarkdownAttributed(result, base: style.attributes()), markdownResult: result,
               bytes: bytes, style: style, width: width)
   }

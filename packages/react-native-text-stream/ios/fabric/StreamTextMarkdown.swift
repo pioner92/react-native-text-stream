@@ -1,5 +1,14 @@
 import UIKit
 
+private let streamTextMarkdownTokenColors: [(UInt32, UIColor)] = [
+    (UInt32(STMD_RUN_TOKEN_KEYWORD), UIColor(red: 0.62, green: 0.33, blue: 0.85, alpha: 1)),
+    (UInt32(STMD_RUN_TOKEN_STRING), UIColor(red: 0.12, green: 0.57, blue: 0.35, alpha: 1)),
+    (UInt32(STMD_RUN_TOKEN_COMMENT), UIColor(red: 0.45, green: 0.50, blue: 0.55, alpha: 1)),
+    (UInt32(STMD_RUN_TOKEN_NUMBER), UIColor(red: 0.80, green: 0.43, blue: 0.18, alpha: 1)),
+    (UInt32(STMD_RUN_TOKEN_TYPE), UIColor(red: 0.15, green: 0.52, blue: 0.75, alpha: 1)),
+  ]
+
+
 // Markdown is deliberately kept off the main thread. The C parser owns its output only until its
 // next call, so this object immediately copies the tiny run table and UTF-16 result into Swift
 // values before handing the document back to the renderer.
@@ -11,9 +20,29 @@ struct StreamTextMarkdownRun: Equatable {
   var url: String?
 }
 
+struct StreamTextMarkdownCell: Equatable {
+  var text: String
+  var runs: [StreamTextMarkdownRun]
+  var header: Bool
+  var alignment: Int
+}
+
+struct StreamTextMarkdownBlock: Equatable {
+  var range: NSRange
+  var kind: UInt32
+  var rows: Int
+  var columns: Int
+  var cells: [StreamTextMarkdownCell]
+  var url: String?
+  var alt: String
+}
+
 struct StreamTextMarkdownResult {
   var text: String
   var runs: [StreamTextMarkdownRun]
+  /// Rich blocks are copied while the C document is borrowed. Rendering may retain this result
+  /// across async image callbacks, so it must never retain C pointers.
+  var blocks: [StreamTextMarkdownBlock] = []
   var changedStart: Int = 0
 }
 
@@ -44,7 +73,42 @@ private func streamTextMarkdownParse(_ parser: OpaquePointer, _ data: Data,
                                           indent: Int(run.indent), url: run.url.map { String(cString: $0) }))
       }
     }
-    return StreamTextMarkdownResult(text: string, runs: runs, changedStart: document.pointee.changedStartUTF16)
+    var blocks: [StreamTextMarkdownBlock] = []
+    blocks.reserveCapacity(document.pointee.blockCount)
+    if let sourceBlocks = document.pointee.blocks {
+      for index in 0..<document.pointee.blockCount {
+        let block = sourceBlocks[index]
+        guard block.start <= Int.max, block.length <= Int.max else { continue }
+        var cells: [StreamTextMarkdownCell] = []
+        let count = block.rowCount.multipliedReportingOverflow(by: block.columnCount)
+        if !count.overflow, count.partialValue <= UInt(Int.max), let sourceCells = block.cells {
+          let cellCount = Int(count.partialValue)
+          cells.reserveCapacity(cellCount)
+          for cellIndex in 0..<cellCount {
+            let cell = sourceCells[cellIndex]
+            let cellText = cell.text.map { String(decoding: UnsafeBufferPointer(start: $0, count: cell.textLength), as: UTF16.self) } ?? ""
+            var cellRuns: [StreamTextMarkdownRun] = []
+            if let rawRuns = cell.runs {
+              cellRuns.reserveCapacity(cell.runCount)
+              for runIndex in 0..<cell.runCount {
+                let run = rawRuns[runIndex]
+                guard run.start <= Int.max, run.length <= Int.max else { continue }
+                cellRuns.append(StreamTextMarkdownRun(range: NSRange(location: Int(run.start), length: Int(run.length)),
+                  flags: run.flags, headingLevel: Int(run.headingLevel), indent: Int(run.indent),
+                  url: run.url.map { String(cString: $0) }))
+              }
+            }
+            cells.append(StreamTextMarkdownCell(text: cellText, runs: cellRuns,
+              header: cell.flags & UInt32(STMD_BLOCK_CELL_HEADER) != 0, alignment: Int(cell.alignment)))
+          }
+        }
+        let alt = block.alt.map { String(decoding: UnsafeBufferPointer(start: $0, count: block.altLength), as: UTF16.self) } ?? ""
+        blocks.append(StreamTextMarkdownBlock(range: NSRange(location: Int(block.start), length: Int(block.length)),
+          kind: block.kind, rows: Int(block.rowCount), columns: Int(block.columnCount), cells: cells,
+          url: block.url.map { String(cString: $0) }, alt: alt))
+      }
+    }
+    return StreamTextMarkdownResult(text: string, runs: runs, blocks: blocks, changedStart: document.pointee.changedStartUTF16)
   }
 }
 
@@ -81,11 +145,12 @@ func streamTextMarkdownAttributes(for run: StreamTextMarkdownRun,
     if run.flags & UInt32(STMD_RUN_QUOTE) != 0 { paragraph.headIndent += baseFont.pointSize }
     attributes[.paragraphStyle] = paragraph
   }
+  for (flag, color) in streamTextMarkdownTokenColors where run.flags & flag != 0 { attributes[.foregroundColor] = color; break }
   return attributes
 }
 
 func streamTextMarkdownAttributed(_ result: StreamTextMarkdownResult,
-                                  base: [NSAttributedString.Key: Any]) -> NSAttributedString {
+                                  base: [NSAttributedString.Key: Any], width: CGFloat = 300) -> NSAttributedString {
   let output = NSMutableAttributedString(string: result.text, attributes: base)
   let length = output.length
   var styles: [String: [NSAttributedString.Key: Any]] = [:]
@@ -107,6 +172,7 @@ func streamTextMarkdownAttributed(_ result: StreamTextMarkdownResult,
     output.addAttributes(attributes,
                          range: NSRange(location: run.range.location, length: end - run.range.location))
   }
+  streamTextMarkdownAttachBlocks(result.blocks, to: output, offset: 0, base: base, width: width)
   return output
 }
 
@@ -133,6 +199,7 @@ final class StreamTextMarkdownPipeline {
     let github: Bool
     let revision: Int
     let attributes: [NSAttributedString.Key: Any]
+    let width: CGFloat
     let deliver: (StreamTextMarkdownUpdate) -> Void
   }
   private let lock = NSLock()
@@ -146,11 +213,11 @@ final class StreamTextMarkdownPipeline {
   deinit { if let parser { stmd_destroy(parser) } }
 
   func schedule(_ data: Data, github: Bool, revision: Int,
-                attributes: [NSAttributedString.Key: Any],
+                attributes: [NSAttributedString.Key: Any], width: CGFloat,
                 deliver: @escaping (StreamTextMarkdownUpdate) -> Void) {
     let start: Bool = lock.withLock {
       guard !cancelled else { return false }
-      pending = Job(data: data, github: github, revision: revision, attributes: attributes, deliver: deliver)
+      pending = Job(data: data, github: github, revision: revision, attributes: attributes, width: width, deliver: deliver)
       guard !active else { return false }
       active = true
       return true
@@ -204,6 +271,7 @@ final class StreamTextMarkdownPipeline {
       }
       suffix.addAttributes(attributes, range: NSRange(location: from - start, length: end - from))
     }
+    streamTextMarkdownAttachBlocks(result.blocks, to: suffix, offset: start, base: job.attributes, width: job.width)
     let update = StreamTextMarkdownUpdate(result: result, start: start, suffix: suffix,
                                           sourceBytes: job.data.count, revision: job.revision)
     DispatchQueue.main.async { [self] in

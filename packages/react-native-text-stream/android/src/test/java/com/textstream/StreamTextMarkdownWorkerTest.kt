@@ -5,6 +5,30 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class StreamTextMarkdownWorkerTest {
+  @Test fun richWidthChangeReplacesAttachmentsEvenWhenParsedTextIsIdentical() {
+    val queue = Queue()
+    val deliveries = mutableListOf<Delivery>()
+    val widths = mutableListOf<Int>()
+    val document = StreamTextMarkdown("\uFFFC", intArrayOf(0), intArrayOf(1), intArrayOf(0),
+        intArrayOf(0), intArrayOf(0), arrayOf(null),
+        arrayOf(StreamTextMarkdown.RichBlock(2, 0, 0, 0, null, "https://example.test/a", "alt")))
+    val worker = StreamTextMarkdownWorker(executor = queue, parse = { _, _ -> document },
+        style = { value, _, width, _ -> widths.add(width); value.text },
+        deliver = { generation, bytes, value, _, changed, acknowledge ->
+          deliveries.add(Delivery(generation, bytes, value.text, changed, acknowledge))
+        })
+    fun submit(width: Int) {
+      worker.submit("source", 1, 6, true, 0, width)
+      queue.runNext()
+      deliveries.last().acknowledge()
+      queue.runNext()
+    }
+    submit(300)
+    submit(300)
+    submit(190)
+    assertEquals(listOf(0, 1, 0), deliveries.map { it.changed })
+    assertEquals(listOf(300, 300, 190), widths)
+  }
   private class Queue : Executor {
     val work = ArrayDeque<Runnable>()
     override fun execute(command: Runnable) { work.addLast(command) }
@@ -14,7 +38,7 @@ class StreamTextMarkdownWorkerTest {
   private fun worker(queue: Queue, deliveries: MutableList<Delivery>, fail: Boolean = false) = StreamTextMarkdownWorker(
       executor = queue,
       parse = { text, _ -> if (fail) null else StreamTextMarkdown.plain(text) },
-      style = { document, _ -> document.text },
+      style = { document, _, _, _ -> document.text },
       deliver = { generation, bytes, document, _, changed, acknowledge ->
         deliveries.add(Delivery(generation, bytes, document.text, changed, acknowledge))
       })

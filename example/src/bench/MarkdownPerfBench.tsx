@@ -11,9 +11,11 @@ const sleep = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, m
 const encoder = new TextEncoder();
 const UNIT = '# Heading\n\n**Bold** and *italic*, `code`, Привет 🚀.\n\n- One\n- Two\n\n```js\nconst x = 42;\n```\n\n';
 const exactBuffer = (bytes: Uint8Array) => bytes.slice().buffer as ArrayBuffer;
-function sample(size: number, id: number) {
-  const unitBytes = encoder.encode(UNIT).length;
-  return encoder.encode(`Message ${id}\n\n` + UNIT.repeat(Math.ceil(size / unitBytes)));
+const RICH_UNIT = UNIT + "| Name | Value | Notes |\n| :--- | :---: | ---: |\n| **Alpha** | 42 | A wrapped table cell with Unicode 世界 |\n| Beta | `code` | More content |\n\n";
+function sample(size: number, id: number, rich: boolean) {
+  const unit = rich ? RICH_UNIT : UNIT;
+  const unitBytes = encoder.encode(unit).length;
+  return encoder.encode(`Message ${id}\n\n` + unit.repeat(Math.ceil(size / unitBytes)));
 }
 type Stage = { id: string; format: StreamTextFormat; sources: ArrayBuffer[]; onDone: () => void };
 function Content({ stage }: { stage: Stage }) {
@@ -28,7 +30,7 @@ function Content({ stage }: { stage: Stage }) {
     fontSize={16} color="#ECECF1" onStatusChange={status => finish(i, status)} />)}</>;
 }
 
-export function MarkdownPerfBench() {
+export function MarkdownPerfBench({ rich = false }: { rich?: boolean }) {
   const [stage, setStage] = useState<Stage | null>(null);
   const [label, setLabel] = useState('Preparing renderer benchmark…');
   useEffect(() => {
@@ -88,12 +90,12 @@ export function MarkdownPerfBench() {
       for (let rep = 1; rep <= 3 && !cancelled; rep++) {
         for (const format of ['plain', 'markdown'] as const) {
           for (const size of [5120, 102400]) {
-            const data = sample(size, rep);
+            const data = sample(size, rep, rich);
             const source = testing.createBuffer(data.length + 16);
             await run(format, size, 1, true, false, rep, [source], [data]);
           }
           for (const count of [1, 20]) {
-            const payloads = Array.from({ length: count }, (_, i) => sample(5120, rep * 100 + i));
+            const payloads = Array.from({ length: count }, (_, i) => sample(5120, rep * 100 + i, rich));
             const sources = payloads.map(data => {
               const source = testing.createBuffer(data.length + 16);
               testing.append(source, exactBuffer(data)); testing.setStatus(source, 1); return source;
@@ -105,7 +107,7 @@ export function MarkdownPerfBench() {
       }
       if (!cancelled) {
         const response = await fetch('http://localhost:19879/results', { method: 'POST',
-          headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ results }) });
+          headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ workload: rich ? "tables-and-syntax" : "basic-markdown", results }) });
         if (!response.ok) throw new Error(`Result save HTTP ${response.status}`);
         setLabel(`Done · ${results.length} runs saved`);
       }

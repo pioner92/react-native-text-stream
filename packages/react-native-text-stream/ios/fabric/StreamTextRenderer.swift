@@ -139,6 +139,7 @@ public final class StreamTextRenderer: UIView {
     let created = CACurrentMediaTime()
     let pooled = Self.textViewPool.popLast()
     let textView = pooled ?? StreamTextView()
+    (textView.layoutManager as? StreamTextMarkdownLayoutManager)?.drawsTables = false
     defer {
       StreamTextRenderStats.shared.addPhase(pooled == nil ? "textView.create" : "textView.reuse",
                                             time: CACurrentMediaTime() - created)
@@ -256,6 +257,11 @@ public final class StreamTextRenderer: UIView {
   /// Stops reading the buffer and the frame loop, without callbacks. The component view calls it
   /// before it releases the buffer, as the watcher reads it off the main thread.
   @objc public func invalidate() {
+    if let storage = textView?.textStorage {
+      storage.enumerateAttribute(.attachment, in: NSRange(location: 0, length: storage.length)) { value, _, _ in
+        (value as? StreamTextMarkdownImageAttachment)?.cancel()
+      }
+    }
     setTicking(false)
     watcher.stop()
     base = nil
@@ -364,6 +370,9 @@ public final class StreamTextRenderer: UIView {
     // A prepared layout only fits the width it was made for.
     if let canvas, abs(canvas.layout.width - bounds.width) > 0.5 { _ = ensureTextView() }
     if let textView { setTextViewHeight(textView.frame.height) }
+    if markdownEnabled, let result = markdownResult, !result.blocks.isEmpty {
+      restartMarkdownLayout()
+    }
     reportHeight()
     let time = CACurrentMediaTime() - started
     StreamTextRenderStats.shared.addTotals { $0.widthLayouts += 1; $0.widthLayoutTime += time }
@@ -664,9 +673,35 @@ public final class StreamTextRenderer: UIView {
     markdownLastScheduledBytes = markdownBytes.count
     markdownLastScheduleTime = now
     pipeline.schedule(markdownBytes, github: markdownGitHub, revision: markdownRevision,
-                      attributes: textAttributes) { [weak self] update in
+                      attributes: textAttributes, width: max(1, bounds.width)) { [weak self] update in
       guard let self, self.markdownEnabled, update.revision == self.markdownRevision else { return }
       self.applyMarkdown(update)
+    }
+  }
+
+  private func restartMarkdownLayout() {
+    markdownPipeline?.cancel()
+    markdownPipeline = StreamTextMarkdownPipeline()
+    markdownRevision &+= 1
+    markdownLastScheduledBytes = -1
+    scheduleMarkdownIfNeeded(force: true)
+  }
+
+  private func bindMarkdownImages() {
+    guard let textView else { return }
+    let storage = textView.textStorage
+    let revision = markdownRevision
+    storage.enumerateAttribute(.attachment, in: NSRange(location: 0, length: storage.length)) { value, range, _ in
+      guard let image = value as? StreamTextMarkdownImageAttachment else { return }
+      image.start { [weak self, weak textView] attachment in
+        guard let self, let textView, self.markdownEnabled, self.markdownRevision == revision,
+              range.location < textView.textStorage.length,
+              textView.textStorage.attribute(.attachment, at: range.location, effectiveRange: nil) as? NSTextAttachment === attachment else { return }
+        textView.layoutManager.invalidateLayout(forCharacterRange: range, actualCharacterRange: nil)
+        textView.layoutManager.invalidateDisplay(forCharacterRange: range)
+        textView.setNeedsDisplay()
+        self.reportHeight()
+      }
     }
   }
 
@@ -684,11 +719,26 @@ public final class StreamTextRenderer: UIView {
       scheduleMarkdownIfNeeded(force: true)
       return
     }
+    var suffix = update.suffix
+    if !update.result.blocks.isEmpty {
+      let reused = NSMutableAttributedString(attributedString: suffix)
+      reused.enumerateAttribute(.attachment, in: NSRange(location: 0, length: reused.length)) { value, range, _ in
+        let location = update.start + range.location
+        if let fresh = value as? StreamTextMarkdownImageAttachment, location < storage.length,
+           let old = storage.attribute(.attachment, at: location, effectiveRange: nil) as? StreamTextMarkdownImageAttachment,
+           fresh.block == old.block, old.fits(width: max(1, self.bounds.width)) {
+          reused.addAttribute(.attachment, value: old, range: range)
+        }
+      }
+      suffix = reused
+    }
     storage.beginEditing()
     storage.replaceCharacters(in: NSRange(location: update.start, length: storage.length - update.start),
-                              with: update.suffix)
+                              with: suffix)
     storage.endEditing()
     markdownResult = update.result
+    (textView?.layoutManager as? StreamTextMarkdownLayoutManager)?.drawsTables = update.result.blocks.contains { $0.kind == UInt32(STMD_BLOCK_TABLE) }
+    bindMarkdownImages()
     markdownAppliedBytes = update.sourceBytes
     _ = reportHeight()
     StreamTextRenderStats.shared.addPhase("markdown.apply", time: CACurrentMediaTime() - started)
@@ -717,7 +767,7 @@ private final class StreamTextView: UITextView {
   init() {
     // An explicit TextKit 1 stack (see StreamTextRenderer); the container follows the view's size.
     let storage = NSTextStorage()
-    let layoutManager = NSLayoutManager()
+    let layoutManager = StreamTextMarkdownLayoutManager()
     // As <Text>: a fallback font's leading (emoji) doesn't make its lines taller.
     layoutManager.usesFontLeading = false
     storage.addLayoutManager(layoutManager)
@@ -743,11 +793,66 @@ private final class StreamTextView: UITextView {
 
   override var accessibilityValue: String? {
     get {
-      let text = textStorage.string as NSString
-      let length = text.length
-      guard length > Self.accessibleTailCharacters else { return text as String }
-      let start = text.rangeOfComposedCharacterSequence(at: length - Self.accessibleTailCharacters).location
-      return "…" + text.substring(from: start)
+      let raw = textStorage.string as NSString
+      let length = raw.length
+      let truncated = length > Self.accessibleTailCharacters
+      let start = truncated
+        ? raw.rangeOfComposedCharacterSequence(at: length - Self.accessibleTailCharacters).location
+        : 0
+      var value = truncated ? "…" : ""
+      var remaining = Self.accessibleTailCharacters
+
+      func append(_ text: String) {
+        guard remaining > 0 else { return }
+        let string = text as NSString
+        let count = min(remaining, string.length)
+        guard count > 0 else { return }
+        let boundary = string.rangeOfComposedCharacterSequence(at: count - 1)
+        // Never cut a surrogate pair or a combining sequence at the tail limit.
+        let safeCount = NSMaxRange(boundary) <= count ? count : boundary.location
+        guard safeCount > 0 else {
+          // The first visible grapheme alone exceeds the remaining allowance.
+          remaining = 0
+          return
+        }
+        value += string.substring(to: safeCount)
+        remaining -= safeCount
+      }
+
+      var cursor = start
+      let range = NSRange(location: start, length: length - start)
+      textStorage.enumerateAttribute(.attachment, in: range) { attachment, attachmentRange, stop in
+        guard remaining > 0 else {
+          stop.pointee = true
+          return
+        }
+        if attachmentRange.location > cursor {
+          append(raw.substring(with: NSRange(location: cursor, length: attachmentRange.location - cursor)))
+        }
+        guard let attachment else {
+          append(raw.substring(with: attachmentRange))
+          cursor = NSMaxRange(attachmentRange)
+          return
+        }
+        switch attachment {
+        case let image as StreamTextMarkdownImageAttachment:
+          append(image.block.alt.isEmpty ? "Image" : image.block.alt)
+        case let table as StreamTextMarkdownTableAttachment:
+          for (index, cell) in table.block.cells.enumerated() {
+            guard remaining > 0 else { break }
+            if index > 0 { append(index % max(1, table.block.columns) == 0 ? "\n" : " | ") }
+            append(cell.text)
+          }
+        default:
+          append(raw.substring(with: attachmentRange))
+        }
+        cursor = NSMaxRange(attachmentRange)
+        if remaining == 0 { stop.pointee = true }
+      }
+      if remaining > 0, cursor < length {
+        append(raw.substring(with: NSRange(location: cursor, length: length - cursor)))
+      }
+      return value
     }
     set {}
   }
@@ -1031,7 +1136,11 @@ extension StreamTextRenderer {
                    "strike": (attributes[.strikethroughStyle] as? Int ?? 0) != 0,
                    "color": color, "link": attributes[.link].map { String(describing: $0) } ?? ""])
     }
-    let result: [String: Any] = ["text": text.string, "runs": runs]
+    var blocks: [[String: Any]] = []
+    text.enumerateAttribute(.attachment, in: NSRange(location: 0, length: text.length)) { value, _, _ in
+      if let attachment = value as? StreamTextMarkdownAttachment { blocks.append(attachment.debugBlock) }
+    }
+    let result: [String: Any] = ["text": text.string, "runs": runs, "blocks": blocks]
     guard let data = try? JSONSerialization.data(withJSONObject: result) else { return "{}" }
     return String(decoding: data, as: UTF8.self)
   }

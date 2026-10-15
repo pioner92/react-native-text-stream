@@ -14,6 +14,8 @@ internal class StreamTextLineHeightSpan(height: Float) : LineHeightSpan {
   val lineHeight: Int = ceil(height.toDouble()).toInt()
 
   override fun chooseHeight(text: CharSequence, start: Int, end: Int, spanstartv: Int, v: Int, fm: FontMetricsInt) {
+    // Explicit text pitch must never shrink an image or table attachment.
+    if (text is android.text.Spanned && text.getSpans(start, end, android.text.style.ReplacementSpan::class.java).isNotEmpty()) return
     val leading = lineHeight - (-fm.ascent + fm.descent)
     fm.ascent -= ceil(leading / 2.0f).toInt()
     fm.descent += floor(leading / 2.0f).toInt()

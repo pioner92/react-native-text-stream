@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { StreamText, streamFetch, useStreamTextRef, type TextStream } from 'react-native-text-stream';
 
 export function MarkdownDemo({ onBack }: { onBack: () => void }) {
@@ -8,12 +8,14 @@ export function MarkdownDemo({ onBack }: { onBack: () => void }) {
   const [status, setStatus] = useState('Ready');
   const [markdown, setMarkdown] = useState(true);
   useEffect(() => () => active.current?.abort(), []);
-  const start = (large: boolean) => {
+  const start = (large: boolean, rich = false) => {
     active.current?.abort();
     ref.clear();
     const params = large ? 'bytes=102400&chunk=4096&tps=60' : 'repeat=1&chunk=17&tps=60';
     try {
-      const stream = streamFetch(`http://localhost:9879/?fmt=raw&content=markdown&${params}`);
+      const host = Platform.OS === 'android' ? '10.0.2.2' : '127.0.0.1';
+      const stream = streamFetch(rich ? `http://${host}:9882/markdown`
+        : `http://${host}:9879/?fmt=raw&content=markdown&${params}`);
       active.current = stream;
       ref.attach(stream);
     } catch (error) {
@@ -29,6 +31,7 @@ export function MarkdownDemo({ onBack }: { onBack: () => void }) {
       <Pressable onPress={onBack}><Text style={styles.link}>‹ Demo</Text></Pressable>
       <Pressable onPress={() => start(false)}><Text style={styles.link}>Stream</Text></Pressable>
       <Pressable onPress={() => start(true)}><Text style={styles.link}>100 KB</Text></Pressable>
+      <Pressable onPress={() => start(false, true)}><Text style={styles.link}>Rich</Text></Pressable>
       <Pressable onPress={freeze}><Text style={styles.link}>Freeze JS</Text></Pressable>
       <Pressable onPress={() => setMarkdown(v => !v)}><Text style={styles.link}>{markdown ? 'Raw' : 'Markdown'}</Text></Pressable>
     </View>

@@ -1,0 +1,1339 @@
+{
+  "date": "2026-10-15",
+  "scope": "Rich Markdown feature plus selected existing regressions; latest run for each test wins. Not the full repository harness.",
+  "devices": {
+    "ios": "StreamText Markdown — iPhone 17 Pro Max, iOS 26.5, arm64 simulator",
+    "android": "StreamText_Markdown_Tests — Pixel 8, Android 15, arm64 emulator"
+  },
+  "nativeParser": "ASan/UBSan correctness and syntax suites passed",
+  "javascript": {
+    "passed": 153
+  },
+  "androidJvm": {
+    "passed": 38
+  },
+  "builds": [
+    "iOS Debug arm64 simulator",
+    "iOS Release arm64 simulator",
+    "Android Debug arm64 C++/JNI",
+    "library build + TypeScript",
+    "example TypeScript --ignoreDeprecations 6.0"
+  ],
+  "ios": {
+    "counts": {
+      "pending": 1,
+      "passed": 126
+    },
+    "tests": [
+      {
+        "name": "streamFetch native protocol parsers extracts fragmented CRLF SSE JSON across BOM, multi-data events and escaped NUL",
+        "status": "passed",
+        "suite": "protocol.harness.tsx"
+      },
+      {
+        "name": "streamFetch native protocol parsers keeps generic SSE data when no JSON Pointer is requested",
+        "status": "passed",
+        "suite": "protocol.harness.tsx"
+      },
+      {
+        "name": "streamFetch native protocol parsers extracts fragmented NDJSON and accepts the final complete line at EOF",
+        "status": "passed",
+        "suite": "protocol.harness.tsx"
+      },
+      {
+        "name": "streamFetch native protocol parsers extracts a root JSON string through the empty JSON Pointer",
+        "status": "passed",
+        "suite": "protocol.harness.tsx"
+      },
+      {
+        "name": "streamFetch native protocol parsers extracts text and ignores non-text frames from openai-chat",
+        "status": "passed",
+        "suite": "protocol.harness.tsx"
+      },
+      {
+        "name": "streamFetch native protocol parsers stops openai-chat errors before socket EOF",
+        "status": "passed",
+        "suite": "protocol.harness.tsx"
+      },
+      {
+        "name": "streamFetch native protocol parsers extracts text and ignores non-text frames from openai-responses",
+        "status": "passed",
+        "suite": "protocol.harness.tsx"
+      },
+      {
+        "name": "streamFetch native protocol parsers stops openai-responses errors before socket EOF",
+        "status": "passed",
+        "suite": "protocol.harness.tsx"
+      },
+      {
+        "name": "streamFetch native protocol parsers extracts text and ignores non-text frames from anthropic",
+        "status": "passed",
+        "suite": "protocol.harness.tsx"
+      },
+      {
+        "name": "streamFetch native protocol parsers stops anthropic errors before socket EOF",
+        "status": "passed",
+        "suite": "protocol.harness.tsx"
+      },
+      {
+        "name": "streamFetch native protocol parsers extracts text and ignores non-text frames from ollama",
+        "status": "passed",
+        "suite": "protocol.harness.tsx"
+      },
+      {
+        "name": "streamFetch native protocol parsers stops ollama errors before socket EOF",
+        "status": "passed",
+        "suite": "protocol.harness.tsx"
+      },
+      {
+        "name": "streamFetch native protocol parsers stops at the openai-chat terminal marker even if the socket stays open",
+        "status": "passed",
+        "suite": "protocol.harness.tsx"
+      },
+      {
+        "name": "streamFetch native protocol parsers stops at the openai-responses terminal marker even if the socket stays open",
+        "status": "passed",
+        "suite": "protocol.harness.tsx"
+      },
+      {
+        "name": "streamFetch native protocol parsers stops at the anthropic terminal marker even if the socket stays open",
+        "status": "passed",
+        "suite": "protocol.harness.tsx"
+      },
+      {
+        "name": "streamFetch native protocol parsers stops at the ollama terminal marker even if the socket stays open",
+        "status": "passed",
+        "suite": "protocol.harness.tsx"
+      },
+      {
+        "name": "streamFetch native protocol parsers does native progress while JavaScript is blocked and renders extracted Markdown",
+        "status": "passed",
+        "suite": "protocol.harness.tsx"
+      },
+      {
+        "name": "streamFetch native protocol parsers uses parser configuration as request identity for the same declarative stream request",
+        "status": "passed",
+        "suite": "protocol.harness.tsx"
+      },
+      {
+        "name": "streamFetch native protocol parsers rejects malformed, oversize, provider-error and non-2xx protocol responses",
+        "status": "passed",
+        "suite": "protocol.harness.tsx"
+      },
+      {
+        "name": "streamFetch native protocol parsers skips missing/null JSON Pointer values but rejects a value of the wrong type",
+        "status": "passed",
+        "suite": "protocol.harness.tsx"
+      },
+      {
+        "name": "streamFetch native protocol parsers discards an unterminated SSE event at EOF but reports missing provider terminals",
+        "status": "passed",
+        "suite": "protocol.harness.tsx"
+      },
+      {
+        "name": "streamFetch native protocol parsers keeps completed NDJSON records but never flushes an unterminated one on idle timeout",
+        "status": "passed",
+        "suite": "protocol.harness.tsx"
+      },
+      {
+        "name": "streamFetch native protocol parsers counts only extracted UTF-8 bytes for capacity and can be cancelled cleanly",
+        "status": "passed",
+        "suite": "protocol.harness.tsx"
+      },
+      {
+        "name": "StreamText rich Markdown native seams lays out an aligned grid with styled Unicode cells and wraps on resize",
+        "status": "passed",
+        "suite": "markdown-rich.harness.tsx"
+      },
+      {
+        "name": "StreamText rich Markdown native seams updates table metadata even when its document placeholder stays identical",
+        "status": "passed",
+        "suite": "markdown-rich.harness.tsx"
+      },
+      {
+        "name": "StreamText rich Markdown native seams styles fenced syntax while preserving raw source and unknown languages",
+        "status": "passed",
+        "suite": "markdown-rich.harness.tsx"
+      },
+      {
+        "name": "StreamText rich Markdown native seams loads and measures images natively after source completion, without another terminal event",
+        "status": "passed",
+        "suite": "markdown-rich.harness.tsx"
+      },
+      {
+        "name": "StreamText rich Markdown native seams finishes image loading while JavaScript is blocked",
+        "status": "passed",
+        "suite": "markdown-rich.harness.tsx"
+      },
+      {
+        "name": "StreamText rich Markdown native seams keeps a pending image subscription when later text appends after its unchanged prefix",
+        "status": "passed",
+        "suite": "markdown-rich.harness.tsx"
+      },
+      {
+        "name": "StreamText rich Markdown native seams shows a stable fallback for broken.png",
+        "status": "passed",
+        "suite": "markdown-rich.harness.tsx"
+      },
+      {
+        "name": "StreamText rich Markdown native seams shows a stable fallback for invalid.png",
+        "status": "passed",
+        "suite": "markdown-rich.harness.tsx"
+      },
+      {
+        "name": "StreamText rich Markdown native seams shows a stable fallback for oversize.png",
+        "status": "passed",
+        "suite": "markdown-rich.harness.tsx"
+      },
+      {
+        "name": "StreamText rich Markdown native seams shows a stable fallback for oversize-chunked.png",
+        "status": "passed",
+        "suite": "markdown-rich.harness.tsx"
+      },
+      {
+        "name": "StreamText rich Markdown native seams blocks non-HTTP images",
+        "status": "passed",
+        "suite": "markdown-rich.harness.tsx"
+      },
+      {
+        "name": "StreamText rich Markdown native seams downsamples large images within decoded pixel limits",
+        "status": "passed",
+        "suite": "markdown-rich.harness.tsx"
+      },
+      {
+        "name": "StreamText rich Markdown native seams reuses a decoded image across remounts and does not send request credentials",
+        "status": "passed",
+        "suite": "markdown-rich.harness.tsx"
+      },
+      {
+        "name": "StreamText rich Markdown native seams shares an in-flight download between subscribers and limits active requests to two",
+        "status": "passed",
+        "suite": "markdown-rich.harness.tsx"
+      },
+      {
+        "name": "StreamText rich Markdown native seams ignores delayed image completion after replace",
+        "status": "passed",
+        "suite": "markdown-rich.harness.tsx"
+      },
+      {
+        "name": "StreamText rich Markdown native seams ignores delayed image completion after clear",
+        "status": "passed",
+        "suite": "markdown-rich.harness.tsx"
+      },
+      {
+        "name": "StreamText rich Markdown native seams ignores delayed image completion after plain",
+        "status": "passed",
+        "suite": "markdown-rich.harness.tsx"
+      },
+      {
+        "name": "StreamText rich Markdown native seams ignores delayed image completion after unmount",
+        "status": "passed",
+        "suite": "markdown-rich.harness.tsx"
+      },
+      {
+        "name": "StreamText native Markdown renders completed content and keeps getText as original Markdown",
+        "status": "passed",
+        "suite": "markdown.harness.tsx"
+      },
+      {
+        "name": "StreamText native Markdown updates a previously literal delimiter and reports original source bytes",
+        "status": "passed",
+        "suite": "markdown.harness.tsx"
+      },
+      {
+        "name": "StreamText native Markdown reformats earlier reference text when its definition arrives",
+        "status": "passed",
+        "suite": "markdown.harness.tsx"
+      },
+      {
+        "name": "StreamText native Markdown flushes a small final update even when the producer stays open",
+        "status": "passed",
+        "suite": "markdown.harness.tsx"
+      },
+      {
+        "name": "StreamText native Markdown changes format of an imperatively attached finished source",
+        "status": "passed",
+        "suite": "markdown.harness.tsx"
+      },
+      {
+        "name": "StreamText native Markdown keeps native updates working while JavaScript is blocked, across UTF-8 splits",
+        "status": "passed",
+        "suite": "markdown.harness.tsx"
+      },
+      {
+        "name": "StreamText native Markdown renders useful intermediate snapshots during a continuous native stream",
+        "status": "passed",
+        "suite": "markdown.harness.tsx"
+      },
+      {
+        "name": "StreamText native Markdown switches plain/Markdown on a finished source and updates its size",
+        "status": "passed",
+        "suite": "markdown.harness.tsx"
+      },
+      {
+        "name": "StreamText native Markdown drops stale worker results after source replacement and clear",
+        "status": "passed",
+        "suite": "markdown.harness.tsx"
+      },
+      {
+        "name": "StreamText native Markdown keeps formatting when a completed source is mounted again",
+        "status": "passed",
+        "suite": "markdown.harness.tsx"
+      },
+      {
+        "name": "StreamText Markdown native rendering stores completed Markdown styles in the prepared native layout",
+        "status": "passed",
+        "suite": "markdown-rendering.harness.tsx"
+      },
+      {
+        "name": "StreamText Markdown native rendering applies the same styles to an open native stream",
+        "status": "passed",
+        "suite": "markdown-rendering.harness.tsx"
+      },
+      {
+        "name": "StreamText Markdown native rendering keeps Markdown spans through color and font changes (streaming)",
+        "status": "passed",
+        "suite": "markdown-rendering.harness.tsx"
+      },
+      {
+        "name": "StreamText Markdown native rendering keeps Markdown spans through color and font changes (prepared)",
+        "status": "passed",
+        "suite": "markdown-rendering.harness.tsx"
+      },
+      {
+        "name": "StreamText Markdown native rendering restyles an earlier reference when its definition arrives",
+        "status": "passed",
+        "suite": "markdown-rendering.harness.tsx"
+      },
+      {
+        "name": "StreamText Markdown native rendering keeps safe links and rejects javascript links in native attributes",
+        "status": "passed",
+        "suite": "markdown-rendering.harness.tsx"
+      },
+      {
+        "name": "StreamText Markdown native rendering keeps native Markdown spans when a prepared canvas falls back on resize",
+        "status": "passed",
+        "suite": "markdown-rendering.harness.tsx"
+      },
+      {
+        "name": "StreamText Markdown native rendering preserves cached prepared spans through remount and format changes",
+        "status": "passed",
+        "suite": "markdown-rendering.harness.tsx"
+      },
+      {
+        "name": "StreamText Markdown ownership seams keeps an imperative source through same-length prop replacement and a format toggle",
+        "status": "passed",
+        "suite": "markdown-seams.harness.tsx"
+      },
+      {
+        "name": "StreamText Markdown ownership seams reformats a retained imperative terminal source across flavor and style changes",
+        "status": "passed",
+        "suite": "markdown-seams.harness.tsx"
+      },
+      {
+        "name": "StreamText Markdown ownership seams renders an empty Markdown done terminal before reporting it",
+        "status": "passed",
+        "suite": "markdown-seams.harness.tsx"
+      },
+      {
+        "name": "StreamText Markdown ownership seams renders an empty Markdown error terminal before reporting it",
+        "status": "passed",
+        "suite": "markdown-seams.harness.tsx"
+      },
+      {
+        "name": "StreamText Markdown ownership seams renders an empty Markdown cancelled terminal before reporting it",
+        "status": "passed",
+        "suite": "markdown-seams.harness.tsx"
+      },
+      {
+        "name": "StreamText Markdown ownership seams renders an empty Markdown truncated terminal before reporting it",
+        "status": "passed",
+        "suite": "markdown-seams.harness.tsx"
+      },
+      {
+        "name": "StreamText Markdown ownership seams does not revive a queued Markdown parse after clear",
+        "status": "passed",
+        "suite": "markdown-seams.harness.tsx"
+      },
+      {
+        "name": "StreamText rich Markdown accessibility reads table cell text and image alt text instead of object replacement characters",
+        "status": "passed",
+        "suite": "markdown-rich-accessibility.harness.tsx"
+      },
+      {
+        "name": "StreamText rich Markdown accessibility rebuilds table row geometry for a line-height style change",
+        "status": "passed",
+        "suite": "markdown-rich-accessibility.harness.tsx"
+      },
+      {
+        "name": "StreamText rich Markdown accessibility keeps ordinary plain text intact in the accessibility value",
+        "status": "passed",
+        "suite": "markdown-rich-accessibility.harness.tsx"
+      },
+      {
+        "name": "StreamText rich Markdown native seams keeps image completion layout live across a pending font-style change",
+        "status": "passed",
+        "suite": "markdown-rich.harness.tsx"
+      },
+      {
+        "name": "StreamText: the surface changes width (rotation, Split View) 20 coreText bubbles stay on the canvas, and no frame shows a bubble at its old height",
+        "status": "passed",
+        "suite": "resize.harness.tsx"
+      },
+      {
+        "name": "StreamText: the surface changes width (rotation, Split View) 20 textKit bubbles without a lineHeight stay on the canvas, and no frame shows a bubble at its old height",
+        "status": "passed",
+        "suite": "resize.harness.tsx"
+      },
+      {
+        "name": "StreamText: prepared layouts draws a finished source on a canvas, at the height the text view would have",
+        "status": "passed",
+        "suite": "prepared.harness.tsx"
+      },
+      {
+        "name": "StreamText: prepared layouts gives the text view's height with a trailing line break",
+        "status": "passed",
+        "suite": "prepared.harness.tsx"
+      },
+      {
+        "name": "StreamText: prepared layouts gives the text view's height with blank lines",
+        "status": "passed",
+        "suite": "prepared.harness.tsx"
+      },
+      {
+        "name": "StreamText: prepared layouts gives the text view's height with CRLF",
+        "status": "passed",
+        "suite": "prepared.harness.tsx"
+      },
+      {
+        "name": "StreamText: prepared layouts uses TextKit where CoreText does not reproduce it, still on a canvas",
+        "status": "passed",
+        "suite": "prepared.harness.tsx"
+      },
+      {
+        "name": "StreamText: prepared layouts keeps the text view for an open stream, attach(), and texts over 64 KB",
+        "status": "passed",
+        "suite": "prepared.harness.tsx"
+      },
+      {
+        "name": "StreamText: prepared layouts a new style or width gets a new layout, not a text view",
+        "status": "passed",
+        "suite": "prepared.harness.tsx"
+      },
+      {
+        "name": "StreamText: prepared layouts a new width without a new layout falls back to the text view, text and height intact",
+        "status": "passed",
+        "suite": "prepared.harness.tsx"
+      },
+      {
+        "name": "StreamText: prepared layouts lays each text out once, even past the cache size (a long chat)",
+        "status": "passed",
+        "suite": "prepared.harness.tsx"
+      },
+      {
+        "name": "StreamText: prepared layouts the view’s own height wins for a text it streamed",
+        "status": "passed",
+        "suite": "prepared.harness.tsx"
+      },
+      {
+        "name": "StreamText: prepared layouts a streamed text mounts again from the cache: no layout at mount",
+        "status": "passed",
+        "suite": "prepared.harness.tsx"
+      },
+      {
+        "name": "StreamText: prepared layouts a memory warning empties the cache",
+        "status": "passed",
+        "suite": "prepared.harness.tsx"
+      },
+      {
+        "name": "StreamText: prepared layouts a tall text keeps tiles only near the screen as it scrolls",
+        "status": "passed",
+        "suite": "prepared.harness.tsx"
+      },
+      {
+        "name": "StreamText: prepared layouts VoiceOver and TalkBack read the lines on screen, and every line by number",
+        "status": "passed",
+        "suite": "prepared.harness.tsx"
+      },
+      {
+        "name": "StreamText: prepared layouts after attach() or clear(), the view decides the height, not the source prop",
+        "status": "passed",
+        "suite": "prepared.harness.tsx"
+      },
+      {
+        "name": "StreamText: prepared layouts at a fractional width (301.5) the canvas and the text view agree",
+        "status": "passed",
+        "suite": "prepared.harness.tsx"
+      },
+      {
+        "name": "StreamText: prepared layouts at a fractional width (211.33) the canvas and the text view agree",
+        "status": "passed",
+        "suite": "prepared.harness.tsx"
+      },
+      {
+        "name": "StreamText: prepared layouts at a fractional width (333.67) the canvas and the text view agree",
+        "status": "passed",
+        "suite": "prepared.harness.tsx"
+      },
+      {
+        "name": "StreamText: prepared layouts selects text on the canvas itself, no text view",
+        "status": "passed",
+        "suite": "prepared.harness.tsx"
+      },
+      {
+        "name": "StreamText: prepared layouts selects right-to-left text on the canvas the way the text view does",
+        "status": "passed",
+        "suite": "prepared.harness.tsx"
+      },
+      {
+        "name": "StreamText: prepared layouts selects right-to-left text where the view draws it, on the canvas and in a text view",
+        "status": "pending",
+        "suite": "prepared.harness.tsx"
+      },
+      {
+        "name": "StreamText: prepared layouts bubbles mounted below the screen draw once scrolled to, and let go of tiles far away",
+        "status": "passed",
+        "suite": "prepared.harness.tsx"
+      },
+      {
+        "name": "StreamText: prepared layouts lays out like <Text> beside it",
+        "status": "passed",
+        "suite": "prepared.harness.tsx"
+      },
+      {
+        "name": "StreamText: lifecycle survives unmounting while a producer keeps writing",
+        "status": "passed",
+        "suite": "lifecycle.harness.tsx"
+      },
+      {
+        "name": "StreamText: lifecycle a reused text view keeps nothing from its previous owner",
+        "status": "passed",
+        "suite": "lifecycle.harness.tsx"
+      },
+      {
+        "name": "StreamText: lifecycle keeps showing text while the JS thread is blocked",
+        "status": "passed",
+        "suite": "lifecycle.harness.tsx"
+      },
+      {
+        "name": "StreamText: lifecycle switching buffers mid-stream shows only the new one",
+        "status": "passed",
+        "suite": "lifecycle.harness.tsx"
+      },
+      {
+        "name": "StreamText: lifecycle mounting and unmounting many views in a row is clean",
+        "status": "passed",
+        "suite": "lifecycle.harness.tsx"
+      },
+      {
+        "name": "StreamText: waiting for the first token shows text that arrives long after the view mounted (the watcher backs off, then wakes)",
+        "status": "passed",
+        "suite": "lifecycle.harness.tsx"
+      },
+      {
+        "name": "StreamText: UTF-8 across chunk boundaries a lead byte that breaks a held sequence starts a new character",
+        "status": "passed",
+        "suite": "utf8.harness.tsx"
+      },
+      {
+        "name": "StreamText: UTF-8 across chunk boundaries a U+FEFF that starts a chunk mid-stream is kept",
+        "status": "passed",
+        "suite": "utf8.harness.tsx"
+      },
+      {
+        "name": "StreamText: UTF-8 across chunk boundaries only the BOM opening the stream is dropped, however it arrives",
+        "status": "passed",
+        "suite": "utf8.harness.tsx"
+      },
+      {
+        "name": "StreamText: UTF-8 across chunk boundaries random bytes: any chunking shows what decoding them whole shows",
+        "status": "passed",
+        "suite": "utf8.harness.tsx"
+      },
+      {
+        "name": "StreamText: one long paragraph, streamed lays out as in one piece, with a lineHeight",
+        "status": "passed",
+        "suite": "flow.harness.tsx"
+      },
+      {
+        "name": "StreamText: one long paragraph, streamed lays out as in one piece, with the font's line height",
+        "status": "passed",
+        "suite": "flow.harness.tsx"
+      },
+      {
+        "name": "StreamText: one long paragraph, streamed lays out as in one piece, right to left",
+        "status": "passed",
+        "suite": "flow.harness.tsx"
+      },
+      {
+        "name": "StreamText: ref attach() shows the buffer; getText() and getStatus() agree with the view",
+        "status": "passed",
+        "suite": "ref.harness.tsx"
+      },
+      {
+        "name": "StreamText: ref applies an attach made before the view mounts",
+        "status": "passed",
+        "suite": "ref.harness.tsx"
+      },
+      {
+        "name": "StreamText: ref clear() empties the view: no text, no height, idle",
+        "status": "passed",
+        "suite": "ref.harness.tsx"
+      },
+      {
+        "name": "StreamText: ref a buffer made in JS is refused with a warning, and the view shows nothing",
+        "status": "passed",
+        "suite": "ref.harness.tsx"
+      },
+      {
+        "name": "StreamText: ref an unrelated prop change keeps what the ref attached",
+        "status": "passed",
+        "suite": "ref.harness.tsx"
+      },
+      {
+        "name": "StreamText: ref a new source prop replaces what the ref attached",
+        "status": "passed",
+        "suite": "ref.harness.tsx"
+      },
+      {
+        "name": "StreamText: ref the last of many quick attaches wins",
+        "status": "passed",
+        "suite": "ref.harness.tsx"
+      },
+      {
+        "name": "StreamText: ref status events about a buffer replaced in the same tick never reach onStatusChange",
+        "status": "passed",
+        "suite": "ref.harness.tsx"
+      },
+      {
+        "name": "StreamText: status events reports streaming, then done with the byte count once the text is on screen",
+        "status": "passed",
+        "suite": "status.harness.tsx"
+      },
+      {
+        "name": "StreamText: status events maps a done buffer to \"done\"",
+        "status": "passed",
+        "suite": "status.harness.tsx"
+      },
+      {
+        "name": "StreamText: status events maps a error buffer to \"error\"",
+        "status": "passed",
+        "suite": "status.harness.tsx"
+      },
+      {
+        "name": "StreamText: status events maps a cancelled buffer to \"cancelled\"",
+        "status": "passed",
+        "suite": "status.harness.tsx"
+      },
+      {
+        "name": "StreamText: status events maps a overflow buffer to \"truncated\"",
+        "status": "passed",
+        "suite": "status.harness.tsx"
+      },
+      {
+        "name": "StreamText: status events writing past the capacity truncates: the text stops at the capacity",
+        "status": "passed",
+        "suite": "status.harness.tsx"
+      },
+      {
+        "name": "StreamText: status events a buffer that is already finished reports only its final status",
+        "status": "passed",
+        "suite": "status.harness.tsx"
+      },
+      {
+        "name": "StreamText: status events switching from one finished buffer to another reports done again",
+        "status": "passed",
+        "suite": "status.harness.tsx"
+      },
+      {
+        "name": "StreamText: status events removing the source reports idle and clears the view",
+        "status": "passed",
+        "suite": "status.harness.tsx"
+      },
+      {
+        "name": "StreamText: status events a stream that ends mid-character shows U+FFFD and still reports done",
+        "status": "passed",
+        "suite": "status.harness.tsx"
+      },
+      {
+        "name": "StreamText rich Markdown native seams materializes a large table across native language boundaries",
+        "status": "passed",
+        "suite": "markdown-rich.harness.tsx"
+      }
+    ]
+  },
+  "android": {
+    "counts": {
+      "pending": 1,
+      "failed": 2,
+      "passed": 124
+    },
+    "tests": [
+      {
+        "name": "StreamText rich Markdown native seams lays out an aligned grid with styled Unicode cells and wraps on resize",
+        "status": "passed",
+        "suite": "markdown-rich.harness.tsx"
+      },
+      {
+        "name": "StreamText rich Markdown native seams updates table metadata even when its document placeholder stays identical",
+        "status": "passed",
+        "suite": "markdown-rich.harness.tsx"
+      },
+      {
+        "name": "StreamText rich Markdown native seams styles fenced syntax while preserving raw source and unknown languages",
+        "status": "passed",
+        "suite": "markdown-rich.harness.tsx"
+      },
+      {
+        "name": "StreamText rich Markdown native seams loads and measures images natively after source completion, without another terminal event",
+        "status": "passed",
+        "suite": "markdown-rich.harness.tsx"
+      },
+      {
+        "name": "StreamText rich Markdown native seams finishes image loading while JavaScript is blocked",
+        "status": "passed",
+        "suite": "markdown-rich.harness.tsx"
+      },
+      {
+        "name": "StreamText rich Markdown native seams keeps a pending image subscription when later text appends after its unchanged prefix",
+        "status": "passed",
+        "suite": "markdown-rich.harness.tsx"
+      },
+      {
+        "name": "StreamText rich Markdown native seams shows a stable fallback for broken.png",
+        "status": "passed",
+        "suite": "markdown-rich.harness.tsx"
+      },
+      {
+        "name": "StreamText rich Markdown native seams shows a stable fallback for invalid.png",
+        "status": "passed",
+        "suite": "markdown-rich.harness.tsx"
+      },
+      {
+        "name": "StreamText rich Markdown native seams shows a stable fallback for oversize.png",
+        "status": "passed",
+        "suite": "markdown-rich.harness.tsx"
+      },
+      {
+        "name": "StreamText rich Markdown native seams shows a stable fallback for oversize-chunked.png",
+        "status": "passed",
+        "suite": "markdown-rich.harness.tsx"
+      },
+      {
+        "name": "StreamText rich Markdown native seams blocks non-HTTP images",
+        "status": "passed",
+        "suite": "markdown-rich.harness.tsx"
+      },
+      {
+        "name": "StreamText rich Markdown native seams downsamples large images within decoded pixel limits",
+        "status": "passed",
+        "suite": "markdown-rich.harness.tsx"
+      },
+      {
+        "name": "StreamText rich Markdown native seams reuses a decoded image across remounts and does not send request credentials",
+        "status": "passed",
+        "suite": "markdown-rich.harness.tsx"
+      },
+      {
+        "name": "StreamText rich Markdown native seams shares an in-flight download between subscribers and limits active requests to two",
+        "status": "passed",
+        "suite": "markdown-rich.harness.tsx"
+      },
+      {
+        "name": "StreamText rich Markdown native seams ignores delayed image completion after replace",
+        "status": "passed",
+        "suite": "markdown-rich.harness.tsx"
+      },
+      {
+        "name": "StreamText rich Markdown native seams ignores delayed image completion after clear",
+        "status": "passed",
+        "suite": "markdown-rich.harness.tsx"
+      },
+      {
+        "name": "StreamText rich Markdown native seams ignores delayed image completion after plain",
+        "status": "passed",
+        "suite": "markdown-rich.harness.tsx"
+      },
+      {
+        "name": "StreamText rich Markdown native seams ignores delayed image completion after unmount",
+        "status": "passed",
+        "suite": "markdown-rich.harness.tsx"
+      },
+      {
+        "name": "streamFetch native protocol parsers extracts fragmented CRLF SSE JSON across BOM, multi-data events and escaped NUL",
+        "status": "passed",
+        "suite": "protocol.harness.tsx"
+      },
+      {
+        "name": "streamFetch native protocol parsers keeps generic SSE data when no JSON Pointer is requested",
+        "status": "passed",
+        "suite": "protocol.harness.tsx"
+      },
+      {
+        "name": "streamFetch native protocol parsers extracts fragmented NDJSON and accepts the final complete line at EOF",
+        "status": "passed",
+        "suite": "protocol.harness.tsx"
+      },
+      {
+        "name": "streamFetch native protocol parsers extracts a root JSON string through the empty JSON Pointer",
+        "status": "passed",
+        "suite": "protocol.harness.tsx"
+      },
+      {
+        "name": "streamFetch native protocol parsers extracts text and ignores non-text frames from openai-chat",
+        "status": "passed",
+        "suite": "protocol.harness.tsx"
+      },
+      {
+        "name": "streamFetch native protocol parsers stops openai-chat errors before socket EOF",
+        "status": "passed",
+        "suite": "protocol.harness.tsx"
+      },
+      {
+        "name": "streamFetch native protocol parsers extracts text and ignores non-text frames from openai-responses",
+        "status": "passed",
+        "suite": "protocol.harness.tsx"
+      },
+      {
+        "name": "streamFetch native protocol parsers stops openai-responses errors before socket EOF",
+        "status": "passed",
+        "suite": "protocol.harness.tsx"
+      },
+      {
+        "name": "streamFetch native protocol parsers extracts text and ignores non-text frames from anthropic",
+        "status": "passed",
+        "suite": "protocol.harness.tsx"
+      },
+      {
+        "name": "streamFetch native protocol parsers stops anthropic errors before socket EOF",
+        "status": "passed",
+        "suite": "protocol.harness.tsx"
+      },
+      {
+        "name": "streamFetch native protocol parsers extracts text and ignores non-text frames from ollama",
+        "status": "passed",
+        "suite": "protocol.harness.tsx"
+      },
+      {
+        "name": "streamFetch native protocol parsers stops ollama errors before socket EOF",
+        "status": "passed",
+        "suite": "protocol.harness.tsx"
+      },
+      {
+        "name": "streamFetch native protocol parsers stops at the openai-chat terminal marker even if the socket stays open",
+        "status": "passed",
+        "suite": "protocol.harness.tsx"
+      },
+      {
+        "name": "streamFetch native protocol parsers stops at the openai-responses terminal marker even if the socket stays open",
+        "status": "passed",
+        "suite": "protocol.harness.tsx"
+      },
+      {
+        "name": "streamFetch native protocol parsers stops at the anthropic terminal marker even if the socket stays open",
+        "status": "passed",
+        "suite": "protocol.harness.tsx"
+      },
+      {
+        "name": "streamFetch native protocol parsers stops at the ollama terminal marker even if the socket stays open",
+        "status": "passed",
+        "suite": "protocol.harness.tsx"
+      },
+      {
+        "name": "streamFetch native protocol parsers does native progress while JavaScript is blocked and renders extracted Markdown",
+        "status": "passed",
+        "suite": "protocol.harness.tsx"
+      },
+      {
+        "name": "streamFetch native protocol parsers uses parser configuration as request identity for the same declarative stream request",
+        "status": "passed",
+        "suite": "protocol.harness.tsx"
+      },
+      {
+        "name": "streamFetch native protocol parsers rejects malformed, oversize, provider-error and non-2xx protocol responses",
+        "status": "passed",
+        "suite": "protocol.harness.tsx"
+      },
+      {
+        "name": "streamFetch native protocol parsers skips missing/null JSON Pointer values but rejects a value of the wrong type",
+        "status": "passed",
+        "suite": "protocol.harness.tsx"
+      },
+      {
+        "name": "streamFetch native protocol parsers discards an unterminated SSE event at EOF but reports missing provider terminals",
+        "status": "passed",
+        "suite": "protocol.harness.tsx"
+      },
+      {
+        "name": "streamFetch native protocol parsers keeps completed NDJSON records but never flushes an unterminated one on idle timeout",
+        "status": "passed",
+        "suite": "protocol.harness.tsx"
+      },
+      {
+        "name": "streamFetch native protocol parsers counts only extracted UTF-8 bytes for capacity and can be cancelled cleanly",
+        "status": "passed",
+        "suite": "protocol.harness.tsx"
+      },
+      {
+        "name": "StreamText native Markdown renders completed content and keeps getText as original Markdown",
+        "status": "passed",
+        "suite": "markdown.harness.tsx"
+      },
+      {
+        "name": "StreamText native Markdown updates a previously literal delimiter and reports original source bytes",
+        "status": "passed",
+        "suite": "markdown.harness.tsx"
+      },
+      {
+        "name": "StreamText native Markdown reformats earlier reference text when its definition arrives",
+        "status": "passed",
+        "suite": "markdown.harness.tsx"
+      },
+      {
+        "name": "StreamText native Markdown flushes a small final update even when the producer stays open",
+        "status": "passed",
+        "suite": "markdown.harness.tsx"
+      },
+      {
+        "name": "StreamText native Markdown changes format of an imperatively attached finished source",
+        "status": "passed",
+        "suite": "markdown.harness.tsx"
+      },
+      {
+        "name": "StreamText native Markdown keeps native updates working while JavaScript is blocked, across UTF-8 splits",
+        "status": "passed",
+        "suite": "markdown.harness.tsx"
+      },
+      {
+        "name": "StreamText native Markdown renders useful intermediate snapshots during a continuous native stream",
+        "status": "passed",
+        "suite": "markdown.harness.tsx"
+      },
+      {
+        "name": "StreamText native Markdown switches plain/Markdown on a finished source and updates its size",
+        "status": "passed",
+        "suite": "markdown.harness.tsx"
+      },
+      {
+        "name": "StreamText native Markdown drops stale worker results after source replacement and clear",
+        "status": "passed",
+        "suite": "markdown.harness.tsx"
+      },
+      {
+        "name": "StreamText native Markdown keeps formatting when a completed source is mounted again",
+        "status": "passed",
+        "suite": "markdown.harness.tsx"
+      },
+      {
+        "name": "StreamText Markdown native rendering stores completed Markdown styles in the prepared native layout",
+        "status": "passed",
+        "suite": "markdown-rendering.harness.tsx"
+      },
+      {
+        "name": "StreamText Markdown native rendering applies the same styles to an open native stream",
+        "status": "passed",
+        "suite": "markdown-rendering.harness.tsx"
+      },
+      {
+        "name": "StreamText Markdown native rendering keeps Markdown spans through color and font changes (streaming)",
+        "status": "passed",
+        "suite": "markdown-rendering.harness.tsx"
+      },
+      {
+        "name": "StreamText Markdown native rendering keeps Markdown spans through color and font changes (prepared)",
+        "status": "passed",
+        "suite": "markdown-rendering.harness.tsx"
+      },
+      {
+        "name": "StreamText Markdown native rendering restyles an earlier reference when its definition arrives",
+        "status": "passed",
+        "suite": "markdown-rendering.harness.tsx"
+      },
+      {
+        "name": "StreamText Markdown native rendering keeps safe links and rejects javascript links in native attributes",
+        "status": "passed",
+        "suite": "markdown-rendering.harness.tsx"
+      },
+      {
+        "name": "StreamText Markdown native rendering keeps native Markdown spans when a prepared canvas falls back on resize",
+        "status": "passed",
+        "suite": "markdown-rendering.harness.tsx"
+      },
+      {
+        "name": "StreamText Markdown native rendering preserves cached prepared spans through remount and format changes",
+        "status": "passed",
+        "suite": "markdown-rendering.harness.tsx"
+      },
+      {
+        "name": "StreamText Markdown ownership seams keeps an imperative source through same-length prop replacement and a format toggle",
+        "status": "passed",
+        "suite": "markdown-seams.harness.tsx"
+      },
+      {
+        "name": "StreamText Markdown ownership seams reformats a retained imperative terminal source across flavor and style changes",
+        "status": "passed",
+        "suite": "markdown-seams.harness.tsx"
+      },
+      {
+        "name": "StreamText Markdown ownership seams renders an empty Markdown done terminal before reporting it",
+        "status": "passed",
+        "suite": "markdown-seams.harness.tsx"
+      },
+      {
+        "name": "StreamText Markdown ownership seams renders an empty Markdown error terminal before reporting it",
+        "status": "passed",
+        "suite": "markdown-seams.harness.tsx"
+      },
+      {
+        "name": "StreamText Markdown ownership seams renders an empty Markdown cancelled terminal before reporting it",
+        "status": "passed",
+        "suite": "markdown-seams.harness.tsx"
+      },
+      {
+        "name": "StreamText Markdown ownership seams renders an empty Markdown truncated terminal before reporting it",
+        "status": "passed",
+        "suite": "markdown-seams.harness.tsx"
+      },
+      {
+        "name": "StreamText Markdown ownership seams does not revive a queued Markdown parse after clear",
+        "status": "passed",
+        "suite": "markdown-seams.harness.tsx"
+      },
+      {
+        "name": "StreamText rich Markdown accessibility reads table cell text and image alt text instead of object replacement characters",
+        "status": "passed",
+        "suite": "markdown-rich-accessibility.harness.tsx"
+      },
+      {
+        "name": "StreamText rich Markdown accessibility rebuilds table row geometry for a line-height style change",
+        "status": "passed",
+        "suite": "markdown-rich-accessibility.harness.tsx"
+      },
+      {
+        "name": "StreamText rich Markdown accessibility keeps ordinary plain text intact in the accessibility value",
+        "status": "passed",
+        "suite": "markdown-rich-accessibility.harness.tsx"
+      },
+      {
+        "name": "StreamText rich Markdown native seams keeps image completion layout live across a pending font-style change",
+        "status": "passed",
+        "suite": "markdown-rich.harness.tsx"
+      },
+      {
+        "name": "StreamText: the surface changes width (rotation, Split View) 20 staticLayout bubbles stay on the canvas, and no frame shows a bubble at its old height",
+        "status": "failed",
+        "suite": "resize.harness.tsx"
+      },
+      {
+        "name": "StreamText: the surface changes width (rotation, Split View) 20 staticLayout bubbles without a lineHeight stay on the canvas, and no frame shows a bubble at its old height",
+        "status": "failed",
+        "suite": "resize.harness.tsx"
+      },
+      {
+        "name": "StreamText: lifecycle survives unmounting while a producer keeps writing",
+        "status": "passed",
+        "suite": "lifecycle.harness.tsx"
+      },
+      {
+        "name": "StreamText: lifecycle a reused text view keeps nothing from its previous owner",
+        "status": "passed",
+        "suite": "lifecycle.harness.tsx"
+      },
+      {
+        "name": "StreamText: lifecycle keeps showing text while the JS thread is blocked",
+        "status": "passed",
+        "suite": "lifecycle.harness.tsx"
+      },
+      {
+        "name": "StreamText: lifecycle switching buffers mid-stream shows only the new one",
+        "status": "passed",
+        "suite": "lifecycle.harness.tsx"
+      },
+      {
+        "name": "StreamText: lifecycle mounting and unmounting many views in a row is clean",
+        "status": "passed",
+        "suite": "lifecycle.harness.tsx"
+      },
+      {
+        "name": "StreamText: waiting for the first token shows text that arrives long after the view mounted (the watcher backs off, then wakes)",
+        "status": "passed",
+        "suite": "lifecycle.harness.tsx"
+      },
+      {
+        "name": "StreamText: prepared layouts draws a finished source on a canvas, at the height the text view would have",
+        "status": "passed",
+        "suite": "prepared.harness.tsx"
+      },
+      {
+        "name": "StreamText: prepared layouts gives the text view's height with a trailing line break",
+        "status": "passed",
+        "suite": "prepared.harness.tsx"
+      },
+      {
+        "name": "StreamText: prepared layouts gives the text view's height with blank lines",
+        "status": "passed",
+        "suite": "prepared.harness.tsx"
+      },
+      {
+        "name": "StreamText: prepared layouts gives the text view's height with CRLF",
+        "status": "passed",
+        "suite": "prepared.harness.tsx"
+      },
+      {
+        "name": "StreamText: prepared layouts uses TextKit where CoreText does not reproduce it, still on a canvas",
+        "status": "passed",
+        "suite": "prepared.harness.tsx"
+      },
+      {
+        "name": "StreamText: prepared layouts keeps the text view for an open stream, attach(), and texts over 64 KB",
+        "status": "passed",
+        "suite": "prepared.harness.tsx"
+      },
+      {
+        "name": "StreamText: prepared layouts a new style or width gets a new layout, not a text view",
+        "status": "passed",
+        "suite": "prepared.harness.tsx"
+      },
+      {
+        "name": "StreamText: prepared layouts a new width without a new layout falls back to the text view, text and height intact",
+        "status": "passed",
+        "suite": "prepared.harness.tsx"
+      },
+      {
+        "name": "StreamText: prepared layouts lays each text out once, even past the cache size (a long chat)",
+        "status": "passed",
+        "suite": "prepared.harness.tsx"
+      },
+      {
+        "name": "StreamText: prepared layouts the view’s own height wins for a text it streamed",
+        "status": "passed",
+        "suite": "prepared.harness.tsx"
+      },
+      {
+        "name": "StreamText: prepared layouts a streamed text mounts again from the cache: no layout at mount",
+        "status": "passed",
+        "suite": "prepared.harness.tsx"
+      },
+      {
+        "name": "StreamText: prepared layouts a memory warning empties the cache",
+        "status": "passed",
+        "suite": "prepared.harness.tsx"
+      },
+      {
+        "name": "StreamText: prepared layouts a tall text keeps tiles only near the screen as it scrolls",
+        "status": "passed",
+        "suite": "prepared.harness.tsx"
+      },
+      {
+        "name": "StreamText: prepared layouts VoiceOver and TalkBack read the lines on screen, and every line by number",
+        "status": "passed",
+        "suite": "prepared.harness.tsx"
+      },
+      {
+        "name": "StreamText: prepared layouts after attach() or clear(), the view decides the height, not the source prop",
+        "status": "passed",
+        "suite": "prepared.harness.tsx"
+      },
+      {
+        "name": "StreamText: prepared layouts at a fractional width (301.5) the canvas and the text view agree",
+        "status": "passed",
+        "suite": "prepared.harness.tsx"
+      },
+      {
+        "name": "StreamText: prepared layouts at a fractional width (211.33) the canvas and the text view agree",
+        "status": "passed",
+        "suite": "prepared.harness.tsx"
+      },
+      {
+        "name": "StreamText: prepared layouts at a fractional width (333.67) the canvas and the text view agree",
+        "status": "passed",
+        "suite": "prepared.harness.tsx"
+      },
+      {
+        "name": "StreamText: prepared layouts selects text on the canvas itself, no text view",
+        "status": "passed",
+        "suite": "prepared.harness.tsx"
+      },
+      {
+        "name": "StreamText: prepared layouts selects right-to-left text on the canvas the way the text view does",
+        "status": "pending",
+        "suite": "prepared.harness.tsx"
+      },
+      {
+        "name": "StreamText: prepared layouts selects right-to-left text where the view draws it, on the canvas and in a text view",
+        "status": "passed",
+        "suite": "prepared.harness.tsx"
+      },
+      {
+        "name": "StreamText: prepared layouts bubbles mounted below the screen draw once scrolled to, and let go of tiles far away",
+        "status": "passed",
+        "suite": "prepared.harness.tsx"
+      },
+      {
+        "name": "StreamText: prepared layouts lays out like <Text> beside it",
+        "status": "passed",
+        "suite": "prepared.harness.tsx"
+      },
+      {
+        "name": "StreamText: one long paragraph, streamed lays out as in one piece, with a lineHeight",
+        "status": "passed",
+        "suite": "flow.harness.tsx"
+      },
+      {
+        "name": "StreamText: one long paragraph, streamed lays out as in one piece, with the font's line height",
+        "status": "passed",
+        "suite": "flow.harness.tsx"
+      },
+      {
+        "name": "StreamText: one long paragraph, streamed lays out as in one piece, right to left",
+        "status": "passed",
+        "suite": "flow.harness.tsx"
+      },
+      {
+        "name": "StreamText: UTF-8 across chunk boundaries a lead byte that breaks a held sequence starts a new character",
+        "status": "passed",
+        "suite": "utf8.harness.tsx"
+      },
+      {
+        "name": "StreamText: UTF-8 across chunk boundaries a U+FEFF that starts a chunk mid-stream is kept",
+        "status": "passed",
+        "suite": "utf8.harness.tsx"
+      },
+      {
+        "name": "StreamText: UTF-8 across chunk boundaries only the BOM opening the stream is dropped, however it arrives",
+        "status": "passed",
+        "suite": "utf8.harness.tsx"
+      },
+      {
+        "name": "StreamText: UTF-8 across chunk boundaries random bytes: any chunking shows what decoding them whole shows",
+        "status": "passed",
+        "suite": "utf8.harness.tsx"
+      },
+      {
+        "name": "StreamText: ref attach() shows the buffer; getText() and getStatus() agree with the view",
+        "status": "passed",
+        "suite": "ref.harness.tsx"
+      },
+      {
+        "name": "StreamText: ref applies an attach made before the view mounts",
+        "status": "passed",
+        "suite": "ref.harness.tsx"
+      },
+      {
+        "name": "StreamText: ref clear() empties the view: no text, no height, idle",
+        "status": "passed",
+        "suite": "ref.harness.tsx"
+      },
+      {
+        "name": "StreamText: ref a buffer made in JS is refused with a warning, and the view shows nothing",
+        "status": "passed",
+        "suite": "ref.harness.tsx"
+      },
+      {
+        "name": "StreamText: ref an unrelated prop change keeps what the ref attached",
+        "status": "passed",
+        "suite": "ref.harness.tsx"
+      },
+      {
+        "name": "StreamText: ref a new source prop replaces what the ref attached",
+        "status": "passed",
+        "suite": "ref.harness.tsx"
+      },
+      {
+        "name": "StreamText: ref the last of many quick attaches wins",
+        "status": "passed",
+        "suite": "ref.harness.tsx"
+      },
+      {
+        "name": "StreamText: ref status events about a buffer replaced in the same tick never reach onStatusChange",
+        "status": "passed",
+        "suite": "ref.harness.tsx"
+      },
+      {
+        "name": "StreamText: status events reports streaming, then done with the byte count once the text is on screen",
+        "status": "passed",
+        "suite": "status.harness.tsx"
+      },
+      {
+        "name": "StreamText: status events maps a done buffer to \"done\"",
+        "status": "passed",
+        "suite": "status.harness.tsx"
+      },
+      {
+        "name": "StreamText: status events maps a error buffer to \"error\"",
+        "status": "passed",
+        "suite": "status.harness.tsx"
+      },
+      {
+        "name": "StreamText: status events maps a cancelled buffer to \"cancelled\"",
+        "status": "passed",
+        "suite": "status.harness.tsx"
+      },
+      {
+        "name": "StreamText: status events maps a overflow buffer to \"truncated\"",
+        "status": "passed",
+        "suite": "status.harness.tsx"
+      },
+      {
+        "name": "StreamText: status events writing past the capacity truncates: the text stops at the capacity",
+        "status": "passed",
+        "suite": "status.harness.tsx"
+      },
+      {
+        "name": "StreamText: status events a buffer that is already finished reports only its final status",
+        "status": "passed",
+        "suite": "status.harness.tsx"
+      },
+      {
+        "name": "StreamText: status events switching from one finished buffer to another reports done again",
+        "status": "passed",
+        "suite": "status.harness.tsx"
+      },
+      {
+        "name": "StreamText: status events removing the source reports idle and clears the view",
+        "status": "passed",
+        "suite": "status.harness.tsx"
+      },
+      {
+        "name": "StreamText: status events a stream that ends mid-character shows U+FFFD and still reports done",
+        "status": "passed",
+        "suite": "status.harness.tsx"
+      },
+      {
+        "name": "StreamText rich Markdown native seams materializes a large table across native language boundaries",
+        "status": "passed",
+        "suite": "markdown-rich.harness.tsx"
+      }
+    ]
+  },
+  "androidResizeComparison": {
+    "baselineCommit": "867c265",
+    "method": "Rebuilt and installed with baseline StreamTextView.kt and StreamTextLineHeightSpan.kt. Other feature files retained; plain paths of prepared layout are unchanged. This isolates the renderer changes, not a full clean baseline checkout. Feature sources/APK restored afterward.",
+    "result": "Both plain resize tests reproduce the same failure. At 300 dp root width, 239.2381 dp bubble changes from canvas/old height to textView/new height.",
+    "framesWithLineHeight": [
+      {
+        "mode": "canvas",
+        "height": 21.33333396911621
+      },
+      {
+        "mode": "textView",
+        "height": 42.66666793823242
+      }
+    ],
+    "framesWithoutLineHeight": [
+      {
+        "mode": "canvas",
+        "height": 19.428571701049805
+      },
+      {
+        "mode": "textView",
+        "height": 35.80952453613281
+      }
+    ],
+    "knownLimitation": "syncCanvas(false) posts settleCanvas on a width-cache miss. No new plain resize behavior is introduced by rich-block rendering; the existing two checks remain red."
+  },
+  "visualVerification": {
+    "ios": "Final Debug demo inspected: wrapped aligned native grid, no generic attachment icon, loaded image, TS/Python syntax.",
+    "android": "Final Debug demo inspected: wrapped aligned native grid, loaded image, TS/Python syntax."
+  }
+}

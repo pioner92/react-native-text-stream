@@ -58,6 +58,7 @@ class StreamTextPreparedLayout private constructor(
 
   companion object {
     @Volatile private var assets: AssetManager? = null
+    internal val fontAssets: AssetManager? get() = assets
 
     /** Fonts come from the app's assets; called with the app's context. */
     internal fun init(context: Context) {
@@ -104,7 +105,7 @@ class StreamTextPreparedLayout private constructor(
         textAlign: String?,
         format: String?,
         markdownFlavor: String?,
-    ): StreamTextPreparedLayout {
+    ): StreamTextPreparedLayout? {
       val started = if (StreamTextDebug.enabled) System.nanoTime() else 0L
       val utf8 = ByteArray(bytes)
       data.duplicate().apply { position(StreamTextNative.HEADER_SIZE) }.get(utf8, 0, bytes)
@@ -116,6 +117,9 @@ class StreamTextPreparedLayout private constructor(
       val markdown = format == "markdown"
       // This runs on the existing prepare worker; spans and StaticLayout are ready before mount.
       val document = if (markdown) StreamTextNative.parseMarkdown(rawText, markdownFlavor == "gfm") else null
+      // Rich attachments require view-owned loading and width-aware layout; a prepared canvas
+      // cannot safely cache mutable image spans or a table measured before its view has a width.
+      if (document?.hasRichBlocks == true) return null
       val text: CharSequence = document?.styled(color) ?: rawText
       val decoded = if (started != 0L) System.nanoTime() else 0L
       val style = StreamTextStyle(

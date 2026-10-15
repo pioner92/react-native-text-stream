@@ -337,8 +337,41 @@ struct JStreamTextNative : jni::JavaClass<JStreamTextNative> {
     env->SetIntArrayRegion(headings, 0, count, headingsOut.data());
     env->SetIntArrayRegion(indents, 0, count, indentsOut.data());
     jclass resultClass = JStreamTextMarkdown::javaClassStatic().get();
-    jmethodID constructor = env->GetMethodID(resultClass, "<init>", "(Ljava/lang/String;[I[I[I[I[I[Ljava/lang/String;)V");
-    jobject result = env->NewObject(resultClass, constructor, text, starts, lengths, flags, headings, indents, urls);
+    jclass cellClass = env->FindClass("com/textstream/StreamTextMarkdown$RichCell");
+    jclass blockClass = env->FindClass("com/textstream/StreamTextMarkdown$RichBlock");
+    jmethodID cellConstructor = env->GetMethodID(cellClass, "<init>", "(Ljava/lang/String;[I[I[I[I[I[Ljava/lang/String;ZI)V");
+    jmethodID blockConstructor = env->GetMethodID(blockClass, "<init>", "(IIII[Lcom/textstream/StreamTextMarkdown$RichCell;Ljava/lang/String;Ljava/lang/String;)V");
+    jobjectArray blocks = env->NewObjectArray(static_cast<jsize>(document->blockCount), blockClass, nullptr);
+    for (jsize bi = 0; bi < static_cast<jsize>(document->blockCount); ++bi) {
+      const auto &block = document->blocks[bi];
+      jobjectArray cells = nullptr;
+      const size_t cellCount = block.rowCount * block.columnCount;
+      if (block.kind == STMD_BLOCK_TABLE && cellCount <= static_cast<size_t>(INT32_MAX)) {
+        cells = env->NewObjectArray(static_cast<jsize>(cellCount), cellClass, nullptr);
+        for (jsize ci = 0; ci < static_cast<jsize>(cellCount); ++ci) {
+          const auto &cell = block.cells[ci]; const jsize runs = static_cast<jsize>(cell.runCount);
+          jstring cellText = env->NewString(reinterpret_cast<const jchar *>(cell.text), static_cast<jsize>(cell.textLength));
+          jintArray cs = env->NewIntArray(runs), cl = env->NewIntArray(runs), cf = env->NewIntArray(runs), ch = env->NewIntArray(runs), ciIndent = env->NewIntArray(runs);
+          jobjectArray cu = env->NewObjectArray(runs, stringClass, nullptr);
+          std::vector<jint> vs(runs), vl(runs), vf(runs), vh(runs), vi(runs);
+          for (jsize ri = 0; ri < runs; ++ri) { const auto &r = cell.runs[ri]; vs[ri]=r.start; vl[ri]=r.length; vf[ri]=r.flags; vh[ri]=r.headingLevel; vi[ri]=r.indent; if (r.url) { jstring u=utf8String(env,r.url); env->SetObjectArrayElement(cu,ri,u); env->DeleteLocalRef(u); } }
+          if (runs) { env->SetIntArrayRegion(cs,0,runs,vs.data()); env->SetIntArrayRegion(cl,0,runs,vl.data()); env->SetIntArrayRegion(cf,0,runs,vf.data()); env->SetIntArrayRegion(ch,0,runs,vh.data()); env->SetIntArrayRegion(ciIndent,0,runs,vi.data()); }
+          jobject cellObject = env->NewObject(cellClass, cellConstructor, cellText, cs, cl, cf, ch, ciIndent, cu, (cell.flags & STMD_BLOCK_CELL_HEADER) ? JNI_TRUE : JNI_FALSE, static_cast<jint>(cell.alignment));
+          env->SetObjectArrayElement(cells, ci, cellObject);
+          env->DeleteLocalRef(cellObject);
+          env->DeleteLocalRef(cellText);
+          env->DeleteLocalRef(cs); env->DeleteLocalRef(cl); env->DeleteLocalRef(cf);
+          env->DeleteLocalRef(ch); env->DeleteLocalRef(ciIndent); env->DeleteLocalRef(cu);
+        }
+      }
+      jstring imageUrl = block.url ? utf8String(env, block.url) : nullptr;
+      jstring alt = block.alt ? env->NewString(reinterpret_cast<const jchar *>(block.alt), static_cast<jsize>(block.altLength)) : nullptr;
+      jobject rich = env->NewObject(blockClass, blockConstructor, static_cast<jint>(block.kind), static_cast<jint>(block.start), static_cast<jint>(block.rowCount), static_cast<jint>(block.columnCount), cells, imageUrl, alt);
+      env->SetObjectArrayElement(blocks, bi, rich); env->DeleteLocalRef(rich);
+      if (cells) env->DeleteLocalRef(cells); if (imageUrl) env->DeleteLocalRef(imageUrl); if (alt) env->DeleteLocalRef(alt);
+    }
+    jmethodID constructor = env->GetMethodID(resultClass, "<init>", "(Ljava/lang/String;[I[I[I[I[I[Ljava/lang/String;[Lcom/textstream/StreamTextMarkdown$RichBlock;)V");
+    jobject result = env->NewObject(resultClass, constructor, text, starts, lengths, flags, headings, indents, urls, blocks);
     return jni::adopt_local(reinterpret_cast<JStreamTextMarkdown::javaobject>(result));
   }
 

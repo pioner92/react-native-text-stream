@@ -270,6 +270,7 @@ class StreamTextView(context: Context) : ReactViewGroup(context) {
     setStreamId(null)
     stopTicking()
     watcher.stop()
+    (flow.text as? android.text.Spanned)?.getSpans(0, flow.text.length, MarkdownImageSpan::class.java)?.forEach { it.cancel() }
     // A finished `source` prop it laid out itself (it streamed it): lay it out in the background
     // for the next mount (texts that stay on screen never pay for it).
     finishedProp?.let {
@@ -341,7 +342,24 @@ class StreamTextView(context: Context) : ReactViewGroup(context) {
           .put("link", link))
       start = end
     }
-    return JSONObject().put("text", text.toString()).put("runs", runs).toString()
+    val rich = JSONArray()
+    markdownDocument?.blocks?.forEach { block ->
+      val value = JSONObject().put("kind", if (block.kind == StreamTextMarkdown.BLOCK_TABLE) "table" else "image")
+          .put("start", block.start).put("rowCount", block.rowCount).put("columnCount", block.columnCount)
+          .put("url", block.url ?: "").put("alt", block.alt ?: "")
+      val cellValues = JSONArray()
+      block.cells?.forEachIndexed { index, cell -> cellValues.put(JSONObject().put("row", index / block.columnCount).put("column", index % block.columnCount).put("text", cell.text).put("header", cell.header).put("alignment", cell.alignment)) }
+      value.put("cells", cellValues)
+      if (spanned != null && block.start < text.length) {
+        spanned.getSpans(block.start, block.start + 1, MarkdownTableSpan::class.java).firstOrNull()?.let { value.put("width", PixelUtil.toDIPFromPixel(it.width.toFloat()).toDouble()).put("height", PixelUtil.toDIPFromPixel(it.height.toFloat()).toDouble()) }
+        spanned.getSpans(block.start, block.start + 1, MarkdownImageSpan::class.java).firstOrNull()?.let { value.put("width", PixelUtil.toDIPFromPixel(it.width.toFloat()).toDouble()).put("height", PixelUtil.toDIPFromPixel(it.height.toFloat()).toDouble()).put("status", it.status).put("pixelWidth", it.pixelWidth).put("pixelHeight", it.pixelHeight) }
+      }
+      if (!value.has("width")) value.put("width", 0).put("height", 0)
+      if (!value.has("status")) value.put("status", "")
+      if (!value.has("pixelWidth")) value.put("pixelWidth", 0).put("pixelHeight", 0)
+      rich.put(value)
+    }
+    return JSONObject().put("text", text.toString()).put("runs", runs).put("blocks", rich).toString()
   }
 
   private fun shownText(): CharSequence = canvas?.text ?: flow.text
@@ -366,6 +384,7 @@ class StreamTextView(context: Context) : ReactViewGroup(context) {
   ) {
     stopTicking()
     watcher.stop()
+    (flow.text as? android.text.Spanned)?.getSpans(0, flow.text.length, MarkdownImageSpan::class.java)?.forEach { it.cancel() }
     releaseFinishedProp()
     selection.dismiss()
     sourceIsProp = fromProp
@@ -672,7 +691,7 @@ class StreamTextView(context: Context) : ReactViewGroup(context) {
       markdownParseScheduled = false
       if (!markdownEnabled) return@postDelayed
       val revision = markdownRevision
-      markdownWorker.submit(markdownSource.toString(), revision, offset, githubMarkdown, paint.color)
+      markdownWorker.submit(markdownSource.toString(), revision, offset, githubMarkdown, paint.color, layoutWidth.coerceAtLeast(1), style)
     }, delay)
   }
 
@@ -685,11 +704,36 @@ class StreamTextView(context: Context) : ReactViewGroup(context) {
     // DynamicLayout reflows paragraphs. Start at one, and never cut between UTF-16 surrogates.
     while (safeStart > 0 && styled[safeStart - 1] != '\n') safeStart--
     if (safeStart in 1 until styled.length && Character.isLowSurrogate(styled[safeStart]) && Character.isHighSurrogate(styled[safeStart - 1])) safeStart--
-    val suffix = style.withLineHeight(styled.subSequence(safeStart, styled.length))
+    val oldText = flow.text
+    val oldImages = oldText.getSpans(0, oldText.length, MarkdownImageSpan::class.java)
+    val oldByStart = oldImages.associateBy { oldText.getSpanStart(it) }
+    // Substitute before DynamicLayout reflow so a loaded image keeps its measured dimensions.
+    val suffix = android.text.SpannableString(style.withLineHeight(styled.subSequence(safeStart, styled.length)))
+    for (image in suffix.getSpans(0, suffix.length, MarkdownImageSpan::class.java)) {
+      val start = suffix.getSpanStart(image)
+      val old = oldByStart[start + safeStart]
+      if (old != null && old.matches(image)) {
+        val end = suffix.getSpanEnd(image)
+        suffix.removeSpan(image)
+        suffix.setSpan(old, start, end, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+      }
+    }
     if (!flow.replaceFrom(safeStart, suffix)) {
       flow.clear()
       flow.text.append(styled)
       rebuildLayout()
+    }
+    val actualImages = flow.text.getSpans(0, flow.text.length, MarkdownImageSpan::class.java)
+    val active = actualImages.toHashSet()
+    for (old in oldImages) if (old !in active) old.cancel()
+    actualImages.forEach { image ->
+      image.bind {
+        if (revision == markdownRevision && markdownEnabled && flow.text.getSpanStart(image) >= 0) {
+          rebuildLayout()
+          reportHeight()
+          invalidate()
+        }
+      }
     }
     hadText = flow.text.isNotEmpty()
     if (displayLogKey != null) unloggedShown = bytes
@@ -801,6 +845,7 @@ class StreamTextView(context: Context) : ReactViewGroup(context) {
     val width = width - paddingLeft - paddingRight
     if (width == layoutWidth) return
     layoutWidth = width
+    if (markdownEnabled && markdownDocument?.hasRichBlocks == true) scheduleMarkdownParse(delay = 0)
     // Also under a canvas (no text then): an `attach` later lays out into it.
     rebuildLayout()
     if (canvas != null) {
@@ -876,6 +921,7 @@ class StreamTextView(context: Context) : ReactViewGroup(context) {
       markdownDocument = null
     }
     if (formatChanged) {
+      flow.text.getSpans(0, flow.text.length, MarkdownImageSpan::class.java).forEach { it.cancel() }
       canvas = null
       canvasStale = false
       removeCallbacks(settleCanvas)
@@ -1173,6 +1219,9 @@ class StreamTextView(context: Context) : ReactViewGroup(context) {
     var start = max(length - ACCESSIBLE_TAIL_CHARS, 0)
     // Not from the middle of a surrogate pair.
     if (start > 0 && Character.isLowSurrogate(shown[start])) start++
+    if (markdownDocument?.hasRichBlocks == true) {
+      return markdownDocument!!.accessibleReading(start, ACCESSIBLE_TAIL_CHARS)
+    }
     val prefix = if (start > 0) "…" else ""
     val starts = ArrayList<Int>()
     var base = 0
