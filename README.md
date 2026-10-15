@@ -37,7 +37,9 @@ export function Answer({ url }: { url: string }) {
 ```
 
 Your endpoint returns **plain UTF-8 text**. StreamText handles the native request and rendering;
-SSE/NDJSON parsing and Markdown rendering are not included yet.
+SSE/NDJSON parsing is not included. Opt into native Markdown with
+`format="markdown" markdownFlavor="gfm"`; see the [Markdown guide](docs/markdown.md)
+for supported elements and performance limits.
 
 ## Why StreamText?
 
@@ -189,7 +191,7 @@ See [setup and compatibility details](docs/getting-started.md).
 
 - Native SSE and NDJSON parsing, including provider-specific text extraction.
 - A JavaScript chunk-input API for existing SDKs and other transports.
-- Native Markdown rendering.
+- Richer Markdown blocks: table grids, images and code syntax highlighting.
 - A broader validated compatibility matrix.
 
 These are planned directions, not currently supported features or release commitments.

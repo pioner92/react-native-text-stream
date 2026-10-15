@@ -40,6 +40,8 @@ struct PreparedStyle {
   Float lineHeight;
   Float letterSpacing;
   std::string textAlign;
+  bool markdown;
+  bool github;
 
   explicit PreparedStyle(const StreamTextViewProps &p)
       : fontSize(p.fontSize),
@@ -48,13 +50,15 @@ struct PreparedStyle {
         color(p.color),
         lineHeight(p.lineHeight),
         letterSpacing(p.letterSpacing),
-        textAlign(p.textAlign) {}
+        textAlign(p.textAlign),
+        markdown(p.format == "markdown"),
+        github(p.markdownFlavor == "gfm") {}
 
   /** The color only matters to a layout that has it baked in. */
   bool sameLayout(const PreparedStyle &o, bool colorMatters) const {
     return fontSize == o.fontSize && fontFamily == o.fontFamily && fontWeight == o.fontWeight &&
         (!colorMatters || color == o.color) && lineHeight == o.lineHeight && letterSpacing == o.letterSpacing &&
-        textAlign == o.textAlign;
+        textAlign == o.textAlign && markdown == o.markdown && github == o.github;
   }
 };
 
@@ -84,6 +88,10 @@ uint64_t contentHash(const std::shared_ptr<jsi::MutableBuffer> &buffer, uint64_t
 }
 
 } // namespace
+
+namespace {
+NSOperationQueue *prepareQueue();
+}
 
 namespace facebook::react {
 
@@ -214,12 +222,19 @@ StreamTextPreparedRef run(Job job, std::shared_ptr<std::promise<StreamTextPrepar
 #endif
   StreamTextPreparedLayout *layout;
   @autoreleasepool {
-    layout = [[StreamTextPreparedLayout alloc]
-        initWithUtf8:static_cast<const uint8_t *>(job.source->data()) + TSB_HEADER_SIZE
-               count:static_cast<NSInteger>(job.bytes)
-               bytes:job.bytes
-               style:job.textStyle
-               width:job.width];
+    const uint8_t *utf8 = static_cast<const uint8_t *>(job.source->data()) + TSB_HEADER_SIZE;
+    layout = job.style.markdown
+        ? [[StreamTextPreparedLayout alloc] initWithMarkdownUTF8:utf8
+                                                           count:static_cast<NSInteger>(job.bytes)
+                                                           bytes:job.bytes
+                                                          github:job.style.github
+                                                           style:job.textStyle
+                                                           width:job.width]
+        : [[StreamTextPreparedLayout alloc] initWithUtf8:utf8
+                                                   count:static_cast<NSInteger>(job.bytes)
+                                                   bytes:job.bytes
+                                                   style:job.textStyle
+                                                   width:job.width];
   }
 #ifdef STREAMTEXT_TESTING
   if (main) {
@@ -289,6 +304,15 @@ streamTextPrepare(const StreamTextViewProps &props, Float width, const StreamTex
       return nullptr;
     }
     return waiting.get();
+  }
+  // Markdown parsing builds fonts, spans and a TextKit layout. A Yoga/main-thread cache miss must
+  // never pay that cost synchronously; the normal prepared-state pass picks up this same in-flight
+  // future once the bounded preparation queue completes. Keep the established plain-text behavior.
+  if (NSThread.isMainThread && job.style.markdown) {
+    [prepareQueue() addOperationWithBlock:^{
+      run(job, mine, false);
+    }];
+    return nullptr;
   }
   return run(job, std::move(mine), NSThread.isMainThread);
 }

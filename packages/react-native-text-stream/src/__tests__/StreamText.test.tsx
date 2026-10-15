@@ -44,6 +44,20 @@ describe('StreamText', () => {
     expect(host().props.selectable).toBe(false)
   })
 
+  it('changes Markdown presentation without replacing the source or losing raw text', async () => {
+    const source = tsbBuffer('# Привет **world** 🚀')
+    const { ref, rerender } = await renderStream({ source, format: 'markdown', markdownFlavor: 'gfm' })
+    const generation = host().props.sourceGeneration
+    expect(host().props.format).toBe('markdown')
+    expect(host().props.markdownFlavor).toBe('gfm')
+    await expect(ref.current!.getText()).resolves.toBe('# Привет **world** 🚀')
+    await rerender(<StreamText ref={ref} testID="stream" source={source} format="plain" />)
+    expect(host().props.format).toBe('plain')
+    expect(host().props.sourceGeneration).toBe(generation)
+    expect(mockCommands.clear).not.toHaveBeenCalled()
+    expect(mockCommands.attach).not.toHaveBeenCalled()
+  })
+
   it('takes a stream from streamFetch(): the view gets its buffer, as the prop and through attach()', async () => {
     const buffer = tsbBuffer('hi')
     const stream = { buffer, response: Promise.resolve(), done: Promise.resolve(), abort: () => {}, text: () => 'hi' }

@@ -2488,7 +2488,7 @@ SPEC CHECKSUMS:
   ReactNativeEnrichedMarkdown: e48bd711471c526ebf99e5cb2509b088ff9144b1
   RNReanimated: 1a35735db345147a094f15a07bfef1325fdd1e9d
   RNWorklets: 9a983a24597cc6dd13eb155c25b5d13beb5e0ff8
-  TextStream: 375125de90c4478901363c7d063cc54b9560f593
+  TextStream: e6764e7b1abb0d1ec1038c5f6c169b70bb0c41bc
   TextStreamTesting: 9b6d392aea7984c02abfc0897394ef144b686d4a
   Yoga: fe50ab299e578f397fef753cf309c6703a4db29b
 

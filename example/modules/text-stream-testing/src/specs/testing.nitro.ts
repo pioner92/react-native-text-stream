@@ -120,4 +120,6 @@ export interface StreamTextTesting extends HybridObject<{ ios: 'swift'; android:
   stopSurface(key: string): Promise<string>
   /** The view whose `nativeID` is `key` and that has `recordDisplayLog`; rejects if there is none. */
   snapshot(key: string): Promise<StreamTextSnapshot>
+  /** Effective styles actually held by native text storage, as JSON (test-only, no parser mirror). */
+  textAttributes(key: string): Promise<string>
 }

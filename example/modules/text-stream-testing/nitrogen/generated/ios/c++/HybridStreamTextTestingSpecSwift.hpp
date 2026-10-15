@@ -237,6 +237,14 @@ namespace margelo::nitro::textstreamtesting {
       auto __value = std::move(__result.value());
       return __value;
     }
+    inline std::shared_ptr<Promise<std::string>> textAttributes(const std::string& key) override {
+      auto __result = _swiftPart.textAttributes(key);
+      if (__result.hasError()) [[unlikely]] {
+        std::rethrow_exception(__result.error());
+      }
+      auto __value = std::move(__result.value());
+      return __value;
+    }
 
   private:
     TextStreamTesting::HybridStreamTextTestingSpec_cxx _swiftPart;

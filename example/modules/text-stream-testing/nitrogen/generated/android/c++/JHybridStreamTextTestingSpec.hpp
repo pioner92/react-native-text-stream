@@ -76,6 +76,7 @@ namespace margelo::nitro::textstreamtesting {
     std::shared_ptr<Promise<std::string>> accessibility(const std::string& key, const std::vector<double>& lines) override;
     std::shared_ptr<Promise<std::string>> stopSurface(const std::string& key) override;
     std::shared_ptr<Promise<StreamTextSnapshot>> snapshot(const std::string& key) override;
+    std::shared_ptr<Promise<std::string>> textAttributes(const std::string& key) override;
 
   private:
     jni::global_ref<JHybridStreamTextTestingSpec::JavaPart> _javaPart;

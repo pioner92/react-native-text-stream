@@ -95,7 +95,7 @@ describe('JS commands ↔ native component view', () => {
   it('reads the generation where JS sends it: after the id for attach, alone for clear', () => {
     expect(componentView).toMatch(/int generation = args\.count > 1 \? \[args\[1\] intValue\] : 0;/)
     expect(componentView).toMatch(/generation:args\.count > 0 \? \[args\.firstObject intValue\] : 0\]/)
-    expect(componentView).toContain('_propGeneration = next.sourceGeneration;')
+    expect(componentView).toContain('_propGeneration = reformatRetainedImperative ? _generation : next.sourceGeneration;')
   })
 })
 

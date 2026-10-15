@@ -7,7 +7,7 @@ import {
   type ViewProps,
 } from 'react-native'
 import * as NativeComponentRegistry from 'react-native/Libraries/NativeComponent/NativeComponentRegistry'
-import type { StreamTextAlign, StreamTextFontWeight, StreamTextState, StreamTextStatus } from './types'
+import type { StreamTextAlign, StreamTextFontWeight, StreamTextFormat, StreamTextMarkdownFlavor, StreamTextState, StreamTextStatus } from './types'
 import { bufferText, bufferSerial, committedBytes, TSB_HEADER_SIZE } from './buffer'
 import {
   isTextStream,
@@ -34,6 +34,8 @@ type NativeProps = ViewProps & {
   /** 0 = none, 1 = explicit prop, 2 = named stream. Keeps native ownership in sync with JS. */
   sourceOwner?: number
   streamId?: string
+  format?: StreamTextFormat
+  markdownFlavor?: StreamTextMarkdownFlavor
   fontSize?: number
   fontFamily?: string
   fontWeight?: string
@@ -56,6 +58,8 @@ const NativeStreamText = NativeComponentRegistry.get<NativeProps>('StreamTextVie
     sourceGeneration: true,
     sourceOwner: true,
     streamId: true,
+    format: true,
+    markdownFlavor: true,
     fontSize: true,
     fontFamily: true,
     fontWeight: true,
@@ -100,6 +104,10 @@ export interface StreamTextProps extends ViewProps {
    * sent again when the request changes, after `releaseStream(id)`, or (GET/HEAD only) once evicted.
    */
   request?: StreamTextRequest
+  /** Native Markdown rendering; defaults to the unchanged plain-text path. */
+  format?: StreamTextFormat
+  /** Markdown dialect; defaults to CommonMark. Only used with format="markdown". */
+  markdownFlavor?: StreamTextMarkdownFlavor
   fontSize?: number
   /** A font family or PostScript name, e.g. "Menlo"; defaults to the system font. */
   fontFamily?: string
@@ -136,7 +144,7 @@ export interface StreamTextHandle {
   clear(): void
   /** The stream's state, read synchronously. */
   getStatus(): StreamTextState
-  /** The text received so far. */
+  /** The original text received so far, including Markdown syntax. */
   getText(): Promise<string>
 }
 

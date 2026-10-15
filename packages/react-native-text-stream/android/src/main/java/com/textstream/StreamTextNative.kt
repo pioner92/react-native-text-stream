@@ -46,6 +46,9 @@ internal object StreamTextNative {
       lineHeight: Float,
       letterSpacing: Float,
       textAlign: String?,
+      format: String?,
+      markdownFlavor: String?,
+      color: Int,
   )
 
   /** Tests and benchmarks: off, finished sources are laid out by the view, as streams are. */
@@ -67,6 +70,9 @@ internal object StreamTextNative {
 
   /** Acquire load: once terminal, a `committed` read after it is final. */
   @JvmStatic external fun status(base: Long): Int
+
+  /** MD4C-backed parse. Called only by [StreamTextMarkdownWorker], never by the UI thread. */
+  @JvmStatic external fun parseMarkdown(markdown: String, github: Boolean): StreamTextMarkdown?
 
   const val STATUS_OPEN = 0
   const val STATUS_DONE = 1

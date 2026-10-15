@@ -63,6 +63,8 @@ class StreamTextViewProps final : public ViewProps {
       const RawProps &rawProps)
       : ViewProps(context, sourceProps, rawProps),
         source(sourceProps.source),
+        format(convertRawProp(context, rawProps, "format", sourceProps.format, std::string{"plain"})),
+        markdownFlavor(convertRawProp(context, rawProps, "markdownFlavor", sourceProps.markdownFlavor, std::string{"commonmark"})),
         fontSize(convertRawProp(context, rawProps, "fontSize", sourceProps.fontSize, Float{15})),
         fontFamily(convertRawProp(context, rawProps, "fontFamily", sourceProps.fontFamily, {})),
         fontWeight(convertRawProp(context, rawProps, "fontWeight", sourceProps.fontWeight, {})),
@@ -97,6 +99,8 @@ class StreamTextViewProps final : public ViewProps {
   }
 
   std::shared_ptr<jsi::MutableBuffer> source;
+  std::string format{"plain"};
+  std::string markdownFlavor{"commonmark"};
   Float fontSize{15};
   std::string fontFamily;
   std::string fontWeight;
@@ -198,6 +202,7 @@ class StreamTextViewShadowNode final : public ConcreteViewShadowNode<
     const auto &props = getConcreteProps();
     const auto &previous = source.getConcreteProps();
     if (getStateData().revision != source.getStateData().revision || props.source != previous.source ||
+        props.format != previous.format || props.markdownFlavor != previous.markdownFlavor ||
         props.fontSize != previous.fontSize || props.fontFamily != previous.fontFamily ||
         props.fontWeight != previous.fontWeight || props.lineHeight != previous.lineHeight ||
         props.letterSpacing != previous.letterSpacing || props.textAlign != previous.textAlign) {

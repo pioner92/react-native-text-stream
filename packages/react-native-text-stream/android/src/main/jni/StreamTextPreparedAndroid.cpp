@@ -43,6 +43,9 @@ struct PreparedStyle {
   Float lineHeight;
   Float letterSpacing;
   std::string textAlign;
+  std::string format;
+  std::string markdownFlavor;
+  int32_t color{static_cast<int32_t>(0xff000000u)};
 
   PreparedStyle(
       Float fontSize,
@@ -50,13 +53,17 @@ struct PreparedStyle {
       std::string fontWeight,
       Float lineHeight,
       Float letterSpacing,
-      std::string textAlign)
+      std::string textAlign,
+      std::string format = {},
+      std::string markdownFlavor = {},
+      int32_t color = static_cast<int32_t>(0xff000000u))
       : fontSize(fontSize),
         fontFamily(std::move(fontFamily)),
         fontWeight(std::move(fontWeight)),
         lineHeight(lineHeight),
         letterSpacing(letterSpacing),
-        textAlign(std::move(textAlign)) {}
+        textAlign(std::move(textAlign)), format(format == "markdown" ? "markdown" : "plain"),
+        markdownFlavor(format == "markdown" && markdownFlavor == "gfm" ? "gfm" : "commonmark"), color(color) {}
 
   explicit PreparedStyle(const StreamTextViewProps &p)
       : fontSize(p.fontSize),
@@ -64,11 +71,14 @@ struct PreparedStyle {
         fontWeight(p.fontWeight),
         lineHeight(p.lineHeight),
         letterSpacing(p.letterSpacing),
-        textAlign(p.textAlign) {}
+        textAlign(p.textAlign), format(p.format == "markdown" ? "markdown" : "plain"),
+        markdownFlavor(p.format == "markdown" && p.markdownFlavor == "gfm" ? "gfm" : "commonmark"),
+        color(isColorMeaningful(p.color) ? *p.color : 0xff000000) {}
 
   bool operator==(const PreparedStyle &o) const {
     return fontSize == o.fontSize && fontFamily == o.fontFamily && fontWeight == o.fontWeight &&
-        lineHeight == o.lineHeight && letterSpacing == o.letterSpacing && textAlign == o.textAlign;
+        lineHeight == o.lineHeight && letterSpacing == o.letterSpacing && textAlign == o.textAlign &&
+        format == o.format && markdownFlavor == o.markdownFlavor;
   }
 };
 
@@ -280,6 +290,9 @@ StreamTextPreparedRef makeLayout(const Job &job, int generation) {
                                      jni::alias_ref<jstring>,
                                      jfloat,
                                      jfloat,
+                                     jint,
+                                     jni::alias_ref<jstring>,
+                                     jni::alias_ref<jstring>,
                                      jni::alias_ref<jstring>)>("create");
   static const auto getHeight = JStreamTextPreparedLayout::javaClassStatic()->getMethod<jfloat()>("getHeight");
   try {
@@ -293,8 +306,8 @@ StreamTextPreparedRef makeLayout(const Job &job, int generation) {
         javaString(job.style.fontFamily),
         javaString(job.style.fontWeight),
         job.style.lineHeight,
-        job.style.letterSpacing,
-        javaString(job.style.textAlign));
+        job.style.letterSpacing, static_cast<jint>(job.style.color),
+        javaString(job.style.textAlign), javaString(job.style.format), javaString(job.style.markdownFlavor));
     if (!layout) {
       return nullptr;
     }
@@ -439,6 +452,12 @@ streamTextPrepare(const StreamTextViewProps &props, Float width, const StreamTex
     }
     return waiting.get();
   }
+  // Parsing Markdown and building spans are never paid by Fabric's main-thread measure. The view
+  // uses its current height until this prepared result is published on a later state update.
+  if (main) {
+    PrepareQueue::shared().add([job = std::move(job), mine] { run(job, mine); });
+    return nullptr;
+  }
   return run(job, mine);
 }
 
@@ -478,14 +497,17 @@ void streamTextPrepareInBackground(
     std::string fontWeight,
     Float lineHeight,
     Float letterSpacing,
-    std::string textAlign) {
+    std::string textAlign,
+    std::string format,
+    std::string markdownFlavor,
+    int32_t color) {
   {
     std::lock_guard lock(gMutex);
     width = snapWidthLocked(width);
   }
   startInBackground(
       source,
-      PreparedStyle(fontSize, std::move(fontFamily), std::move(fontWeight), lineHeight, letterSpacing, std::move(textAlign)),
+      PreparedStyle(fontSize, std::move(fontFamily), std::move(fontWeight), lineHeight, letterSpacing, std::move(textAlign), std::move(format), std::move(markdownFlavor), color),
       width);
 }
 

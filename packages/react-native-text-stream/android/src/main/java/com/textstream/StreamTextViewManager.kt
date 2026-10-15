@@ -50,6 +50,16 @@ class StreamTextViewManager : ReactViewManager() {
     (view as StreamTextView).recordDisplayLog = value
   }
 
+  @ReactProp(name = "format")
+  fun setFormat(view: ReactViewGroup, value: String?) {
+    (view as StreamTextView).format = value?.lowercase()?.takeIf { it == "markdown" }
+  }
+
+  @ReactProp(name = "markdownFlavor")
+  fun setMarkdownFlavor(view: ReactViewGroup, value: String?) {
+    (view as StreamTextView).markdownFlavor = value?.lowercase()?.takeIf { it == "gfm" } ?: "commonmark"
+  }
+
   @ReactProp(name = "selectionColor", customType = "Color")
   fun setSelectionColor(view: ReactViewGroup, value: Int?) {
     (view as StreamTextView).selectionColor = value

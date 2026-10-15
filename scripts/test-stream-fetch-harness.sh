@@ -42,7 +42,7 @@ for group in "${suites[@]}"; do
   proofs=0
   case "$group" in
     fetch) pattern='(fetch|streamid|seams|js-stream).*harness' ;;
-    renderer) pattern='(engines|flow|lifecycle|prepared|ref|resize|smoke|status|text|tiles|utf8)\.harness' ;;
+    renderer) pattern='(engines|flow|lifecycle|markdown[^.]*|prepared|ref|resize|smoke|status|text|tiles|utf8)\.harness' ;;
     review) pattern='review-repro\.harness'; test_timeout=${HARNESS_REVIEW_TIMEOUT:-240000}; proofs=1 ;;
     teardown) pattern='registry-retention\.harness'; proofs=1 ;;
   esac

@@ -79,6 +79,7 @@ namespace margelo::nitro::textstreamtesting {
       virtual std::shared_ptr<Promise<std::string>> accessibility(const std::string& key, const std::vector<double>& lines) = 0;
       virtual std::shared_ptr<Promise<std::string>> stopSurface(const std::string& key) = 0;
       virtual std::shared_ptr<Promise<StreamTextSnapshot>> snapshot(const std::string& key) = 0;
+      virtual std::shared_ptr<Promise<std::string>> textAttributes(const std::string& key) = 0;
 
     protected:
       // Hybrid Setup

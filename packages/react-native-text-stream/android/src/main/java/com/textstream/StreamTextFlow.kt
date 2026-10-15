@@ -96,6 +96,20 @@ internal class StreamTextFlow {
     return true
   }
 
+  /**
+   * Replaces a Markdown suffix while retaining DynamicLayout's untouched prefix. Markdown never
+   * freezes, because a delimiter may change styles above the current end. Returns false when a
+   * caller must make a fresh layout (for example after a width/style rebuild left no live one).
+   */
+  fun replaceFrom(from: Int, replacement: CharSequence): Boolean {
+    if (frozen.isNotEmpty() || from !in 0..text.length || from > live.length) return false
+    val layout = liveLayout ?: return false
+    text.replace(from, text.length, replacement)
+    live.replace(from, live.length, replacement)
+    liveBlocks?.markDirty(maxOf(layout.getLineForOffset(from.coerceAtMost(layout.text.length)) - 1, 0) / StreamTextBlocks.LINES)
+    return true
+  }
+
   /** Freezes all but the last lines once the paragraph the stream is in is long (see the class). */
   fun freezeIfLong(style: StreamTextStyle, paint: TextPaint) {
     val layout = liveLayout ?: return

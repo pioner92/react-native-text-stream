@@ -51,6 +51,9 @@ public final class StreamTextPreparedLayout: NSObject {
   /// The text's color is drawn from the context: a new color needs no new layout.
   @objc public var colorIndependent: Bool { isCoreText }
   let text: NSAttributedString
+  /// Preserved for canvas -> UITextView promotion so a later style change can rebuild spans
+  /// synchronously without reparsing an empty/consumed stream buffer.
+  let markdownResult: StreamTextMarkdownResult?
   private let engine: Engine
 
   private enum Engine {
@@ -58,14 +61,42 @@ public final class StreamTextPreparedLayout: NSObject {
     case coreText(CoreTextLines)
   }
 
-  @objc public init?(utf8: UnsafePointer<UInt8>, count: Int, bytes: UInt64, style: StreamTextStyle, width: CGFloat) {
-    let started = CACurrentMediaTime()
+  @objc public convenience init?(utf8: UnsafePointer<UInt8>, count: Int, bytes: UInt64, style: StreamTextStyle, width: CGFloat) {
     let string = streamTextDecodeUTF8(utf8, count, atStreamStart: true)
+    self.init(text: NSAttributedString(string: string, attributes: style.attributes()), markdownResult: nil,
+              bytes: bytes, style: style, width: width)
+  }
+
+  /// Finished Markdown is parsed and typeset on the preparation queue. The canvas keeps the
+  /// attributed runs, so remounting a completed message does not replay parsing or formatting on
+  /// the main thread.
+  @objc public convenience init?(markdownUTF8 utf8: UnsafePointer<UInt8>, count: Int, bytes: UInt64,
+                                 github: Bool, style: StreamTextStyle, width: CGFloat) {
+    let data = Data(bytes: utf8, count: count)
+    guard let result = streamTextMarkdownParse(data, github: github) else { return nil }
+    self.init(text: streamTextMarkdownAttributed(result, base: style.attributes()), markdownResult: result,
+              bytes: bytes, style: style, width: width)
+  }
+
+  private init?(text: NSAttributedString, markdownResult: StreamTextMarkdownResult?, bytes: UInt64,
+                style: StreamTextStyle, width: CGFloat) {
+    let started = CACurrentMediaTime()
     let attributes = style.attributes()
-    text = NSAttributedString(string: string, attributes: attributes)
+    self.text = text
+    self.markdownResult = markdownResult
     self.width = width
     self.bytes = bytes
-    if Self.coreText, let lines = CoreTextLines(text: text, attributes: attributes, style: style, width: width) {
+    var hasMultipleAttributes = false
+    if text.length > 0 {
+      text.enumerateAttributes(in: NSRange(location: 0, length: text.length), options: []) { _, range, stop in
+        if range.location != 0 || range.length != text.length {
+          hasMultipleAttributes = true
+          stop.pointee = true
+        }
+      }
+    }
+    if Self.coreText, markdownResult == nil, !hasMultipleAttributes,
+       let lines = CoreTextLines(text: text, attributes: attributes, style: style, width: width) {
       engine = .coreText(lines)
       height = lines.height
     } else if let lines = TextKitLines(text: text, width: width) {

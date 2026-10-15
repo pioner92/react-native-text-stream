@@ -5,6 +5,12 @@ set(CMAKE_VERBOSE_MAKEFILE ON)
 
 set(LIB_TARGET_NAME react_codegen_textstream)
 set(LIB_ROOT_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../../../..)
+add_library(streamtext_md4c OBJECT
+  ${LIB_ROOT_DIR}/cpp/markdown/vendor/md4c/md4c.c
+  ${LIB_ROOT_DIR}/cpp/markdown/vendor/md4c/entity.c
+)
+set_target_properties(streamtext_md4c PROPERTIES POSITION_INDEPENDENT_CODE ON)
+target_include_directories(streamtext_md4c PRIVATE ${LIB_ROOT_DIR}/cpp/markdown/vendor/md4c)
 
 add_library(
   ${LIB_TARGET_NAME}
@@ -13,6 +19,8 @@ add_library(
   ${LIB_ROOT_DIR}/cpp/StreamTextMappedBuffer.cpp
   ${LIB_ROOT_DIR}/cpp/StreamTextFetch.cpp
   ${LIB_ROOT_DIR}/cpp/StreamTextStreams.cpp
+  ${LIB_ROOT_DIR}/cpp/markdown/StreamMarkdown.cpp
+  $<TARGET_OBJECTS:streamtext_md4c>
   ${CMAKE_CURRENT_SOURCE_DIR}/StreamTextFetchAndroid.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/textstream.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/StreamTextPreparedAndroid.cpp
@@ -23,6 +31,7 @@ target_include_directories(
   PUBLIC
   ${CMAKE_CURRENT_SOURCE_DIR}
   ${LIB_ROOT_DIR}/cpp
+  ${LIB_ROOT_DIR}/cpp/markdown
 )
 
 target_link_libraries(

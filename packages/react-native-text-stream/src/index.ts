@@ -20,6 +20,8 @@ export {
 export type {
   StreamTextAlign,
   StreamTextFontWeight,
+  StreamTextFormat,
+  StreamTextMarkdownFlavor,
   StreamTextState,
   StreamTextStatus,
 } from './types'

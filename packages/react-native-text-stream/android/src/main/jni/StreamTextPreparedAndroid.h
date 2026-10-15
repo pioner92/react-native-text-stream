@@ -4,6 +4,7 @@
 #include "StreamTextViewShadowNode.hpp"
 
 #include <fbjni/fbjni.h>
+#include <cstdint>
 #include <string>
 
 namespace facebook::react {
@@ -30,7 +31,10 @@ void streamTextPrepareInBackground(
     std::string fontWeight,
     Float lineHeight,
     Float letterSpacing,
-    std::string textAlign);
+    std::string textAlign,
+    std::string format,
+    std::string markdownFlavor,
+    int32_t color);
 
 /** Tests and benchmarks. Off: finished sources are laid out by the view, as streams are. */
 void streamTextPreparedSetEnabled(bool enabled);

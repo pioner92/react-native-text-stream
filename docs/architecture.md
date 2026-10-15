@@ -62,8 +62,9 @@ their ownership and thread-safety do not meet the native producer contract.
 
 ## Text and protocol boundary
 
-The renderer receives UTF-8 body bytes and displays plain text. It does not
-interpret Markdown, JSON, SSE, NDJSON, tool calls, or an LLM provider protocol.
+The renderer receives UTF-8 body bytes. It displays plain text by default;
+`format="markdown"` adds native Markdown parsing and styled text rendering. It does
+not interpret JSON, SSE, NDJSON, tool calls, or an LLM provider protocol.
 Feed it a plain-text endpoint, transform structured events upstream, or implement
 a native producer that emits the desired text.
 
@@ -83,3 +84,6 @@ Measure the exact screen and payload you ship. Useful separate signals are:
 The repository's [benchmark guide](benchmarks.md) documents the published test
 setup and its limits. Benchmarks demonstrate a workload; they do not guarantee a
 specific result on every application or device.
+
+See [native Markdown](markdown.md) for worker scheduling, rendering scope and the
+difference between original source bytes and displayed text.

@@ -92,6 +92,16 @@ class HybridStreamTextTesting : HybridStreamTextTestingSpec() {
     stopped.forEach { it.cancel(false) }
   }
 
+  override fun textAttributes(key: String): Promise<String> {
+    val promise = Promise<String>()
+    main.post {
+      val view = StreamTextDebug.view(key)
+      if (view == null) promise.reject(IllegalStateException("No StreamTextView with nativeID $key"))
+      else promise.resolve(view.debugTextAttributes())
+    }
+    return promise
+  }
+
   override fun snapshot(key: String): Promise<StreamTextSnapshot> {
     val promise = Promise<StreamTextSnapshot>()
     main.post {

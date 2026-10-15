@@ -286,5 +286,21 @@ namespace margelo::nitro::textstreamtesting {
       return __promise;
     }();
   }
+  std::shared_ptr<Promise<std::string>> JHybridStreamTextTestingSpec::textAttributes(const std::string& key) {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<JPromise::javaobject>(jni::alias_ref<jni::JString> /* key */)>("textAttributes");
+    auto __result = method(_javaPart, jni::make_jstring(key));
+    return [&]() {
+      auto __promise = Promise<std::string>::create();
+      __result->cthis()->addOnResolvedListener([=](const jni::alias_ref<jni::JObject>& __boxedResult) {
+        auto __result = jni::static_ref_cast<jni::JString>(__boxedResult);
+        __promise->resolve(__result->toStdString());
+      });
+      __result->cthis()->addOnRejectedListener([=](const jni::alias_ref<jni::JThrowable>& __throwable) {
+        jni::JniException __jniError(__throwable);
+        __promise->reject(std::make_exception_ptr(__jniError));
+      });
+      return __promise;
+    }();
+  }
 
 } // namespace margelo::nitro::textstreamtesting

@@ -111,7 +111,7 @@ data class StreamTextStyle(
   }
 
   /** The same lines as [dynamicLayout] for a finished text, laid out ahead (any thread). */
-  fun staticLayout(text: String, paint: TextPaint, width: Int): StaticLayout {
+  fun staticLayout(text: CharSequence, paint: TextPaint, width: Int): StaticLayout {
     val spannable = SpannableString(text)
     applyLineHeight(spannable)
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) {

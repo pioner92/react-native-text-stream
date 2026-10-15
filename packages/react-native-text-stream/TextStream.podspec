@@ -19,12 +19,15 @@ Pod::Spec.new do |s|
     # Autolinking/Registration (Objective-C++)
     "ios/**/*.{m,mm}",
     # Implementation (C++ objects)
-    "cpp/**/*.{hpp,cpp}",
+    "cpp/**/*.{h,hpp,c,cpp}",
     # TSB1 buffer format, read from Swift
     "ios/TextStreamBuffer.h",
+    "ios/StreamMarkdown.h",
   ]
 
-  s.public_header_files = ["ios/TextStreamBuffer.h"]
+  # Swift imports the Markdown C ABI directly; keeping this public also makes the same parser
+  # available to the Android/iOS C++ targets without a platform wrapper.
+  s.public_header_files = ["ios/TextStreamBuffer.h", "ios/StreamMarkdown.h"]
 
   s.pod_target_xcconfig = {
     "CLANG_CXX_LANGUAGE_STANDARD" => "c++20",

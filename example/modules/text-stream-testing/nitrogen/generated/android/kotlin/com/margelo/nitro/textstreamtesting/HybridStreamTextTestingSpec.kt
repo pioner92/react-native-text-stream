@@ -119,6 +119,10 @@ abstract class HybridStreamTextTestingSpec: HybridObject() {
   @Keep
   abstract fun snapshot(key: String): Promise<StreamTextSnapshot>
 
+  @DoNotStrip
+  @Keep
+  abstract fun textAttributes(key: String): Promise<String>
+
   // Default implementation of `HybridObject.toString()`
   override fun toString(): String {
     return "[HybridObject StreamTextTesting]"

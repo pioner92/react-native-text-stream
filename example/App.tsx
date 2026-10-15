@@ -17,6 +17,7 @@ import { BenchScreen } from './src/bench/BenchScreen';
 import { HistoryBench } from './src/bench/HistoryBench';
 import { MountBench } from './src/bench/MountBench';
 import { ChatDemo } from './src/ChatDemo';
+import { MarkdownDemo } from './src/MarkdownDemo';
 
 // iOS simulator reaches the host's localhost directly.
 const SERVER = 'http://localhost:9877';
@@ -37,15 +38,17 @@ const C = {
 };
 
 export default function App(): React.JSX.Element {
-  const [screen, setScreen] = useState<'demo' | 'chat' | 'bench' | 'history' | 'mount'>('demo');
+  const [screen, setScreen] = useState<'demo' | 'chat' | 'markdown' | 'bench' | 'history' | 'mount'>('demo');
   if (screen === 'demo') {
-    return <Demo onOpenChat={() => setScreen('chat')} onOpenBench={() => setScreen('bench')} />;
+    return <Demo onOpenChat={() => setScreen('chat')} onOpenMarkdown={() => setScreen('markdown')} onOpenBench={() => setScreen('bench')} />;
   }
   return (
     <SafeAreaProvider>
       <StatusBar barStyle="light-content" />
       <SafeAreaView style={styles.screen} edges={['top', 'bottom']}>
-        {screen === 'chat' ? (
+        {screen === 'markdown' ? (
+          <MarkdownDemo onBack={() => setScreen('demo')} />
+        ) : screen === 'chat' ? (
           <ChatDemo onBack={() => setScreen('demo')} />
         ) : screen === 'history' ? (
           <HistoryBench onBack={() => setScreen('bench')} />
@@ -65,9 +68,11 @@ export default function App(): React.JSX.Element {
 
 function Demo({
   onOpenChat,
+  onOpenMarkdown,
   onOpenBench,
 }: {
   onOpenChat: () => void;
+  onOpenMarkdown: () => void;
   onOpenBench: () => void;
 }): React.JSX.Element {
   // The buffer goes through the ref: starting a stream doesn't re-render this screen.
@@ -160,6 +165,9 @@ function Demo({
           <View style={styles.eyebrowRow}>
             <Text style={styles.eyebrow}>REACT NATIVE · STREAMTEXT</Text>
             <View style={styles.links}>
+              <Pressable onPress={onOpenMarkdown} hitSlop={12}>
+                <Text style={styles.benchLink}>Markdown ›</Text>
+              </Pressable>
               <Pressable onPress={onOpenChat} hitSlop={12}>
                 <Text style={styles.benchLink}>Chat ›</Text>
               </Pressable>
@@ -363,7 +371,7 @@ const buttonVariants = {
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: C.bg, paddingHorizontal: 16 },
   header: { paddingTop: 8, paddingBottom: 14 },
-  eyebrowRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  eyebrowRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, alignItems: 'center', justifyContent: 'space-between' },
   eyebrow: { color: C.native, fontSize: 11, fontWeight: '700', letterSpacing: 1.6 },
   links: { flexDirection: 'row', gap: 16 },
   benchLink: { color: C.muted, fontSize: 13, fontWeight: '600' },

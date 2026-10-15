@@ -45,6 +45,21 @@ public final class StreamTextRenderer: UIView {
   private var pushed = false
 
   private var textAttributes: [NSAttributedString.Key: Any] = [:]
+  /// Markdown has a separate, bounded parser pipeline. Plain text never allocates any of this.
+  private var markdownEnabled = false
+  private var markdownGitHub = false
+  private var markdownPipeline: StreamTextMarkdownPipeline?
+  /// UTF-8 consumed from the native producer. This is owned before it crosses to the parser queue: a TSB1
+  /// mapped buffer may be detached as soon as this renderer reports its terminal status.
+  private var markdownBytes = Data()
+  /// Source/style epoch. New chunks do not invalidate a useful older snapshot of this source.
+  private var markdownRevision = 0
+  private var markdownResult: StreamTextMarkdownResult?
+  private var markdownAppliedBytes = -1
+  private var markdownLastScheduledBytes = -1
+  private var markdownLastScheduleTime: CFTimeInterval = 0
+  private var markdownDebounce: DispatchWorkItem?
+  private var pendingMarkdownTerminal: (status: UInt32, bytes: UInt64, sourceBytes: Int)?
   private var layoutWidth: CGFloat = -1
   /// Starts at the shadow node state's initial height.
   private var reportedHeight: CGFloat = 0
@@ -72,6 +87,25 @@ public final class StreamTextRenderer: UIView {
 
   /// The component view sets it, then calls `applyTextStyle()` once.
   @objc public var textStyle = StreamTextStyle()
+
+  /// Called only when the Fabric props change.  A mode change restarts the source on the next
+  /// attach, so no stale worker document can style a new buffer.
+  @objc public func configureMarkdown(_ enabled: Bool, github: Bool) {
+    guard markdownEnabled != enabled || markdownGitHub != github else { return }
+    markdownEnabled = enabled
+    markdownGitHub = github
+    markdownPipeline?.cancel()
+    markdownPipeline = nil
+    markdownDebounce?.cancel()
+    markdownDebounce = nil
+    markdownBytes.removeAll(keepingCapacity: false)
+    markdownResult = nil
+    markdownAppliedBytes = -1
+    markdownLastScheduledBytes = -1
+    markdownLastScheduleTime = 0
+    pendingMarkdownTerminal = nil
+    markdownRevision &+= 1
+  }
 
   @objc public var selectable: Bool = true {
     didSet {
@@ -130,13 +164,18 @@ public final class StreamTextRenderer: UIView {
       // Laid out again on the main thread, the next time it is measured: same engine, same lines.
       self.canvas = nil
       canvas.removeFromSuperview()
-      textView.textStorage.setAttributedString(NSAttributedString(string: canvas.layout.text.string, attributes: textAttributes))
+      // Keep Markdown spans when a prepared canvas is promoted for selection or resize.
+      textView.textStorage.setAttributedString(canvas.layout.text)
+      markdownResult = canvas.layout.markdownResult
     }
     return textView
   }
 
   /// Shows a prepared layout of the finished text the buffer holds, instead of filling a text view.
   private func showPrepared(_ prepared: StreamTextPreparedLayout, status: UInt32) {
+    markdownPipeline?.cancel()
+    markdownPipeline = nil
+    markdownResult = prepared.markdownResult
     if let textView {
       Self.recycle(textView)
       self.textView = nil
@@ -165,6 +204,7 @@ public final class StreamTextRenderer: UIView {
     guard let canvas else { return }
     if let prepared, prepared !== canvas.layout, prepared.bytes == canvas.layout.bytes {
       canvas.replace(prepared)
+      markdownResult = prepared.markdownResult
       canvas.color = textColor
       // The shadow node has this height already.
       reportedHeight = prepared.height
@@ -172,6 +212,7 @@ public final class StreamTextRenderer: UIView {
     }
     if canvasStyleStale || abs(canvas.layout.width - bounds.width) > 0.5 {
       _ = ensureTextView()
+      if canvasStyleStale { applyTextStyle() }
       setTextViewHeight(StreamTextLayout.textViewHeight)
       reportHeight()
     }
@@ -219,6 +260,11 @@ public final class StreamTextRenderer: UIView {
     watcher.stop()
     base = nil
     finished = true
+    markdownPipeline?.cancel()
+    markdownPipeline = nil
+    markdownDebounce?.cancel()
+    markdownDebounce = nil
+    markdownRevision &+= 1
   }
 
   // MARK: - Source
@@ -254,6 +300,17 @@ public final class StreamTextRenderer: UIView {
     }
     #endif
     stats = StreamTextRenderStats.Sample()
+    markdownPipeline?.cancel()
+    markdownPipeline = markdownEnabled ? StreamTextMarkdownPipeline() : nil
+    markdownDebounce?.cancel()
+    markdownDebounce = nil
+    markdownBytes.removeAll(keepingCapacity: false)
+    markdownResult = nil
+    markdownAppliedBytes = -1
+    markdownLastScheduledBytes = -1
+    markdownLastScheduleTime = 0
+    pendingMarkdownTerminal = nil
+    markdownRevision &+= 1
     if let textView, textView.textStorage.length > 0 { textView.text = "" }
     canvas?.removeFromSuperview()
     canvas = nil
@@ -331,10 +388,32 @@ public final class StreamTextRenderer: UIView {
       if layoutChanged || !canvas.layout.colorIndependent { canvasStyleStale = true }
       return
     }
+    if markdownEnabled, markdownPipeline != nil {
+      markdownPipeline?.cancel()
+      markdownPipeline = StreamTextMarkdownPipeline()
+      markdownRevision &+= 1
+      markdownLastScheduledBytes = -1
+      scheduleMarkdownIfNeeded(force: true)
+      return
+    }
     guard let textView else { return }
     textView.typingAttributes = attributes
     let storage = textView.textStorage
     storage.setAttributes(attributes, range: NSRange(location: 0, length: storage.length))
+    // A style prop is rare and already intentionally O(text); restore Markdown spans in the same
+    // edit transaction so a color/font update never silently turns a completed message into plain
+    // text while it waits for another stream append.
+    if markdownEnabled, let markdownResult, storage.string == markdownResult.text {
+      storage.beginEditing()
+      for run in markdownResult.runs {
+        let end = min(NSMaxRange(run.range), storage.length)
+        if end > run.range.location {
+          storage.addAttributes(streamTextMarkdownAttributes(for: run, base: attributes),
+                                range: NSRange(location: run.range.location, length: end - run.range.location))
+        }
+      }
+      storage.endEditing()
+    }
     reportHeight()
   }
 
@@ -464,6 +543,9 @@ public final class StreamTextRenderer: UIView {
         offset += UInt64(count)
       } while offset < end
       storage.endEditing()
+      // Parsing on every token repeatedly scans the prefix. Coalesce to a frame interval;
+      // a terminal status below always schedules the final document.
+      scheduleMarkdownIfNeeded(force: false)
       stats.append += CACurrentMediaTime() - started
       StreamTextRenderStats.shared.addPhase("fill.append", time: CACurrentMediaTime() - started)
       // Before the first layout there is no width: the text is laid out once the view gets one.
@@ -484,13 +566,19 @@ public final class StreamTextRenderer: UIView {
         bytesPerTick = min(max(estimate, Self.minBytesPerTick), Self.maxBytesPerTick)
       }
     }
-    if displayLogKey != nil && offset > consumedBefore { unloggedShown = offset }
+    if !markdownEnabled && displayLogKey != nil && offset > consumedBefore { unloggedShown = offset }
 
     if status != UInt32(TSB_STATUS_OPEN) && offset >= committed {
       if heldUTF8 > 0 {
         // A truncated sequence at the very end: show it as U+FFFD rather than dropping it.
         let held = base.advanced(by: Int(TSB_HEADER_SIZE) + Int(offset) - heldUTF8).assumingMemoryBound(to: UInt8.self)
-        appendString(String(decoding: UnsafeBufferPointer(start: held, count: heldUTF8), as: UTF8.self))
+        if markdownEnabled {
+          // Keep the parser's owned source equal to the visible replacement text. MD4C's UTF-8
+          // decoder also produces U+FFFD for this terminal malformed sequence.
+          markdownBytes.append(held, count: heldUTF8)
+        } else {
+          appendString(String(decoding: UnsafeBufferPointer(start: held, count: heldUTF8), as: UTF8.self))
+        }
         heldUTF8 = 0
       }
       if !fillAll { reportHeight() }
@@ -499,7 +587,19 @@ public final class StreamTextRenderer: UIView {
       watcher.stop()
       self.base = nil
       if let displayLogKey { StreamTextRenderStats.shared.set(displayLogKey, stats) }
-      reportStatus(terminalStatus(status), bytes: committed)
+      if markdownEnabled {
+        // The final native status is observable by JS. Hold it until the exact final snapshot is
+        // styled, otherwise a list can remount the raw Markdown between terminal and parse apply.
+        pendingMarkdownTerminal = (status, committed, markdownBytes.count)
+        if markdownAppliedBytes == markdownBytes.count {
+          pendingMarkdownTerminal = nil
+          reportStatus(terminalStatus(status), bytes: committed)
+        } else {
+          scheduleMarkdownIfNeeded(force: true)
+        }
+      } else {
+        reportStatus(terminalStatus(status), bytes: committed)
+      }
       // One more tick when there is an append left to log.
       if unloggedShown == nil { setTicking(false) }
       return
@@ -527,13 +627,83 @@ public final class StreamTextRenderer: UIView {
     let complete = rendererUTF8CompletePrefixLength(p, n)
     heldUTF8 = n - complete
     if complete > 0 {
-      appendString(streamTextDecodeUTF8(p, complete, atStreamStart: offset == UInt64(held)))
+      if markdownEnabled {
+        markdownBytes.append(p, count: complete)
+      } else {
+        appendString(streamTextDecodeUTF8(p, complete, atStreamStart: offset == UInt64(held)))
+      }
     }
   }
 
   private func appendString(_ text: String) {
     ensureTextView().textStorage.append(NSAttributedString(string: text, attributes: textAttributes))
   }
+
+  /// Bound work by time, not token count. Always flush a trailing update even if the producer
+  /// pauses without closing the stream. The worker also coalesces updates while a patch is in flight.
+  private func scheduleMarkdownIfNeeded(force: Bool) {
+    guard markdownEnabled, let pipeline = markdownPipeline else { return }
+    guard markdownBytes.count != markdownLastScheduledBytes else { return }
+    let now = CACurrentMediaTime()
+    let remaining = 0.016 - (now - markdownLastScheduleTime)
+    if !force && markdownLastScheduledBytes >= 0 && remaining > 0 {
+      if markdownDebounce == nil {
+        let epoch = markdownRevision
+        let work = DispatchWorkItem { [weak self] in
+          guard let self, self.markdownRevision == epoch else { return }
+          self.markdownDebounce = nil
+          self.scheduleMarkdownIfNeeded(force: true)
+        }
+        markdownDebounce = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + remaining, execute: work)
+      }
+      return
+    }
+    markdownDebounce?.cancel()
+    markdownDebounce = nil
+    markdownLastScheduledBytes = markdownBytes.count
+    markdownLastScheduleTime = now
+    pipeline.schedule(markdownBytes, github: markdownGitHub, revision: markdownRevision,
+                      attributes: textAttributes) { [weak self] update in
+      guard let self, self.markdownEnabled, update.revision == self.markdownRevision else { return }
+      self.applyMarkdown(update)
+    }
+  }
+
+  private func applyMarkdown(_ update: StreamTextMarkdownUpdate) {
+    let started = CACurrentMediaTime()
+    let storage = ensureTextView().textStorage
+    // Every patch from this pipeline is acknowledged before it parses the next snapshot, so its
+    // changed offset is relative to exactly this storage. No full-document UI comparison is needed.
+    guard update.start <= storage.length else {
+      // Recover with a fresh full patch if storage was replaced while a patch was in flight.
+      markdownPipeline?.cancel()
+      markdownPipeline = StreamTextMarkdownPipeline()
+      markdownRevision &+= 1
+      markdownLastScheduledBytes = -1
+      scheduleMarkdownIfNeeded(force: true)
+      return
+    }
+    storage.beginEditing()
+    storage.replaceCharacters(in: NSRange(location: update.start, length: storage.length - update.start),
+                              with: update.suffix)
+    storage.endEditing()
+    markdownResult = update.result
+    markdownAppliedBytes = update.sourceBytes
+    _ = reportHeight()
+    StreamTextRenderStats.shared.addPhase("markdown.apply", time: CACurrentMediaTime() - started)
+    if displayLogKey != nil {
+      unloggedShown = UInt64(update.sourceBytes)
+      // A display-link tick records only a document that has actually been applied and laid out.
+      setTicking(window != nil)
+    }
+    if let terminal = pendingMarkdownTerminal, terminal.sourceBytes == update.sourceBytes {
+      pendingMarkdownTerminal = nil
+      if let key = displayLogKey { StreamTextRenderStats.shared.set(key, stats) }
+      reportStatus(terminalStatus(terminal.status), bytes: terminal.bytes)
+    }
+  }
+
 }
 
 /// Exposes only the end of the text, in the renderer's visible frame: an accessibility snapshot of
@@ -842,6 +1012,28 @@ extension StreamTextRenderer {
     return (storage?.string ?? "", reportedHeight, reportedStatus ?? "", textView != nil, font?.pointSize ?? 0,
             color, textView?.isSelectable ?? selectable,
             textView?.accessibilityValue ?? canvas?.accessibilityValue ?? "")
+  }
+
+  /// Effective storage attributes, not reconstructed parser runs. Tests catch styling losses at
+  /// worker, prepared-canvas and text-view seams through the same representation used for drawing.
+  @_spi(Testing) public func debugTextAttributes() -> String {
+    let text: NSAttributedString = textView?.textStorage ?? canvas?.layout.text ?? NSAttributedString(string: "")
+    var runs: [[String: Any]] = []
+    text.enumerateAttributes(in: NSRange(location: 0, length: text.length), options: []) { attributes, range, _ in
+      let font = attributes[.font] as? UIFont ?? .systemFont(ofSize: 15)
+      let traits = font.fontDescriptor.symbolicTraits
+      var (r, g, b, a): (CGFloat, CGFloat, CGFloat, CGFloat) = (0, 0, 0, 0)
+      (attributes[.foregroundColor] as? UIColor)?.resolvedColor(with: traitCollection).getRed(&r, green: &g, blue: &b, alpha: &a)
+      let color = "#" + [r, g, b, a].map { String(format: "%02X", Int(($0 * 255).rounded())) }.joined()
+      runs.append(["start": range.location, "end": NSMaxRange(range), "fontSize": font.pointSize,
+                   "bold": traits.contains(.traitBold), "italic": traits.contains(.traitItalic),
+                   "mono": traits.contains(.traitMonoSpace),
+                   "strike": (attributes[.strikethroughStyle] as? Int ?? 0) != 0,
+                   "color": color, "link": attributes[.link].map { String(describing: $0) } ?? ""])
+    }
+    let result: [String: Any] = ["text": text.string, "runs": runs]
+    guard let data = try? JSONSerialization.data(withJSONObject: result) else { return "{}" }
+    return String(decoding: data, as: UTF8.self)
   }
 
   /// Tests: selects the word at `point` as the selection gestures would, copies and returns it.

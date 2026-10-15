@@ -67,6 +67,9 @@ class StreamTextView(context: Context) : ReactViewGroup(context) {
       if (!value) selection.dismiss()
     }
   var selectionColor: Int? = null
+  /** Plain remains the zero-cost default path. Markdown is parsed off the UI thread. */
+  var format: String? = null
+  var markdownFlavor: String? = null
 
   private val selection = StreamTextSelection(this)
   /** The rest of a long press goes to the selection overlay (dragging out of it). */
@@ -94,6 +97,8 @@ class StreamTextView(context: Context) : ReactViewGroup(context) {
 
   private var style = StreamTextStyle()
   private var styleApplied = false
+  private var markdownModeApplied = false
+  private var markdownGithubApplied = false
   private var paint = TextPaint(Paint.ANTI_ALIAS_FLAG)
   /** The text the view lays out itself: streamed, attached, or a canvas it fell back from. */
   private val flow = StreamTextFlow()
@@ -122,6 +127,15 @@ class StreamTextView(context: Context) : ReactViewGroup(context) {
   private var bytesPerTick = 32 * 1024
   private val decoder = Utf8StreamDecoder()
   private val decoded = StringBuilder()
+  /** Original UTF-16 stream text; [flow] holds only rendered text in Markdown mode. */
+  private val markdownSource = StringBuilder()
+  private var markdownDocument: StreamTextMarkdown? = null
+  private var markdownRevision = 0L
+  private var markdownParseScheduled = false
+  private var pendingMarkdownTerminal: Pair<String, Long>? = null
+  private val markdownWorker = StreamTextMarkdownWorker { revision, bytes, document, styled, changedStart, acknowledge ->
+    post { applyMarkdown(revision, bytes, document, styled, changedStart); acknowledge() }
+  }
   private val chunk = ByteArray(SLICE_BYTES)
   private val watcher = StreamTextWatcher { watcherWoke() }
   private var frameScheduled = false
@@ -262,7 +276,7 @@ class StreamTextView(context: Context) : ReactViewGroup(context) {
       if (canvas == null && layoutWidth > 0) {
         StreamTextNative.prepareInBackground(
             it, PixelUtil.toDIPFromPixel(layoutWidth.toFloat()), style.fontSize, style.fontFamily, style.fontWeight,
-            style.lineHeight, style.letterSpacing, style.textAlign)
+            style.lineHeight, style.letterSpacing, style.textAlign, format, markdownFlavor, paint.color)
       }
     }
     releaseFinishedProp()
@@ -303,7 +317,40 @@ class StreamTextView(context: Context) : ReactViewGroup(context) {
     )
   }
 
+  /** Test probe of effective native spans, independent of the Markdown parser's run table. */
+  fun debugTextAttributes(): String {
+    val text = canvas?.layout?.text ?: flow.text
+    val spanned = text as? android.text.Spanned
+    val runs = JSONArray()
+    var start = 0
+    while (start < text.length) {
+      val end = spanned?.nextSpanTransition(start, text.length, android.text.style.CharacterStyle::class.java) ?: text.length
+      // Shared prepared layouts receive this view's color immediately before each draw.
+      val effective = android.text.TextPaint(canvas?.paint ?: paint).also { it.color = paint.color }
+      val spans = spanned?.getSpans(start, minOf(start + 1, text.length), android.text.style.CharacterStyle::class.java) ?: emptyArray()
+      for (span in spans) span.updateDrawState(effective)
+      val c = effective.color
+      val link = spans.filterIsInstance<android.text.style.URLSpan>().lastOrNull()?.url ?: ""
+      runs.put(JSONObject().put("start", start).put("end", end)
+          .put("fontSize", PixelUtil.toDIPFromPixel(effective.textSize).toDouble())
+          .put("bold", effective.typeface?.isBold == true || effective.isFakeBoldText)
+          .put("italic", effective.typeface?.isItalic == true || effective.textSkewX != 0f)
+          .put("mono", spans.filterIsInstance<android.text.style.TypefaceSpan>().any { it.family == "monospace" })
+          .put("strike", effective.isStrikeThruText)
+          .put("color", "#%02X%02X%02X%02X".format(Color.red(c), Color.green(c), Color.blue(c), Color.alpha(c)))
+          .put("link", link))
+      start = end
+    }
+    return JSONObject().put("text", text.toString()).put("runs", runs).toString()
+  }
+
   private fun shownText(): CharSequence = canvas?.text ?: flow.text
+
+  private val markdownEnabled: Boolean
+    get() = format == "markdown"
+
+  private val githubMarkdown: Boolean
+    get() = markdownFlavor == "gfm"
 
   // MARK: - Attaching
 
@@ -330,6 +377,12 @@ class StreamTextView(context: Context) : ReactViewGroup(context) {
     offset = 0
     finished = false
     decoder.reset()
+    markdownRevision++
+    markdownParseScheduled = false
+    markdownWorker.clear()
+    markdownSource.setLength(0)
+    markdownDocument = null
+    pendingMarkdownTerminal = null
     unloggedShown = -1
     displayLogKey?.let { StreamTextDebug.clearLog(it) }
     stats = if (displayLogKey != null) StreamTextDebug.RenderSample() else null
@@ -368,8 +421,9 @@ class StreamTextView(context: Context) : ReactViewGroup(context) {
       val committed = min(StreamTextNative.committed(address), capacity)
       val instantFill = status != StreamTextNative.STATUS_OPEN && committed <= INSTANT_FILL_BYTES
       // A freshly mounted view has no width yet: the layout is for the width Yoga gave it.
-      if (instantFill && prepared != null && prepared.bytes == committed &&
-          (layoutWidth <= 0 || prepared.fits(layoutWidth, style))) {
+      if (instantFill && prepared != null && prepared.markdown == markdownEnabled &&
+          (!prepared.markdown || prepared.markdownFlavor == (markdownFlavor ?: "commonmark")) && prepared.bytes == committed &&
+          (layoutWidth <= 0 || prepared.fits(layoutWidth, style, paint.color))) {
         showPrepared(prepared, status, committed)
         fromState = true
         return
@@ -388,6 +442,12 @@ class StreamTextView(context: Context) : ReactViewGroup(context) {
   /** Draws the prepared layout as is: no decoding, no layout here. Its height is the state's. */
   private fun showPrepared(prepared: StreamTextPreparedLayout, status: Int, committed: Long) {
     canvas = prepared
+    offset = committed
+    markdownDocument = prepared.markdownDocument
+    if (prepared.markdown) {
+      markdownSource.setLength(0)
+      markdownSource.append(prepared.rawText)
+    }
     reportedHeight = prepared.height
     finished = true
     releaseSource()
@@ -406,14 +466,14 @@ class StreamTextView(context: Context) : ReactViewGroup(context) {
     val width = layoutWidth
     if (width <= 0) return
     val candidate = latestPrepared
-    if (candidate != null && candidate !== current && candidate.text == current.text && candidate.fits(width, style)) {
+    if (candidate != null && candidate !== current && candidate.rawText == current.rawText && candidate.markdown == current.markdown && candidate.markdownFlavor == current.markdownFlavor && candidate.fits(width, style, paint.color)) {
       canvas = candidate
       canvasStale = false
       reportedHeight = candidate.height
       markDirty(0)
       return
     }
-    if (current.fits(width, style)) {
+    if (current.fits(width, style, paint.color)) {
       canvasStale = false
       return
     }
@@ -430,6 +490,11 @@ class StreamTextView(context: Context) : ReactViewGroup(context) {
     flow.text.append(current.text)
     hadText = true
     rebuildLayout()
+    if (current.markdown) {
+      markdownSource.setLength(0)
+      markdownSource.append(current.rawText)
+      scheduleMarkdownParse(delay = 0)
+    }
     reportHeight()
   }
 
@@ -561,7 +626,13 @@ class StreamTextView(context: Context) : ReactViewGroup(context) {
       watcher.stop()
       finishSource(committed)
       displayLogKey?.let { key -> stats?.let { StreamTextDebug.setRenderStats(key, it) } }
-      reportStatus(terminalStatus(status), committed)
+      if (markdownEnabled) {
+        // `done` means rendered, not merely read. The final parse is applied before its event.
+        pendingMarkdownTerminal = terminalStatus(status) to committed
+        scheduleMarkdownParse(delay = 0)
+      } else {
+        reportStatus(terminalStatus(status), committed)
+      }
       return
     }
     // Frames only while there is a backlog; otherwise the watcher wakes us.
@@ -578,6 +649,12 @@ class StreamTextView(context: Context) : ReactViewGroup(context) {
 
   private fun appendText(chars: CharSequence) {
     if (chars.isEmpty()) return
+    if (markdownEnabled) {
+      markdownSource.append(chars)
+      scheduleMarkdownParse()
+      // Preserve streamFetch byte instrumentation while rendering is asynchronously coalesced.
+      return
+    }
     // With its line height spans, so the re-wrap the append triggers already sees them.
     val spanned = style.withLineHeight(chars)
     if (flow.append(chars, spanned)) flow.freezeIfLong(style, paint) else rebuildLayout()
@@ -585,6 +662,46 @@ class StreamTextView(context: Context) : ReactViewGroup(context) {
     hadText = true
     invalidate()
     if (displayLogKey != null) unloggedShown = offset
+  }
+
+  /** One snapshot per frame; the worker replaces pending work while MD4C is busy. */
+  private fun scheduleMarkdownParse(delay: Long = MARKDOWN_COALESCE_MS) {
+    if (markdownParseScheduled) return
+    markdownParseScheduled = true
+    postDelayed({
+      markdownParseScheduled = false
+      if (!markdownEnabled) return@postDelayed
+      val revision = markdownRevision
+      markdownWorker.submit(markdownSource.toString(), revision, offset, githubMarkdown, paint.color)
+    }, delay)
+  }
+
+  private fun applyMarkdown(revision: Long, bytes: Long, document: StreamTextMarkdown, styled: CharSequence, changedStart: Int) {
+    if (!markdownEnabled || revision != markdownRevision) return
+    markdownDocument = document
+    // An unfinished delimiter can restyle earlier text. A frozen prefix would therefore be stale.
+    selection.dismiss()
+    var safeStart = changedStart.coerceIn(0, styled.length)
+    // DynamicLayout reflows paragraphs. Start at one, and never cut between UTF-16 surrogates.
+    while (safeStart > 0 && styled[safeStart - 1] != '\n') safeStart--
+    if (safeStart in 1 until styled.length && Character.isLowSurrogate(styled[safeStart]) && Character.isHighSurrogate(styled[safeStart - 1])) safeStart--
+    val suffix = style.withLineHeight(styled.subSequence(safeStart, styled.length))
+    if (!flow.replaceFrom(safeStart, suffix)) {
+      flow.clear()
+      flow.text.append(styled)
+      rebuildLayout()
+    }
+    hadText = flow.text.isNotEmpty()
+    if (displayLogKey != null) unloggedShown = bytes
+    reportHeight()
+    pendingMarkdownTerminal?.let { (status, terminalBytes) ->
+      if (bytes >= terminalBytes) {
+        pendingMarkdownTerminal = null
+        if (displayLogKey != null) unloggedShown = terminalBytes
+        reportStatus(status, terminalBytes)
+      }
+    }
+    invalidate()
   }
 
   // MARK: - Selection
@@ -732,18 +849,76 @@ class StreamTextView(context: Context) : ReactViewGroup(context) {
   /** Re-applies the style props; re-wraps the text only when one that moves the lines changed. */
   fun applyStyle() {
     val color = textColor ?: defaultTextColor()
-    if (paint.color != color) {
+    val colorChanged = paint.color != color
+    val next = StreamTextStyle(fontSize, fontFamily, fontWeight, lineHeight, letterSpacing, textAlign)
+    val formatChanged = markdownModeApplied != markdownEnabled
+    val flavorChanged = markdownGithubApplied != githubMarkdown
+    if (styleApplied && next == style && !formatChanged && !flavorChanged && !colorChanged) return
+    if (styleApplied && next == style && !formatChanged && !flavorChanged && markdownEnabled) {
+      // Markdown colors derive from the draw paint: neither parsing nor layout changes here.
+      selection.dismiss()
       paint.color = color
       markDirty(0)
+      return
     }
-    val next = StreamTextStyle(fontSize, fontFamily, fontWeight, lineHeight, letterSpacing, textAlign)
-    if (styleApplied && next == style) return
+    val wasMarkdown = markdownModeApplied
+    val raw = if (formatChanged) canvas?.rawText ?: if (wasMarkdown) markdownSource.toString() else flow.text.toString() else null
     if (styleApplied) selection.dismiss()
     styleApplied = true
+    markdownModeApplied = markdownEnabled
+    markdownGithubApplied = githubMarkdown
     style = next
     paint = style.paint(context.assets).also { it.color = color }
+    markDirty(0)
+    if (wasMarkdown || markdownEnabled) {
+      markdownRevision++
+      markdownWorker.clear()
+      markdownDocument = null
+    }
+    if (formatChanged) {
+      canvas = null
+      canvasStale = false
+      removeCallbacks(settleCanvas)
+      flow.clear()
+      markdownSource.setLength(0)
+      val terminal = reportedStatus?.takeIf { finished && it != "idle" && it != "streaming" }
+      if (terminal != null) reportedStatus = null
+      if (markdownEnabled) {
+        markdownSource.append(raw.orEmpty())
+        rebuildLayout()
+        if (terminal != null) pendingMarkdownTerminal = terminal to offset
+        scheduleMarkdownParse(delay = 0)
+      } else {
+        pendingMarkdownTerminal = null
+        flow.text.append(style.withLineHeight(raw.orEmpty()))
+        rebuildLayout()
+        reportHeight()
+        if (terminal != null) reportStatus(terminal, offset)
+      }
+      invalidate()
+      return
+    }
+    if (markdownEnabled) {
+      val prepared = canvas
+      if (prepared != null && !flavorChanged) {
+        // Keep a matching cached canvas; its deferred fallback schedules a full styled patch.
+        syncCanvas(fallBack = false)
+        return
+      }
+      if (prepared != null) {
+        markdownSource.setLength(0)
+        markdownSource.append(prepared.rawText)
+        canvas = null
+        flow.clear()
+        flow.text.append(prepared.text)
+      }
+      // DynamicLayout retains its TextPaint: rebuild once for this rare style change before
+      // applying worker patches. Parsing and Markdown span construction stay on the worker.
+      rebuildLayout()
+      scheduleMarkdownParse(delay = 0)
+      return
+    }
     if (canvas != null) {
-      // The shadow node prepares a layout for the new style: it comes with the state.
       syncCanvas(fallBack = false)
       return
     }
@@ -1074,5 +1249,7 @@ class StreamTextView(context: Context) : ReactViewGroup(context) {
     const val AHEAD_DP = 512f
     const val KEEP_DP = 1024f
     const val ACCESSIBLE_TAIL_CHARS = 2000
+    /** Trades one frame of Markdown latency for eliminating parse work per network chunk. */
+    const val MARKDOWN_COALESCE_MS = 16L
   }
 }

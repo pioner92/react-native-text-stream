@@ -50,6 +50,10 @@ static NSString *_Nullable StreamTextNSString(const std::string &value) {
   std::shared_ptr<const StreamTextViewShadowNode::ConcreteState> _state;
   // Keeps the buffer's memory alive while the renderer reads it.
   std::shared_ptr<jsi::MutableBuffer> _source;
+  // Keeps the most recently attached buffer available for a plain <-> Markdown prop toggle even
+  // after the renderer has consumed it. One buffer per mounted row is bounded and avoids asking
+  // JS to replay an imperative ref attachment merely to restyle it.
+  std::shared_ptr<jsi::MutableBuffer> _retainedSource;
   int _revision;
   CGFloat _height;
   // A status reported before the event emitter arrived (props are mounted first).
@@ -199,6 +203,10 @@ static NSString *_Nullable StreamTextNSString(const std::string &value) {
   if (next.selectionColor != previous.selectionColor) {
     _renderer.selectionColor = RCTUIColorFromSharedColor(next.selectionColor);
   }
+  BOOL markdownChanged = next.format != previous.format || next.markdownFlavor != previous.markdownFlavor;
+  if (markdownChanged) {
+    [_renderer configureMarkdown:next.format == "markdown" github:next.markdownFlavor == "gfm"];
+  }
 #ifdef STREAMTEXT_TESTING
   if (next.recordDisplayLog != previous.recordDisplayLog || next.nativeId != previous.nativeId) {
     _renderer.displayLogKey = next.recordDisplayLog ? StreamTextNSString(next.nativeId) : nil;
@@ -206,15 +214,24 @@ static NSString *_Nullable StreamTextNSString(const std::string &value) {
 #endif
   // Source identity is independent of its pointer: named A -> missing named B and explicit A ->
   // named B both need to detach what was previously visible, even if their prop pointers are null.
-  BOOL sourceIdentityChanged = next.sourceGeneration != previous.sourceGeneration ||
+  BOOL actualSourceChanged = next.sourceGeneration != previous.sourceGeneration ||
       next.sourceOwner != previous.sourceOwner || next.streamId != previous.streamId;
+  BOOL sourceIdentityChanged = markdownChanged || actualSourceChanged;
   if (sourceIdentityChanged) {
-    _propSource = next.source;
-    _propGeneration = next.sourceGeneration;
+    // A mode-only prop update must reformat what an imperative ref most recently attached, even
+    // when React's stale `source` prop still points at the initial buffer. If the source identity
+    // changed in this same transaction, its new prop wins.
+    BOOL reformatRetainedImperative = markdownChanged && !actualSourceChanged && _retainedSource;
+    _propSource = reformatRetainedImperative ? _retainedSource : next.source;
+    // A format-only rerender must not turn an imperative attachment back into a prop-owned
+    // stream: status events retain the imperative generation and its subscription ownership.
+    _propGeneration = reformatRetainedImperative ? _generation : next.sourceGeneration;
     _hasPropSource = YES;
-    _streamId = next.streamId;
-    _followsStream = next.sourceOwner == 2;
-    [self updateStreamSubscription];
+    if (!reformatRetainedImperative) {
+      _streamId = next.streamId;
+      _followsStream = next.sourceOwner == 2;
+      [self updateStreamSubscription];
+    }
   }
   [super updateProps:props oldProps:oldProps];
 }
@@ -224,6 +241,16 @@ static NSString *_Nullable StreamTextNSString(const std::string &value) {
   // The layout the shadow node prepared for the current `source` prop, if any (in the state).
   const auto &props = *std::static_pointer_cast<const StreamTextViewProps>(_props);
   StreamTextPreparedLayout *prepared = _state ? StreamTextPreparedLayoutOf(_state->getData().prepared, props.source) : nil;
+  // State can briefly carry a layout from the preceding transaction. Never promote a prepared
+  // canvas unless its exact source, style and current width still match this prop snapshot.
+  if (prepared && !streamTextPreparedFits(_state->getData().prepared, props, _renderer.bounds.size.width)) {
+    prepared = nil;
+  }
+  // A mode-only rerender may reattach an imperative buffer while props still reference an older
+  // source. Its prepared layout is therefore ineligible even when its bytes happen to match.
+  if (_hasPropSource && _propSource != props.source) {
+    prepared = nil;
+  }
   if (_hasPropSource) {
     _hasPropSource = NO;
     STREAMTEXT_PHASE(@"attach", [self attachSource:std::exchange(_propSource, nullptr)
@@ -257,6 +284,7 @@ static NSString *_Nullable StreamTextNSString(const std::string &value) {
             prepared:(StreamTextPreparedLayout *)prepared
           generation:(int)generation {
   _attachedData = source ? source->data() : nullptr;
+  _retainedSource = source;
   auto mapped = std::dynamic_pointer_cast<StreamTextMappedBuffer>(source);
   _attachedSerial = mapped ? mapped->serial() : 0;
   _generation = generation;

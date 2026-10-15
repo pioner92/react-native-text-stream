@@ -15,6 +15,8 @@ const PORT = Number(process.env.PORT) || 9877;
 const HOSTS = process.env.HOST ? [process.env.HOST] : ['127.0.0.1', '::1'];
 const RESULTS_DIR = path.join(path.dirname(new URL(import.meta.url).pathname), '..', 'bench-results');
 
+const MARKDOWN_SAMPLE = fs.readFileSync(new URL('./fixtures/markdown.md', import.meta.url), 'utf8');
+
 const MiB = 1024 * 1024;
 const MAX_TEXT_BYTES = 64 * MiB;
 const MAX_RESULTS_BYTES = 16 * MiB;
@@ -48,13 +50,14 @@ function param(q, name, fallback, min, max) {
   return n;
 }
 
-function buildText({ targetBytes, repeat, paraBytes }) {
+function buildText({ targetBytes, repeat, paraBytes, markdown }) {
+  const paragraphs = markdown ? [MARKDOWN_SAMPLE] : PARAGRAPHS;
   const out = [];
   let size = 0;
   // para=<bytes>: merge sentences into paragraphs of about this size (0 = one per sentence).
   let inPara = 0;
   for (let i = 0; targetBytes ? size < targetBytes : i < repeat; i++) {
-    const sentence = PARAGRAPHS[i % PARAGRAPHS.length];
+    const sentence = paragraphs[i % paragraphs.length];
     inPara += Buffer.byteLength(sentence);
     const breakHere = !paraBytes || inPara >= paraBytes;
     if (breakHere) inPara = 0;
@@ -80,6 +83,7 @@ function stream(req, res, q) {
   const tps = param(q, 'tps', 50, 0, 1000);
   const size = param(q, 'chunk', 16, 1, MiB);
   const text = buildText({
+    markdown: q.get('content') === 'markdown',
     targetBytes: param(q, 'bytes', 0, 0, MAX_TEXT_BYTES),
     repeat: param(q, 'repeat', 20, 0, 100_000),
     paraBytes: param(q, 'para', 0, 0, MAX_TEXT_BYTES),

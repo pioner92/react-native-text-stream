@@ -18,7 +18,7 @@ import kotlin.math.max
  */
 @DoNotStrip
 class StreamTextPreparedLayout private constructor(
-    val text: String,
+    val text: CharSequence,
     val layout: StaticLayout,
     /** The layout's own paint: the view sets its color before drawing. */
     val paint: TextPaint,
@@ -27,13 +27,18 @@ class StreamTextPreparedLayout private constructor(
     val widthPx: Int,
     /** Committed bytes it was made from. */
     val bytes: Long,
+    val markdown: Boolean,
+    val markdownFlavor: String,
+    val rawText: String,
+    internal val markdownDocument: StreamTextMarkdown?,
+    val color: Int,
 ) {
   /** Dp, what measure reports. Like <Text>, no text has no height. */
   @get:DoNotStrip
   val height: Float = if (text.isEmpty()) 0f else PixelUtil.toDIPFromPixel(layout.height.toFloat())
 
   /** Its lines fit a view `width` px wide, of this `style`, as they would be wrapped there. */
-  fun fits(width: Int, style: StreamTextStyle): Boolean {
+  fun fits(width: Int, style: StreamTextStyle, @Suppress("UNUSED_PARAMETER") color: Int): Boolean {
     if (style != this.style) return false
     return when (width) {
       widthPx -> true
@@ -95,7 +100,10 @@ class StreamTextPreparedLayout private constructor(
         fontWeight: String?,
         lineHeight: Float,
         letterSpacing: Float,
+        color: Int,
         textAlign: String?,
+        format: String?,
+        markdownFlavor: String?,
     ): StreamTextPreparedLayout {
       val started = if (StreamTextDebug.enabled) System.nanoTime() else 0L
       val utf8 = ByteArray(bytes)
@@ -104,7 +112,11 @@ class StreamTextPreparedLayout private constructor(
       val decoder = Utf8StreamDecoder()
       decoder.decode(utf8, 0, bytes, out)
       decoder.finish(out)
-      val text = out.toString()
+      val rawText = out.toString()
+      val markdown = format == "markdown"
+      // This runs on the existing prepare worker; spans and StaticLayout are ready before mount.
+      val document = if (markdown) StreamTextNative.parseMarkdown(rawText, markdownFlavor == "gfm") else null
+      val text: CharSequence = document?.styled(color) ?: rawText
       val decoded = if (started != 0L) System.nanoTime() else 0L
       val style = StreamTextStyle(
           fontSize, fontFamily?.ifEmpty { null }, fontWeight?.ifEmpty { null }, lineHeight, letterSpacing,
@@ -115,7 +127,7 @@ class StreamTextPreparedLayout private constructor(
         StreamTextDebug.addPhase("prepare.decode", decoded - started)
         StreamTextDebug.addPhase("prepare.paint", System.nanoTime() - decoded)
       }
-      val prepared = StreamTextPreparedLayout(text, style.staticLayout(text, paint, widthPx), paint, style, widthPx, bytes.toLong())
+      val prepared = StreamTextPreparedLayout(text, style.staticLayout(text, paint, widthPx), paint, style, widthPx, bytes.toLong(), markdown, markdownFlavor ?: "commonmark", rawText, document, color)
       if (started != 0L) {
         val time = System.nanoTime() - started
         StreamTextDebug.addPhase("prepare.staticLayout", time)

@@ -36,6 +36,7 @@ namespace margelo::nitro::textstreamtesting {
       prototype.registerHybridMethod("accessibility", &HybridStreamTextTestingSpec::accessibility);
       prototype.registerHybridMethod("stopSurface", &HybridStreamTextTestingSpec::stopSurface);
       prototype.registerHybridMethod("snapshot", &HybridStreamTextTestingSpec::snapshot);
+      prototype.registerHybridMethod("textAttributes", &HybridStreamTextTestingSpec::textAttributes);
     });
   }
 

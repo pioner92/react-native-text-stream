@@ -90,3 +90,13 @@ bash scripts/test-stream-fetch-harness.sh android all
 ```
 
 See [CONTRIBUTING.md](../CONTRIBUTING.md) for the full validation matrix.
+
+## Markdown
+
+Open **Markdown** from the home screen to stream formatted text, switch to its
+original source, test a 100 KB response, and block JS while native rendering
+continues. The local server supports `?content=markdown` for these fixtures.
+See [rendering scope and performance](../docs/markdown.md).
+
+The Markdown screen uses its own fixture port: from the repository root run
+`PORT=9879 node server/stream-server.mjs`.

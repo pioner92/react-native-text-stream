@@ -35,6 +35,7 @@ public protocol HybridStreamTextTestingSpec_protocol: HybridObject {
   func accessibility(key: String, lines: [Double]) throws -> Promise<String>
   func stopSurface(key: String) throws -> Promise<String>
   func snapshot(key: String) throws -> Promise<StreamTextSnapshot>
+  func textAttributes(key: String) throws -> Promise<String>
 }
 
 public extension HybridStreamTextTestingSpec_protocol {

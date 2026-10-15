@@ -12,6 +12,8 @@ import {
 // build of this app: on the dedicated simulator (ios) or the cabled Pixel 8a (android). Harness
 // starts its own Metro on 8081 (and sets up adb reverse for it).
 export default {
+  // Generated Worklets assets can be absent after reinstalling dependencies.
+  cache: { metro: process.env.HARNESS_COLD_METRO !== '1' },
   entryPoint: './index.js',
   appRegistryComponentName: 'TextStreamExample',
   // Long device proofs (R5's 4,161 real registry entries) opt in through the runner environment;

@@ -10,7 +10,7 @@ All names are exported from `react-native-text-stream`.
 import { StreamText } from 'react-native-text-stream'
 ```
 
-`StreamText` is a native plain-text view. It accepts standard React Native
+`StreamText` is a native text view with opt-in Markdown rendering. It accepts standard React Native
 `ViewProps` plus the following props.
 
 | Prop | Type | Default | Description |
@@ -18,6 +18,8 @@ import { StreamText } from 'react-native-text-stream'
 | `request` | `StreamTextRequest` | — | Starts a request and displays its body. With no `streamId`, the view owns it. |
 | `streamId` | `string` | — | Displays the current native stream registered under this id. |
 | `source` | `TextStream \| ArrayBuffer \| null` | — | An explicit `streamFetch()` result or native-owned TSB1 buffer. `null` detaches it. |
+| `format` | `'plain' \| 'markdown'` | `'plain'` | Selects native plain text or Markdown rendering. |
+| `markdownFlavor` | `'commonmark' \| 'gfm'` | `'commonmark'` | Markdown dialect; see [rendering scope](markdown.md). |
 | `fontSize` | `number` | `15` | Font size in points. |
 | `fontFamily` | `string` | system | Font family or PostScript name. |
 | `fontWeight` | `StreamTextFontWeight` | `'normal'` | Normal, bold, or a supported numeric weight. |

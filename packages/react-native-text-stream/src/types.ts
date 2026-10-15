@@ -28,3 +28,9 @@ export interface StreamTextState {
   /** Bytes the producer has committed to the buffer so far. */
   bytes: number
 }
+
+/** Plain text keeps the minimal append-only rendering path. */
+export type StreamTextFormat = 'plain' | 'markdown'
+
+/** GFM enables tables, task lists, autolinks and strikethrough. */
+export type StreamTextMarkdownFlavor = 'commonmark' | 'gfm'
