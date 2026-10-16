@@ -17,12 +17,19 @@
 </p>
 
 <p align="center">
+  <a href="#demo"><strong>Watch demo</strong></a> ·
   <a href="#quick-start"><strong>Quick start</strong></a> ·
   <a href="#performance">Performance</a> ·
   <a href="docs/usage.md">Guides</a> ·
   <a href="docs/api.md">API reference</a> ·
   <a href="example/README.md">Example app</a>
 </p>
+
+## Demo
+
+https://github.com/user-attachments/assets/e29b1a3c-041a-491f-b9d7-4dc52a34f41a
+
+Images, tables, lists and highlighted code, streamed and rendered natively.
 
 StreamText renders a streaming HTTP response in a native text view. Its own `streamFetch` writes the
 response into native memory; the view reads and lays out the new text without sending each chunk
@@ -50,7 +57,6 @@ for supported elements and performance limits.
 - **A built-in fetcher.** URLSession on iOS and React Native’s OkHttp client on Android. No extra streaming library.
 - **Control the lifetime.** Use a request prop for a single view, a `streamId` for remounting list items, or an imperative ref.
 
-[Watch the rich Markdown demo](media/markdown-announcement/streamtext-rich-markdown-twitter-v4.mp4) ·
 [Watch the JS-blocking demo](media/native-text-streaming-demo.mp4) ·
 [Explore the architecture](docs/architecture.md)
 
