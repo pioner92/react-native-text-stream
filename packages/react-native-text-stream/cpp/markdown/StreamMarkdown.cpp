@@ -8,6 +8,7 @@ extern "C" {
 
 #include <algorithm>
 #include <cctype>
+#include <climits>
 #include <cstring>
 #include <deque>
 #include <string>
