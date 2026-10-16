@@ -2,6 +2,14 @@
 
 All notable changes to StreamText are documented in this file.
 
+## 0.2.1 — 2026-10-16
+
+### Fixed
+
+- Publish the full repository README on npm, including the cover, benchmarks and guides.
+- Resolve README images and documentation links against GitHub so they work on npm.
+- Generate the package README from the repository README before packing future releases.
+
 ## 0.2.0 — 2026-10-16
 
 ### Added

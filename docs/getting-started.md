@@ -64,14 +64,14 @@ cd packages/react-native-text-stream
 npm pack
 ```
 
-This creates `react-native-text-stream-0.2.0.tgz` for the current package version. Use the filename
+This creates `react-native-text-stream-0.2.1.tgz` for the current package version. Use the filename
 printed by `npm pack` if the version changes. The build generates the JavaScript output and
 TypeScript declarations that are not stored in Git.
 
 From your application directory, install that archive:
 
 ```sh
-npm install /absolute/path/to/react-native-text-stream/packages/react-native-text-stream/react-native-text-stream-0.2.0.tgz
+npm install /absolute/path/to/react-native-text-stream/packages/react-native-text-stream/react-native-text-stream-0.2.1.tgz
 ```
 
 For iOS, install the native pods using your app's usual CocoaPods setup, for example:

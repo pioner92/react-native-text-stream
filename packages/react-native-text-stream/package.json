@@ -1,6 +1,6 @@
 {
   "name": "react-native-text-stream",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "A native React Native text view that renders a streamed response as it arrives, without JS per chunk",
   "main": "./lib/commonjs/index.js",
   "module": "./lib/module/index.js",
@@ -11,7 +11,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.build.json && tsc --noEmit",
     "clean": "git clean -dfX",
     "release": "semantic-release",
-    "prepack": "bun run build",
+    "prepack": "node ../../scripts/sync-package-readme.mjs && bun run build",
     "build": "bun run typecheck && bob build",
     "test": "jest"
   },

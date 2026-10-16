@@ -152,13 +152,7 @@ See [how we measure delay and UI stutters](docs/benchmarks.md#what-is-measured) 
 
 ## How it works
 
-```mermaid
-flowchart LR
-  A["Your endpoint"] --> B["streamFetch<br/>URLSession / OkHttp"]
-  B --> C["Native buffer"]
-  C --> D["StreamText<br/>Native text + layout"]
-  J["JavaScript"] -. "Describe the request once" .-> B
-```
+![JavaScript describes the request once; your endpoint streams through streamFetch into a native buffer, then StreamText renders and lays out the text.](media/streamtext-architecture.svg)
 
 The native renderer consumes newly committed bytes and updates its text and Fabric layout state.
 Streaming work is spread across frames; JS receives lifecycle events rather than every text chunk.
