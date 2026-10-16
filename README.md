@@ -27,9 +27,13 @@
 
 ## Demo
 
+<div align="center">
+
 https://github.com/user-attachments/assets/e29b1a3c-041a-491f-b9d7-4dc52a34f41a
 
-Images, tables, lists and highlighted code, streamed and rendered natively.
+</div>
+
+<p align="center">Images, tables, lists and highlighted code, streamed and rendered natively.</p>
 
 StreamText renders a streaming HTTP response in a native text view. Its own `streamFetch` writes the
 response into native memory; the view reads and lays out the new text without sending each chunk
