@@ -57,6 +57,10 @@ public final class StreamTextRenderer: UIView {
   private var markdownResult: StreamTextMarkdownResult?
   private var markdownAppliedBytes = -1
   private var markdownAppliedFinal = false
+  #if STREAMTEXT_TESTING
+  private var markdownLastPatchStart = 0
+  private var markdownPatchCount = 0
+  #endif
   private var markdownLastScheduledBytes = -1
   /// `final` changes the parser's projection even at the same byte count.
   private var markdownLastScheduledFinal = false
@@ -378,7 +382,13 @@ public final class StreamTextRenderer: UIView {
     if let canvas, abs(canvas.layout.width - bounds.width) > 0.5 { _ = ensureTextView() }
     if let textView { setTextViewHeight(textView.frame.height) }
     if markdownEnabled, let result = markdownResult, !result.blocks.isEmpty {
-      restartMarkdownLayout()
+      // TextKit rewraps regular text itself. Only rich-block geometry depends on width;
+      // retain the parser's delivered history even during a continuous Split View resize.
+      if let storage = textView?.textStorage {
+        let displaced = refreshMarkdownBlocks(result.blocks, in: storage, offset: 0)
+        // Subscribe the new geometry before releasing the old last subscriber.
+        withExtendedLifetime(displaced) { bindMarkdownImages() }
+      }
     }
     reportHeight()
     let time = CACurrentMediaTime() - started
@@ -404,33 +414,43 @@ public final class StreamTextRenderer: UIView {
       if layoutChanged || !canvas.layout.colorIndependent { canvasStyleStale = true }
       return
     }
-    if markdownEnabled, markdownPipeline != nil {
-      markdownPipeline?.cancel()
-      markdownPipeline = StreamTextMarkdownPipeline()
-      markdownRevision &+= 1
-      markdownLastScheduledBytes = -1
-      markdownLastScheduledFinal = false
-      scheduleMarkdownIfNeeded(force: true)
+    if markdownEnabled, markdownPipeline != nil, layoutChanged {
+      restartMarkdownLayout()
       return
     }
     guard let textView else { return }
     textView.typingAttributes = attributes
     let storage = textView.textStorage
-    storage.setAttributes(attributes, range: NSRange(location: 0, length: storage.length))
-    // A style prop is rare and already intentionally O(text); restore Markdown spans in the same
-    // edit transaction so a color/font update never silently turns a completed message into plain
-    // text while it waits for another stream append.
-    if markdownEnabled, let markdownResult, storage.string == markdownResult.text {
-      storage.beginEditing()
-      for run in markdownResult.runs {
-        let end = min(NSMaxRange(run.range), storage.length)
-        if end > run.range.location {
-          storage.addAttributes(streamTextMarkdownAttributes(for: run, base: attributes),
-                                range: NSRange(location: run.range.location, length: end - run.range.location))
+    // A prepared Markdown canvas may be promoted to TextKit for selection or a width/style
+    // change. Rebuild its complete attributed document instead of first flattening it to base
+    // attributes: tasks replace source marker glyphs, and code/table/image decoration is not
+    // recoverable from the run table alone.
+    if markdownEnabled, let markdownResult {
+      var displaced: [StreamTextMarkdownImageAttachment] = []
+      let rebuilt = NSMutableAttributedString(attributedString: streamTextMarkdownAttributed(
+        markdownResult, base: attributes, width: max(1, bounds.width)))
+      // Keep an already loaded or in-flight attachment at the same immutable block location.
+      // This prevents a color/font transition from creating another subscriber or decode.
+      rebuilt.enumerateAttribute(.attachment, in: NSRange(location: 0, length: rebuilt.length)) { value, range, _ in
+        guard let fresh = value as? StreamTextMarkdownImageAttachment, range.location < storage.length,
+              let existing = storage.attribute(.attachment, at: range.location, effectiveRange: nil) as? StreamTextMarkdownImageAttachment else { return }
+        if existing.canReuseLayout(for: fresh) {
+          rebuilt.addAttribute(.attachment, value: existing, range: range)
+        } else {
+          _ = fresh.adoptLoadedState(from: existing)
+          displaced.append(existing)
         }
       }
+      storage.beginEditing()
+      storage.setAttributedString(rebuilt)
       storage.endEditing()
+      (textView.layoutManager as? StreamTextMarkdownLayoutManager)?.drawsTables =
+        markdownResult.blocks.contains { $0.kind == UInt32(STMD_BLOCK_TABLE) }
+      withExtendedLifetime(displaced) { bindMarkdownImages() }
+      reportHeight()
+      return
     }
+    storage.setAttributes(attributes, range: NSRange(location: 0, length: storage.length))
     reportHeight()
   }
 
@@ -698,6 +718,31 @@ public final class StreamTextRenderer: UIView {
     scheduleMarkdownIfNeeded(force: true)
   }
 
+  /// Rebuild only the attachments whose width changed, preserving loaded/in-flight images.
+  private func refreshMarkdownBlocks(_ blocks: [StreamTextMarkdownBlock], in storage: NSMutableAttributedString,
+                                     offset: Int) -> [StreamTextMarkdownImageAttachment] {
+    var images: [(Int, StreamTextMarkdownImageAttachment)] = []
+    for block in blocks where block.range.location >= offset {
+      let location = block.range.location - offset
+      guard location < storage.length else { continue }
+      if let image = storage.attribute(.attachment, at: location, effectiveRange: nil) as? StreamTextMarkdownImageAttachment {
+        images.append((location, image))
+      }
+    }
+    storage.beginEditing()
+    streamTextMarkdownAttachBlocks(blocks, to: storage, offset: offset, base: textAttributes, width: max(1, bounds.width))
+    for (location, old) in images {
+      guard let fresh = storage.attribute(.attachment, at: location, effectiveRange: nil) as? StreamTextMarkdownImageAttachment else { continue }
+      if old.canReuseLayout(for: fresh) {
+        storage.addAttribute(.attachment, value: old, range: NSRange(location: location, length: 1))
+      } else {
+        _ = fresh.adoptLoadedState(from: old)
+      }
+    }
+    storage.endEditing()
+    return images.map { $0.1 }
+  }
+
   private func bindMarkdownImages() {
     guard let textView else { return }
     let storage = textView.textStorage
@@ -723,23 +768,33 @@ public final class StreamTextRenderer: UIView {
     // changed offset is relative to exactly this storage. No full-document UI comparison is needed.
     guard update.start <= storage.length else {
       // Recover with a fresh full patch if storage was replaced while a patch was in flight.
-      markdownPipeline?.cancel()
-      markdownPipeline = StreamTextMarkdownPipeline()
-      markdownRevision &+= 1
-      markdownLastScheduledBytes = -1
-      markdownLastScheduledFinal = false
-      scheduleMarkdownIfNeeded(force: true)
+      restartMarkdownLayout()
       return
     }
     var suffix = update.suffix
+    var displaced: [StreamTextMarkdownImageAttachment] = []
+    // Color and width can change while the worker is running. Preserve its parser delta and
+    // source acknowledgement, but never install a patch baked with an obsolete presentation.
+    if !NSDictionary(dictionary: update.attributes).isEqual(to: textAttributes) {
+      suffix = streamTextMarkdownAttributed(update.result, base: textAttributes,
+        width: max(1, bounds.width), offset: update.start)
+    } else if update.width != max(1, bounds.width), !update.result.blocks.isEmpty {
+      let resized = NSMutableAttributedString(attributedString: suffix)
+      _ = refreshMarkdownBlocks(update.result.blocks, in: resized, offset: update.start)
+      suffix = resized
+    }
     if !update.result.blocks.isEmpty {
       let reused = NSMutableAttributedString(attributedString: suffix)
       reused.enumerateAttribute(.attachment, in: NSRange(location: 0, length: reused.length)) { value, range, _ in
         let location = update.start + range.location
         if let fresh = value as? StreamTextMarkdownImageAttachment, location < storage.length,
-           let old = storage.attribute(.attachment, at: location, effectiveRange: nil) as? StreamTextMarkdownImageAttachment,
-           fresh.block == old.block, old.fits(width: max(1, self.bounds.width)) {
-          reused.addAttribute(.attachment, value: old, range: range)
+           let old = storage.attribute(.attachment, at: location, effectiveRange: nil) as? StreamTextMarkdownImageAttachment {
+          if old.canReuseLayout(for: fresh) {
+            reused.addAttribute(.attachment, value: old, range: range)
+          } else {
+            _ = fresh.adoptLoadedState(from: old)
+            displaced.append(old)
+          }
         }
       }
       suffix = reused
@@ -749,8 +804,12 @@ public final class StreamTextRenderer: UIView {
                               with: suffix)
     storage.endEditing()
     markdownResult = update.result
+    #if STREAMTEXT_TESTING
+    markdownLastPatchStart = update.start
+    markdownPatchCount += 1
+    #endif
     (textView?.layoutManager as? StreamTextMarkdownLayoutManager)?.drawsTables = update.result.blocks.contains { $0.kind == UInt32(STMD_BLOCK_TABLE) }
-    bindMarkdownImages()
+    withExtendedLifetime(displaced) { bindMarkdownImages() }
     markdownAppliedBytes = update.sourceBytes
     markdownAppliedFinal = update.final
     _ = reportHeight()
@@ -847,9 +906,12 @@ private final class StreamTextView: UITextView {
           cursor = NSMaxRange(attachmentRange)
           return
         }
+        var nextCursor = NSMaxRange(attachmentRange)
         switch attachment {
         case let task as StreamTextMarkdownTaskAttachment:
-          append(task.checked ? "Checked task" : "Unchecked task")
+          append(task.checked ? "Checked task " : "Unchecked task ")
+          // Hide the three U+200B offset-preserving marker units from VoiceOver.
+          nextCursor = min(length, NSMaxRange(attachmentRange) + 3)
         case let image as StreamTextMarkdownImageAttachment:
           append(image.block.alt.isEmpty ? "Image" : image.block.alt)
         case let table as StreamTextMarkdownTableAttachment:
@@ -861,13 +923,14 @@ private final class StreamTextView: UITextView {
         default:
           append(raw.substring(with: attachmentRange))
         }
-        cursor = NSMaxRange(attachmentRange)
+        cursor = nextCursor
         if remaining == 0 { stop.pointee = true }
       }
       if remaining > 0, cursor < length {
         append(raw.substring(with: NSRange(location: cursor, length: length - cursor)))
       }
-      return value
+      // Task attachment padding is intentionally invisible in storage and in VoiceOver.
+      return value.replacingOccurrences(of: "\u{200B}", with: "")
     }
     set {}
   }
@@ -1149,14 +1212,26 @@ extension StreamTextRenderer {
                    "bold": traits.contains(.traitBold), "italic": traits.contains(.traitItalic),
                    "mono": traits.contains(.traitMonoSpace),
                    "strike": (attributes[.strikethroughStyle] as? Int ?? 0) != 0,
+                   "codeBlock": attributes[streamTextMarkdownCodeBlockAttribute] != nil,
+                   "paragraphSpacingBefore": (attributes[.paragraphStyle] as? NSParagraphStyle)?.paragraphSpacingBefore ?? 0,
                    "color": color, "link": attributes[.link].map { String(describing: $0) } ?? ""])
     }
     var blocks: [[String: Any]] = []
+    var attachments: [[String: Any]] = []
     text.enumerateAttribute(.attachment, in: NSRange(location: 0, length: text.length)) { value, _, _ in
       if let attachment = value as? StreamTextMarkdownAttachment { blocks.append(attachment.debugBlock) }
+      if let task = value as? StreamTextMarkdownTaskAttachment {
+        attachments.append(["kind": "task", "checked": task.checked])
+      }
     }
-    let result: [String: Any] = ["text": text.string, "runs": runs, "blocks": blocks]
-    guard let data = try? JSONSerialization.data(withJSONObject: result) else { return "{}" }
+    let result: [String: Any] = ["text": text.string, "runs": runs, "blocks": blocks, "attachments": attachments]
+    var diagnostics = result
+    #if STREAMTEXT_TESTING
+    diagnostics["markdownRevision"] = markdownRevision
+    diagnostics["markdownPatchCount"] = markdownPatchCount
+    diagnostics["markdownLastPatchStart"] = markdownLastPatchStart
+    #endif
+    guard let data = try? JSONSerialization.data(withJSONObject: diagnostics) else { return "{}" }
     return String(decoding: data, as: UTF8.self)
   }
 

@@ -1,0 +1,28 @@
+{
+  "file": "streamtext-rich-markdown-twitter-v3.mp4",
+  "sha256": "2508e2daf006f60d90c500d6d111a6993e2db1198186bec438253a1fe02b4535",
+  "bytes": 2501212,
+  "durationSeconds": 24.366667,
+  "width": 1080,
+  "height": 1920,
+  "framesPerSecond": 30,
+  "codec": "h264",
+  "pixelFormat": "yuv420p",
+  "audio": false,
+  "fullDecode": "passed",
+  "source": "dedicated iOS26.5 simulator Release capture",
+  "rawCapture": "streamtext-rich-markdown-twitter-v3-clean-raw.mp4",
+  "streamChunkBytes": 8,
+  "streamIntervalMs": 100,
+  "playbackSpeed": 1,
+  "staticFrameTrimming": false,
+  "leadInTrimSeconds": 2.6,
+  "leadInTrimReason": "Previous completed answer before Replay; no streaming interval removed",
+  "crop": {
+    "x": 48,
+    "y": 186,
+    "width": 1224,
+    "height": 2580
+  },
+  "watermark": false
+}

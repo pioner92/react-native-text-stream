@@ -23,6 +23,10 @@ jobs:
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.4.2
+      # These suites use node:test. Bun does not run its Node test runner.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
       - name: Cache bun dependencies
         uses: actions/cache@v4
         with:
@@ -40,6 +44,9 @@ jobs:
 
       - name: Package unit tests
         run: bun run test
+
+      - name: Fixture server and scroll-follow tests
+        run: bun run test:fixtures
 
       - name: Native streamFetch invariants (ASan and UBSan)
         run: bun run test:native

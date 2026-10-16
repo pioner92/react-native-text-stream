@@ -3,6 +3,7 @@ import http from 'node:http';
 import { deflateSync } from 'node:zlib';
 import { readFileSync } from 'node:fs';
 import { cases as visualCases } from './fixtures/markdown-visual.mjs';
+import { progressiveStages, progressiveCompletion } from './fixtures/markdown-progressive.mjs';
 
 function crc32(bytes) {
   let crc = 0xffffffff;
@@ -50,6 +51,28 @@ const server = http.createServer((req, res) => {
   const url = new URL(req.url, 'http://localhost');
   const key = url.searchParams.get('key') ?? '';
   if (url.pathname === '/health') return res.writeHead(204).end();
+  if (url.pathname === '/credential-markdown') {
+    // The stream accepts credentials; its image request must use the isolated image client.
+    requests.set(`${key}-stream`, { count: 1, authorization: Boolean(req.headers.authorization), cookie: Boolean(req.headers.cookie) });
+    if (req.headers.authorization !== 'Bearer fixture-token' || req.headers.cookie !== 'fixture=session') {
+      return res.writeHead(401).end('missing fixture credentials');
+    }
+    res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store',
+      'Set-Cookie': `image-isolation=${encodeURIComponent(key)}; Path=/`, 'X-Content-Type-Options': 'nosniff' });
+    return res.end(`![isolated](http://${req.headers.host}/image.png?key=${encodeURIComponent(key)})\n`);
+  }
+  if (url.pathname === '/progressive') {
+    const stages = progressiveStages(req.headers.host ?? `127.0.0.1:${port}`, url.searchParams.get('run') ?? 'visual');
+    const stage = url.searchParams.get('stage') ?? 'header';
+    if (!Object.hasOwn(stages, stage)) return res.writeHead(404).end('unknown progressive stage');
+    res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' });
+    res.write(stages[stage]);
+    // Keep the native source OPEN at this precise seam, then finish the same
+    // source. Closing early would correctly restore literal final Markdown.
+    const timer = setTimeout(() => res.end(progressiveCompletion(stages, stage).slice(stages[stage].length)), 30000);
+    res.on('close', () => clearTimeout(timer));
+    return;
+  }
   if (url.pathname === '/counts') {
     res.setHeader('Content-Type', 'application/json');
     return res.end(JSON.stringify(requests.get(key) ?? { count: 0, authorization: false, cookie: false }));

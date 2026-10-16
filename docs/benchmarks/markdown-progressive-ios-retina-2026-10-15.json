@@ -1,0 +1,9 @@
+{
+  "startTime": 1792093373542,
+  "numTotalTests": 10,
+  "numPassedTests": 10,
+  "numFailedTests": 0,
+  "numPendingTests": 0,
+  "success": true,
+  "scope": "Repeated ten progressive native-boundary tests after shared iOS placeholder Retina scale fix"
+}

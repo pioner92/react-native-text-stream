@@ -14,6 +14,19 @@ extern "C" {
 #include <vector>
 
 struct STMarkdownParser {
+  bool trackChanges = true;
+  enum class RejectedContext { none, literalBlock };
+  // Populated only after MD4C rejects a projection in a known block context.
+  // Keep exact bytes: a tail hash cannot detect edits earlier in the document.
+  std::string rejectedPrefix;
+  RejectedContext rejectedContext = RejectedContext::none;
+  bool rejectedGithub = false, rejectedStripBom = false;
+  uintptr_t projectionProbe = 0;
+  RejectedContext projectionContext = RejectedContext::none;
+  int htmlDepth = 0;
+#ifdef STMD_TESTING
+  size_t parseCalls = 0;
+#endif
   struct SavedRun { size_t start, length; uint32_t flags; int heading, indent; std::string url; };
   struct SavedCell { std::vector<uint16_t> text; std::vector<SavedRun> runs; uint32_t flags; int alignment; };
   struct SavedBlock { size_t start, length; uint32_t kind; size_t rows, columns; std::string url; std::vector<uint16_t> alt; std::vector<SavedCell> cells; };
@@ -34,6 +47,8 @@ struct STMarkdownParser {
   int imageDepth = 0;
   size_t activeImage = static_cast<size_t>(-1);
   std::vector<uint16_t> imageAlt;
+  const char* pendingImageMarker = nullptr;
+  bool pendingImageSeen = false;
   STMarkdownDocument document{};
   uint32_t flags = 0;
   int heading = 0;
@@ -45,6 +60,9 @@ struct STMarkdownParser {
   size_t codeStart = 0;
   size_t codeRunStart = 0;
   stmd::Language codeLanguage = stmd::Language::none;
+  const char* unfinishedSourceEnd = nullptr;
+  uintptr_t provisionalHeaderStart = 0, provisionalHeaderEnd = 0;
+  bool provisionalHeaderSeen = false;
   int boldDepth = 0, italicDepth = 0, strikeDepth = 0, inlineCodeDepth = 0;
   bool rowHasCell = false;
   std::vector<uint16_t> previousText;
@@ -55,6 +73,7 @@ struct STMarkdownParser {
 namespace {
 
 constexpr size_t kStreamingTailBytes = 8192;
+constexpr char kStreamingImageMarker[] = "streamtext:pending";
 
 static bool isSpace(char c) {
   return c == ' ' || c == '\t' || c == '\r';
@@ -122,10 +141,324 @@ struct TailProjection {
   unsigned char closerCount;
 };
 
+static bool hasOpenFencedBlock(const char* input, size_t length);
+
+static bool isEscapedAt(const char* input, size_t at) {
+  size_t slashes = 0;
+  while (at > slashes && input[at - slashes - 1] == '\\') ++slashes;
+  return (slashes & 1u) != 0;
+}
+
+static size_t tableColumnCount(const char* input, size_t start, size_t end) {
+  while (start < end && isSpace(input[start])) ++start;
+  while (end > start && isSpace(input[end - 1])) --end;
+  if (start < end && input[start] == '|') ++start;
+  if (end > start && input[end - 1] == '|') --end;
+  if (start == end) return 0;
+  size_t count = 1;
+  for (size_t i = start; i < end; ++i) if (input[i] == '|' && !isEscapedAt(input, i)) ++count;
+  return count;
+}
+
+// Returns true only for the line shape that starts a GFM table. Requiring the
+// leading pipe is intentional: a pipe in ordinary prose must not temporarily
+// turn the paragraph into a grid while it is still being typed. The delimiter
+// remains the final authority; this is only a reversible preview.
+static bool isProvisionalTableHeader(const char* input, size_t start, size_t end) {
+  size_t indent = 0;
+  while (start < end && input[start] == ' ' && indent < 4) { ++start; ++indent; }
+  // Four spaces begin an indented code block, never a table.
+  if (indent == 4) return false;
+  if (start >= end || input[start] != '|' || isEscapedAt(input, start)) return false;
+  ++start;
+  while (start < end && isSpace(input[start])) ++start;
+  // A bare pipe is not yet enough evidence to reserve an accessible table
+  // cell. Publish as soon as the first readable cell byte arrives.
+  return start < end;
+}
+
+static bool hasConfirmedLeadingPipeTableTail(const char* input, size_t length);
+
+static bool followsPipeRow(const char* input, size_t headerStart, size_t lowerBound) {
+  if (headerStart == 0) return false;
+  size_t previousStart = 0;
+  return previousLineStart(input, headerStart, lowerBound, &previousStart) &&
+      isProvisionalTableHeader(input, previousStart, lineEnd(input, headerStart));
+}
+
+static void appendProvisionalTableDelimiter(std::string* output, size_t columns) {
+  output->append("\n|");
+  for (size_t column = 0; column < columns; ++column) output->append(" --- |");
+}
+
+// MD4C needs a complete delimiter before it emits a table. While the model is
+// writing the header or delimiter, give MD4C a private, complete delimiter so
+// native renderers receive the same table block/cells they use after it is
+// confirmed. The projection is never exposed as source: sourceBytesConsumed
+// still covers the caller's exact bytes, and the next parse falls back to the
+// literal document if the candidate ceases to be a table.
+static bool makeProvisionalTableProjection(const char* input, size_t length, std::string* output, size_t* expectedColumns, size_t* headerOffset, size_t* headerLimit) {
+  if (length == 0) return false;
+  *expectedColumns = 0;
+  if (hasConfirmedLeadingPipeTableTail(input, length)) return false;
+  const size_t boundedStart = length > kStreamingTailBytes ? length - kStreamingTailBytes : 0;
+  size_t currentStart = length;
+  while (currentStart > boundedStart && input[currentStart - 1] != '\n') --currentStart;
+  if (currentStart == boundedStart && boundedStart != 0 && input[currentStart - 1] != '\n') return false;
+  const size_t currentEnd = lineEnd(input, length);
+  // lineEnd excludes a trailing newline, while currentStart then points just
+  // after it. Keep a just-finished candidate header visible while the next
+  // delimiter line has not produced its first byte yet.
+  if (currentEnd < currentStart) {
+    size_t headerStart = 0;
+    if (!previousLineStart(input, currentStart, boundedStart, &headerStart) ||
+        !isProvisionalTableHeader(input, headerStart, lineEnd(input, currentStart))) return false;
+    if (followsPipeRow(input, headerStart, boundedStart)) return false;
+    const size_t columns = tableColumnCount(input, headerStart, lineEnd(input, currentStart));
+    if (columns == 0) return false;
+    output->assign(input, length - 1);
+    *headerOffset = headerStart; *headerLimit = output->size();
+    appendProvisionalTableDelimiter(output, columns);
+    *expectedColumns = columns;
+    return true;
+  }
+
+  // The next line can be the still-incomplete delimiter. Preserve the header
+  // table while its dashes arrive, but only for delimiter characters allowed
+  // by GFM. Any other byte immediately restores the literal source.
+  if (currentStart != 0 && !isCompleteTableDelimiter(input, currentStart, currentEnd) &&
+      isPotentialTableDelimiter(input, currentStart, currentEnd)) {
+    size_t headerStart = 0;
+    if (previousLineStart(input, currentStart, boundedStart, &headerStart) &&
+        isProvisionalTableHeader(input, headerStart, lineEnd(input, currentStart))) {
+      if (followsPipeRow(input, headerStart, boundedStart)) return false;
+      const size_t columns = tableColumnCount(input, headerStart, lineEnd(input, currentStart));
+      if (columns == 0) return false;
+      // Drop the source newline before appending our delimiter; otherwise the
+      // blank line would terminate the header paragraph before MD4C sees it.
+      output->assign(input, currentStart - 1);
+      *headerOffset = headerStart; *headerLimit = output->size();
+      appendProvisionalTableDelimiter(output, columns);
+      *expectedColumns = columns;
+      return true;
+    }
+  }
+
+  // The actively growing header: "| Name" already renders as a one-cell
+  // table; each following pipe/cell updates the same provisional block.
+  // Once a real delimiter precedes this line, it is a data row, not a new
+  // provisional header. Let the normal MD4C table path publish it.
+  if (currentStart != 0) {
+    size_t previousStart = 0;
+    if (previousLineStart(input, currentStart, boundedStart, &previousStart) &&
+        isCompleteTableDelimiter(input, previousStart, lineEnd(input, currentStart))) return false;
+  }
+  if (!isProvisionalTableHeader(input, currentStart, currentEnd)) return false;
+  // A header cannot start in the middle of consecutive pipe rows. This also
+  // avoids a failed projection plus a second full parse when a long table's
+  // real delimiter lies outside the bounded tail window.
+  if (followsPipeRow(input, currentStart, boundedStart)) return false;
+  const size_t columns = tableColumnCount(input, currentStart, currentEnd);
+  if (columns == 0) return false;
+  output->assign(input, length);
+  *headerOffset = currentStart; *headerLimit = output->size();
+  appendProvisionalTableDelimiter(output, columns);
+  *expectedColumns = columns;
+  return true;
+}
+
+// Finds an image which starts on the active line but has not completed. This
+// deliberately handles nested brackets in alt text; the generic inline tail
+// scanner only needs the innermost bracket for styling projections.
+static bool unfinishedImage(const char* input, size_t start, size_t end, size_t* opener, size_t* labelEnd) {
+  bool escaped = false;
+  size_t codeTicks = 0;
+  for (size_t i = start; i + 1 < end; ++i) {
+    const char c = input[i];
+    if (escaped) { escaped = false; continue; }
+    if (c == '\\') { escaped = true; continue; }
+    if (c == '`') {
+      size_t count = 1; while (i + count < end && input[i + count] == '`') ++count;
+      if (codeTicks == 0) codeTicks = count;
+      else if (codeTicks == count) codeTicks = 0;
+      i += count - 1;
+      continue;
+    }
+    if (codeTicks != 0 || c != '!' || input[i + 1] != '[') continue;
+    size_t depth = 1, at = i + 2;
+    for (; at < end && depth != 0; ++at) {
+      if (input[at] == '\\') { ++at; continue; }
+      if (input[at] == '[') ++depth;
+      else if (input[at] == ']') --depth;
+    }
+    if (depth != 0) { *opener = i; *labelEnd = end; return true; }
+    const size_t close = at - 1;
+    // At the transport boundary `![label]` can still grow into an image.
+    // Once another byte follows it is prose or a reference image; keep it
+    // intact and let MD4C resolve it.
+    if (at == end) { *opener = i; *labelEnd = close; return true; }
+    if (input[at] != '(') { i = close; continue; }
+    size_t parens = 1;
+    ++at;
+    for (; at < end && parens != 0; ++at) {
+      if (input[at] == '\\') { ++at; continue; }
+      if (input[at] == '(') ++parens;
+      else if (input[at] == ')') --parens;
+    }
+    if (parens != 0) { *opener = i; *labelEnd = close; return true; }
+    i = at - 1;
+  }
+  return false;
+}
+
+// A resolved reference image can end exactly at a transport boundary. Do not
+// send its trailing `[ref]` through the generic unfinished-link projection.
+static bool endsWithReferenceImage(const char* input, size_t start, size_t end) {
+  if (end <= start || input[end - 1] != ']') return false;
+  bool escaped = false;
+  size_t codeTicks = 0;
+  for (size_t i = start; i + 1 < end; ++i) {
+    const char c = input[i];
+    if (escaped) { escaped = false; continue; }
+    if (c == '\\') { escaped = true; continue; }
+    if (c == '`') {
+      size_t count = 1; while (i + count < end && input[i + count] == '`') ++count;
+      if (codeTicks == 0) codeTicks = count;
+      else if (codeTicks == count) codeTicks = 0;
+      i += count - 1;
+      continue;
+    }
+    if (codeTicks != 0 || c != '!' || input[i + 1] != '[') continue;
+    size_t depth = 1, at = i + 2;
+    for (; at < end && depth != 0; ++at) {
+      if (input[at] == '\\') { ++at; continue; }
+      if (input[at] == '[') ++depth;
+      else if (input[at] == ']') --depth;
+    }
+    if (depth == 0 && at < end && input[at] == '[' && end - 1 >= at && input[end - 1] == ']') return true;
+  }
+  return false;
+}
+
+// MD4C recognizes a GFM table as soon as its delimiter is complete. The old
+// projection hid that exact prefix in anticipation of a body row; bypass it
+// and let MD4C publish the real header and partial first row directly.
+static bool hasEarlyTable(const char* input, size_t length) {
+  if (length == 0) return false;
+  const size_t boundedStart = length > kStreamingTailBytes ? length - kStreamingTailBytes : 0;
+  size_t currentStart = length;
+  while (currentStart > boundedStart && input[currentStart - 1] != '\n') --currentStart;
+  if (currentStart == boundedStart && boundedStart != 0 && input[currentStart - 1] != '\n') return false;
+
+  size_t delimiterStart = currentStart;
+  bool headerOnly = true;
+  if (!isCompleteTableDelimiter(input, delimiterStart, lineEnd(input, length))) {
+    if (delimiterStart == 0 || !previousLineStart(input, delimiterStart, boundedStart, &delimiterStart) ||
+        !isCompleteTableDelimiter(input, delimiterStart, lineEnd(input, currentStart))) return false;
+    headerOnly = currentStart == length;
+  }
+  size_t headerStart = 0;
+  if (delimiterStart == 0 || !previousLineStart(input, delimiterStart, boundedStart, &headerStart) ||
+      std::memchr(input + headerStart, '|', delimiterStart - headerStart) == nullptr) return false;
+  if (tableColumnCount(input, headerStart, lineEnd(input, delimiterStart)) !=
+      tableColumnCount(input, delimiterStart, lineEnd(input, headerOnly ? length : currentStart))) return false;
+
+  return true;
+}
+
+static bool hasConfirmedLeadingPipeTableTail(const char* input, size_t length) {
+  if (length == 0) return false;
+  const size_t boundedStart = length > kStreamingTailBytes ? length - kStreamingTailBytes : 0;
+  size_t start = length;
+  while (start > boundedStart && input[start - 1] != '\n') --start;
+  if (start == boundedStart && boundedStart != 0 && input[start - 1] != '\n') return false;
+  size_t end = length;
+  for (;;) {
+    const size_t rowEnd = lineEnd(input, end);
+    if (rowEnd < start) {
+      const size_t oldStart = start;
+      if (oldStart == 0 || !previousLineStart(input, oldStart, boundedStart, &start)) return false;
+      end = oldStart;
+      continue;
+    }
+    if (isCompleteTableDelimiter(input, start, rowEnd)) {
+      size_t headerStart = 0;
+      return previousLineStart(input, start, boundedStart, &headerStart) &&
+          isProvisionalTableHeader(input, headerStart, lineEnd(input, start)) &&
+          tableColumnCount(input, headerStart, lineEnd(input, start)) == tableColumnCount(input, start, rowEnd);
+    }
+    if (!isProvisionalTableHeader(input, start, rowEnd)) return false;
+    const size_t oldStart = start;
+    if (oldStart == 0 || !previousLineStart(input, oldStart, boundedStart, &start)) return false;
+    end = oldStart;
+  }
+}
+
+// Complete only the grammar around a final, unfinished image. MD4C then
+// gives us its normal alt-text decoding and U+FFFC placement. The fabricated
+// URL is discarded before publication, so it can never reach an image loader.
+// Do not rescan the whole document for fences here: MD4C acceptance below is
+// authoritative and reparses exact source before publication when this tail
+// was actually literal fenced/HTML content.
+static bool makePendingImageProjection(const char* input, size_t length, std::string* output, size_t* opener) {
+  if (length == 0) return false;
+  const size_t boundedStart = length > kStreamingTailBytes ? length - kStreamingTailBytes : 0;
+  size_t lineStart = length;
+  while (lineStart > boundedStart && input[lineStart - 1] != '\n') --lineStart;
+  if (lineStart == boundedStart && boundedStart != 0 && input[lineStart - 1] != '\n') return false;
+  size_t imageStart = 0, labelEnd = 0;
+  if (!unfinishedImage(input, lineStart, length, &imageStart, &labelEnd) ||
+      imageStart >= length || isEscapedAt(input, imageStart)) return false;
+  const size_t labelStart = imageStart + 2; // "!["
+  if (labelStart > length) return false;
+  output->assign(input, imageStart);
+  output->append("![", 2);
+  output->append(input + labelStart, labelEnd - labelStart);
+  if (labelEnd > labelStart && isEscapedAt(input, labelEnd)) output->push_back('\\');
+  output->append("](");
+  output->append(kStreamingImageMarker);
+  output->push_back(')');
+  *opener = imageStart;
+  return true;
+}
+
+// Once MD4C has classified the candidate's physical line as literal block
+// content (HTML/indented code), appending bytes cannot turn that same line into
+// a Markdown table/image. Even an HTML closing token consumes its entire line.
+static bool rejectedProjectionApplies(STMarkdownParser* p, const char* input, size_t length,
+                                     bool github, bool stripBom, bool progressive, bool final) {
+  using Context = STMarkdownParser::RejectedContext;
+  if (p->rejectedContext == Context::none) return false;
+  const size_t prefixLength = p->rejectedPrefix.size();
+  if (!progressive || final || !input || github != p->rejectedGithub || stripBom != p->rejectedStripBom ||
+      length < prefixLength || std::memcmp(input, p->rejectedPrefix.data(), prefixLength) != 0 ||
+      std::memchr(input + prefixLength, '\n', length - prefixLength) ||
+      std::memchr(input + prefixLength, '\r', length - prefixLength)) {
+    p->rejectedPrefix.clear();
+    p->rejectedContext = Context::none;
+    return false;
+  }
+  return p->rejectedContext == Context::literalBlock;
+}
+
+static void rememberRejectedProjection(STMarkdownParser* p, const char* input, size_t length,
+                                      size_t probeOffset, STMarkdownParser::RejectedContext context,
+                                      bool github, bool stripBom) {
+  if (context == STMarkdownParser::RejectedContext::none || probeOffset >= length) return;
+  // A provisional delimiter can target the previous header line. Do not carry
+  // that line's block classification onto a different physical line.
+  if (std::memchr(input + probeOffset, '\n', length - probeOffset) ||
+      std::memchr(input + probeOffset, '\r', length - probeOffset)) return;
+  p->rejectedPrefix.assign(input, length);
+  p->rejectedContext = context;
+  p->rejectedGithub = github;
+  p->rejectedStripBom = stripBom;
+}
+
 // This is deliberately a single forward pass over at most one final line.
 // It never walks backward over escape runs, which keeps adversarial backslash
 // tails linear. Fenced blocks are protected by a parse probe below.
-static TailProjection unfinishedInline(const char* input, size_t start, size_t end) {
+static TailProjection unfinishedInline(const char* input, size_t start, size_t end, bool github) {
   constexpr size_t none = static_cast<size_t>(-1);
   size_t bracket = none, pairedLink = none, strong = none, strike = none, emphasis = none, code = none;
   char emphasisMarker = 0;
@@ -163,29 +496,48 @@ static TailProjection unfinishedInline(const char* input, size_t start, size_t e
       if (--linkParenDepth == 0) bracket = pairedLink = none;
       continue;
     }
-    if (i + 1 < end && c == '~' && input[i + 1] == '~') {
-      if (i + 2 == end) finalBytePartOfPair = true;
-      strike = strike == none ? i : none;
+    if (github && i + 1 < end && c == '~' && input[i + 1] == '~') {
+      const bool previousIsSpace = i == start || isSpace(input[i - 1]);
+      const bool atBoundary = i + 2 == end;
+      const bool nextIsSpace = !atBoundary && isSpace(input[i + 2]);
+      if (atBoundary) finalBytePartOfPair = true;
+      // A closer may be followed by prose whitespace; only an *opening*
+      // delimiter needs a readable byte on its right. This also leaves
+      // literal "~~ " source untouched when no span is open.
+      if (strike != none && !previousIsSpace) strike = none;
+      else if (atBoundary || !nextIsSpace) {
+        strike = i;
+      }
       ++i;
       continue;
     }
-    if (c == '~' && strike != none && i + 1 == end) { strikePendingClose = true; continue; }
+    if (github && c == '~' && strike != none && i + 1 == end) { strikePendingClose = true; continue; }
     if (i + 1 < end && (c == '*' || c == '_') && input[i + 1] == c) {
-      if (i + 2 == end) finalBytePartOfPair = true;
-      strong = strong == none ? i : none;
+      const bool previousIsSpace = i == start || isSpace(input[i - 1]);
+      const bool atBoundary = i + 2 == end;
+      const bool nextIsSpace = !atBoundary && isSpace(input[i + 2]);
+      if (atBoundary) finalBytePartOfPair = true;
+      if (strong != none && input[strong] == c && !previousIsSpace) strong = none;
+      else if (atBoundary || !nextIsSpace) {
+        strong = i;
+      }
       ++i;
       continue;
     }
     if (c == '*' || c == '_') {
+      const bool previousIsSpace = i == start || isSpace(input[i - 1]);
+      const bool atBoundary = i + 1 == end;
+      const bool nextIsSpace = !atBoundary && isSpace(input[i + 1]);
       // The first byte of a strong closer is common in a byte stream. Treat
       // it as a pending strong close, not a nested emphasis opener.
-      if (strong != none && c == input[strong] && i + 1 == end) { strongPendingClose = true; continue; }
-      if (emphasis != none && c == emphasisMarker) {
-        if (i + 1 == end) finalBytePartOfPair = true;
+      if (strong != none && c == input[strong] && atBoundary) { strongPendingClose = true; continue; }
+      if (emphasis != none && c == emphasisMarker && !previousIsSpace) {
+        if (atBoundary) finalBytePartOfPair = true;
         emphasis = none;
         emphasisMarker = 0;
       }
-      else if (c != '_' || i == start || !std::isalnum(static_cast<unsigned char>(input[i - 1]))) {
+      else if ((atBoundary || !nextIsSpace) &&
+          (c != '_' || i == start || !std::isalnum(static_cast<unsigned char>(input[i - 1])))) {
         emphasis = i; emphasisMarker = c;
       }
     }
@@ -202,7 +554,7 @@ static TailProjection unfinishedInline(const char* input, size_t start, size_t e
     // Withhold a lone unescaped marker at the transport boundary. It may be
     // the first byte of a pair, and Markdown has no readable payload yet.
     if (end > start && !finalByteEscaped && !finalBytePartOfPair &&
-        (input[end - 1] == '*' || input[end - 1] == '~')) {
+        (input[end - 1] == '*' || (github && input[end - 1] == '~'))) {
       return {end - 1, TailKind::emphasis, {}, {}, 0};
     }
     return {end, TailKind::none, {}, {}, 0};
@@ -222,7 +574,13 @@ static TailProjection unfinishedInline(const char* input, size_t start, size_t e
   return result;
 }
 
-static bool makeStreamingProjection(const char* input, size_t length, std::string* output) {
+static bool makeStreamingProjection(const char* input, size_t length, bool github, std::string* output,
+                                    size_t* projectionProbeOffset) {
+  *projectionProbeOffset = static_cast<size_t>(-1);
+  const auto retainedProbeBefore = [input](size_t offset) {
+    while (offset > 0 && (isSpace(input[offset - 1]) || input[offset - 1] == '\n')) --offset;
+    return offset == 0 ? static_cast<size_t>(-1) : offset - 1;
+  };
   if (length == 0) return false;
   const size_t boundedStart = length > kStreamingTailBytes ? length - kStreamingTailBytes : 0;
   size_t currentStart = length;
@@ -230,116 +588,36 @@ static bool makeStreamingProjection(const char* input, size_t length, std::strin
   // A megabyte-long line is intentionally left to the final parser rather
   // than making the progressive tail scan or projection unbounded.
   if (currentStart == boundedStart && boundedStart != 0 && input[currentStart - 1] != '\n') return false;
-  // MD4C does not materialize a table until it has a row after the delimiter.
-  // Keep header and delimiter hidden through that transition, then leave every
-  // later row to the normal parser.
-  bool confirmedTable = false;
-  bool sawRowAfterDelimiter = false;
-  for (size_t end = currentStart; end > boundedStart;) {
-    size_t start = 0;
-    if (!previousLineStart(input, end, boundedStart, &start)) break;
-    const size_t rowEnd = lineEnd(input, end);
-    if (std::memchr(input + start, '|', rowEnd - start) == nullptr) break;
-    if (isCompleteTableDelimiter(input, start, rowEnd)) {
-      confirmedTable = sawRowAfterDelimiter;
-      break;
-    }
-    sawRowAfterDelimiter = true;
-    if (start == 0 || start == end) break;
-    end = start;
-  }
-  if (!confirmedTable) {
-    // The first data-row byte follows an already complete delimiter. MD4C
-    // still exposes the header as plain text at this point, so retain the
-    // whole candidate until that row is complete.
-    if (currentStart < length && currentStart > 0) {
-      size_t delimiter = 0;
-      if (previousLineStart(input, currentStart, boundedStart, &delimiter) &&
-          isCompleteTableDelimiter(input, delimiter, lineEnd(input, currentStart))) {
-        size_t header = 0;
-        if (delimiter > 0 && previousLineStart(input, delimiter, boundedStart, &header) &&
-            std::memchr(input + header, '|', delimiter - header) != nullptr) {
-          output->assign(input, header);
-          return true;
-        }
-      }
-    }
-    // A complete delimiter followed by its newline still has no data row.
-    // Resolve this direct case before walking older lines.
-    if (currentStart == length && currentStart > 0) {
-      size_t delimiter = 0;
-      if (previousLineStart(input, currentStart, boundedStart, &delimiter) &&
-          isPotentialTableDelimiter(input, delimiter, lineEnd(input, currentStart))) {
-        size_t header = 0;
-        if (delimiter > 0 && previousLineStart(input, delimiter, boundedStart, &header) &&
-            std::memchr(input + header, '|', delimiter - header) != nullptr) {
-          output->assign(input, header);
-          return true;
-        }
-      }
-    }
-    // Locate the pending delimiter, whether it is the current fragment or a
-    // completed line followed by the first row. Its preceding pipe line is
-    // the header to suppress.
-    size_t delimiterStart = currentStart;
-    size_t delimiterLimit = length;
-    for (;;) {
-      const size_t candidateEnd = lineEnd(input, delimiterLimit);
-      if (candidateEnd < delimiterStart) break;
-      if (std::memchr(input + delimiterStart, '|', candidateEnd - delimiterStart) == nullptr) break;
-      if (isPotentialTableDelimiter(input, delimiterStart, candidateEnd)) {
-        size_t header = 0;
-        if (delimiterStart > 0 && previousLineStart(input, delimiterStart, boundedStart, &header) &&
-            std::memchr(input + header, '|', delimiterStart - header) != nullptr) {
-          output->assign(input, header);
-          return true;
-        }
-      }
-      if (delimiterStart == 0 || delimiterStart <= boundedStart) break;
-      delimiterLimit = delimiterStart;
-      if (!previousLineStart(input, delimiterStart, boundedStart, &delimiterStart)) break;
-    }
-    if (currentStart == length && currentStart > 0) {
-      size_t header = 0;
-      if (previousLineStart(input, currentStart, boundedStart, &header) &&
-          std::memchr(input + header, '|', currentStart - header) != nullptr) {
-        output->assign(input, header);
-        return true;
-      }
-    }
-  }
-  // Hold the plausible header from the first pipe too. This prevents a raw
-  // header from flashing while the transport is still delivering its delimiter.
-  size_t lineContent = currentStart;
-  while (lineContent < length && input[lineContent] == ' ') ++lineContent;
-  if (!confirmedTable && lineContent < length && input[lineContent] == '|' &&
-      std::memchr(input + lineContent, '|', length - lineContent) != nullptr) {
-    output->assign(input, currentStart);
-    return true;
-  }
   if (length > currentStart && input[length - 1] == '!' &&
       (length == currentStart + 1 || input[length - 2] != '\\')) {
     output->assign(input, length - 1);
+    *projectionProbeOffset = retainedProbeBefore(length - 1);
     return true;
   }
-  const TailProjection tail = unfinishedInline(input, currentStart, length);
+  const TailProjection tail = unfinishedInline(input, currentStart, length, github);
   if (tail.kind == TailKind::none) return false;
   output->assign(input, tail.start);
+  const size_t retainedProbe = retainedProbeBefore(tail.start);
   const size_t openerWidth = (input[tail.start] == '*' || input[tail.start] == '_' || input[tail.start] == '~') &&
       tail.start + 1 < length && input[tail.start + 1] == input[tail.start] ? 2 : 1;
   // A delimiter by itself has no readable payload. Withhold it rather than
   // manufacturing a visible doubled marker.
-  if (tail.start + openerWidth == length) return true;
+  if (tail.start + openerWidth == length) {
+    *projectionProbeOffset = retainedProbe;
+    return true;
+  }
   if (tail.kind == TailKind::strong || tail.kind == TailKind::strike || tail.kind == TailKind::emphasis) {
     // A Markdown closing delimiter cannot follow whitespace. Preserve a
     // streamed trailing space outside the provisional styled span instead.
     size_t payloadEnd = length;
     while (payloadEnd > tail.start && isSpace(input[payloadEnd - 1])) --payloadEnd;
     output->append(input + tail.start, payloadEnd - tail.start);
+    *projectionProbeOffset = output->size();
     for (size_t i = 0; i < tail.closerCount; ++i) output->append(tail.widths[i], tail.markers[i]);
     output->append(input + payloadEnd, length - payloadEnd);
   } else if (tail.kind == TailKind::code) {
     output->append(input + tail.start, length - tail.start);
+    *projectionProbeOffset = output->size();
     output->append(tail.widths[0], '`');
   }
   else {
@@ -351,6 +629,7 @@ static bool makeStreamingProjection(const char* input, size_t length, std::strin
     if (tail.kind == TailKind::linkLabel && closing > labelStart && input[closing - 1] == ']') --closing;
     // A half-link/image is rendered as its readable label, never its URL.
     output->append(input + labelStart, closing - labelStart);
+    *projectionProbeOffset = output->size() > tail.start ? tail.start : retainedProbe;
   }
   return true;
 }
@@ -364,19 +643,45 @@ static bool hasOpenFencedBlock(const char* input, size_t length) {
   for (size_t start = 0; start < length;) {
     size_t end = start;
     while (end < length && input[end] != '\n') ++end;
-    size_t at = start;
-    while (at < end && input[at] == ' ') ++at;
+    size_t at = start, indent = 0;
+    while (at < end && input[at] == ' ' && indent < 4) { ++at; ++indent; }
+    if (indent == 4) { start = end == length ? length : end + 1; continue; }
     if (at < end && input[at] == '>') { ++at; if (at < end && input[at] == ' ') ++at; }
     size_t count = 0;
     const char c = at < end ? input[at] : 0;
     while (at + count < end && input[at + count] == c) ++count;
     if ((c == '`' || c == '~') && count >= 3) {
-      if (marker == 0) { marker = c; markerCount = count; }
-      else if (marker == c && count >= markerCount) { marker = 0; markerCount = 0; }
+      bool tailIsSpaces = true;
+      for (size_t tail = at + count; tail < end; ++tail) {
+        if (input[tail] != ' ' && input[tail] != '\t' && input[tail] != '\r') { tailIsSpaces = false; break; }
+      }
+      if (marker == 0) {
+        // Backtick fence info strings cannot contain a backtick. Without this
+        // guard a single inline-code line disables every tail projection.
+        if (c == '`' && !tailIsSpaces) {
+          bool hasTick = false;
+          for (size_t tail = at + count; tail < end; ++tail) if (input[tail] == '`') { hasTick = true; break; }
+          if (hasTick) { start = end == length ? length : end + 1; continue; }
+        }
+        marker = c; markerCount = count;
+      } else if (marker == c && count >= markerCount && tailIsSpaces) { marker = 0; markerCount = 0; }
     }
     start = end == length ? length : end + 1;
   }
   return marker != 0;
+}
+
+// An opener-only projection can leave an indented code line with no text
+// callback to probe. Tabs count in visual columns, as they do in Markdown.
+static bool hasIndentedLiteralTail(const char* input, size_t length) {
+  size_t lineStart = length;
+  while (lineStart > 0 && input[lineStart - 1] != '\n') --lineStart;
+  size_t columns = 0;
+  for (size_t at = lineStart; at < length && (input[at] == ' ' || input[at] == '\t'); ++at) {
+    columns += input[at] == '\t' ? 4 - columns % 4 : 1;
+    if (columns >= 4) return true;
+  }
+  return false;
 }
 
 static void appendCodepoint(STMarkdownParser* p, unsigned cp) {
@@ -536,8 +841,10 @@ static void saveDocument(STMarkdownParser* p, bool blocksChanged) {
       saved.runs.resize(cell.runCount);
       for (size_t k = 0; k < cell.runCount; ++k) saved.runs[k] = saveRun(cell.runs[k]);
     }
+
   }
 }
+
 
 static void appendRun(STMarkdownParser* p, size_t start, size_t length) {
   if (length == 0) return;
@@ -632,6 +939,7 @@ static std::string attribute(const MD_ATTRIBUTE* a) {
 static int enterBlock(MD_BLOCKTYPE type, void* detail, void* userdata) {
   auto* p = static_cast<STMarkdownParser*>(userdata);
   switch (type) {
+    case MD_BLOCK_HTML: ++p->htmlDepth; break;
     case MD_BLOCK_QUOTE: ++p->quoteDepth; p->flags |= STMD_RUN_QUOTE; break;
     case MD_BLOCK_UL: ++p->listDepth; p->lists.push_back({false, 0}); break;
     case MD_BLOCK_OL: {
@@ -645,7 +953,13 @@ static int enterBlock(MD_BLOCKTYPE type, void* detail, void* userdata) {
       if (p->quoteDepth) appendText(p, "> ", 2);
       if (p->listDepth > 1) appendText(p, std::string(2 * static_cast<size_t>(p->listDepth - 1), ' ').c_str(), 2 * static_cast<size_t>(p->listDepth - 1));
       auto* li = static_cast<MD_BLOCK_LI_DETAIL*>(detail);
-      if (li && li->is_task) appendText(p, li->task_mark == 'x' || li->task_mark == 'X' ? "[x] " : "[ ] ", 4);
+      if (li && li->is_task) {
+        const uint32_t savedFlags = p->flags;
+        p->flags |= STMD_RUN_TASK_MARKER;
+        if (li->task_mark == 'x' || li->task_mark == 'X') p->flags |= STMD_RUN_TASK_CHECKED;
+        appendText(p, li->task_mark == 'x' || li->task_mark == 'X' ? "[x] " : "[ ] ", 4);
+        p->flags = savedFlags;
+      }
       else if (!p->lists.empty() && p->lists.back().ordered) {
         const std::string marker = std::to_string(p->lists.back().next++) + ". ";
         appendText(p, marker.data(), marker.size());
@@ -656,9 +970,13 @@ static int enterBlock(MD_BLOCKTYPE type, void* detail, void* userdata) {
     case MD_BLOCK_CODE: {
       ++p->codeDepth;
       const auto* code = static_cast<MD_BLOCK_CODE_DETAIL*>(detail);
-      p->codeLanguage = stmd::syntaxLanguage(attribute(code ? &code->lang : nullptr));
+      const bool unfinishedLanguage = code && code->lang.text && code->lang.size != 0 &&
+          code->lang.text + code->lang.size == p->unfinishedSourceEnd;
+      p->codeLanguage = unfinishedLanguage ? stmd::Language::none :
+          stmd::syntaxLanguage(attribute(code ? &code->lang : nullptr));
+      newline(p);
       p->flags |= STMD_RUN_CODE_BLOCK | STMD_RUN_CODE | codeLanguageFlag(p->codeLanguage);
-      newline(p); p->codeStart = p->text.size(); p->codeRunStart = p->runs.empty() ? 0 : p->runs.size() - 1;
+      p->codeStart = p->text.size(); p->codeRunStart = p->runs.empty() ? 0 : p->runs.size() - 1;
       break;
     }
     case MD_BLOCK_TABLE: {
@@ -687,6 +1005,7 @@ static int enterBlock(MD_BLOCKTYPE type, void* detail, void* userdata) {
 static int leaveBlock(MD_BLOCKTYPE type, void*, void* userdata) {
   auto* p = static_cast<STMarkdownParser*>(userdata);
   switch (type) {
+    case MD_BLOCK_HTML: --p->htmlDepth; break;
     case MD_BLOCK_QUOTE:
       --p->quoteDepth;
       if (p->quoteDepth == 0) p->flags &= ~STMD_RUN_QUOTE;
@@ -697,6 +1016,11 @@ static int leaveBlock(MD_BLOCKTYPE type, void*, void* userdata) {
     case MD_BLOCK_H: p->heading = 0; newline(p); break;
     case MD_BLOCK_P: newline(p); break;
     case MD_BLOCK_CODE:
+      // MD4C correctly reports an unfinished/empty fenced block even at a
+      // transport boundary, but it has no text callback for its body. Publish
+      // one styled line while CODE_BLOCK is still active so native renderers
+      // can draw the block surface and language header immediately.
+      if (p->codeDepth == 1 && p->text.size() == p->codeStart) appendText(p, "\n", 1);
       if (p->codeDepth == 1) highlightCode(p, p->codeStart, p->text.size(), p->codeRunStart, p->codeLanguage);
       --p->codeDepth;
       p->flags &= ~(STMD_RUN_CODE_BLOCK | STMD_RUN_LANGUAGE_MASK);
@@ -734,12 +1058,28 @@ static int enterSpan(MD_SPANTYPE type, void* detail, void* userdata) {
     case MD_SPAN_CODE: ++p->inlineCodeDepth; p->flags |= STMD_RUN_CODE; break;
     case MD_SPAN_A: p->flags |= STMD_RUN_LINK; p->urls.push_back(attribute(&static_cast<MD_SPAN_A_DETAIL*>(detail)->href)); break;
     case MD_SPAN_IMG: {
-      if (p->imageDepth > 0 || p->tableDepth > 0) { ++p->imageDepth; break; }
+      if (p->imageDepth > 0 || p->tableDepth > 0) {
+        const auto* image = static_cast<MD_SPAN_IMG_DETAIL*>(detail);
+        if (p->tableDepth > 0 && image && image->src.text == p->pendingImageMarker) {
+          // Tables currently expose rich cell text rather than nested image
+          // attachments. Accept the private projection so MD4C publishes the
+          // safe alt label instead of falling back to raw ![alt](url) syntax.
+          p->pendingImageSeen = true;
+        }
+        ++p->imageDepth; break;
+      }
       const size_t start = p->text.size();
       appendCodepoint(p, 0xfffc); appendRun(p, start, 1);
       const auto* image = static_cast<MD_SPAN_IMG_DETAIL*>(detail);
-      p->blockUrls.push_back(attribute(image ? &image->src : nullptr));
-      p->blocks.push_back({start, 1, STMD_BLOCK_IMAGE, 0, 0, nullptr, p->blockUrls.back().c_str(), nullptr, 0});
+      const bool pending = image && image->src.text == p->pendingImageMarker &&
+          image->src.size == std::strlen(kStreamingImageMarker);
+      if (pending) {
+        p->blocks.push_back({start, 1, STMD_BLOCK_IMAGE_PENDING, 0, 0, nullptr, nullptr, nullptr, 0});
+        p->pendingImageSeen = true;
+      } else {
+        p->blockUrls.push_back(attribute(image ? &image->src : nullptr));
+        p->blocks.push_back({start, 1, STMD_BLOCK_IMAGE, 0, 0, nullptr, p->blockUrls.back().c_str(), nullptr, 0});
+      }
       ++p->imageDepth; p->activeImage = p->blocks.size() - 1; p->imageAlt.clear();
       break;
     }
@@ -770,6 +1110,18 @@ static int leaveSpan(MD_SPANTYPE type, void*, void* userdata) {
 }
 static int textCallback(MD_TEXTTYPE type, const MD_CHAR* text, MD_SIZE size, void* userdata) {
   auto* p = static_cast<STMarkdownParser*>(userdata);
+  if (p->projectionProbe != 0 && size != 0 && (p->codeDepth > 0 || p->htmlDepth > 0)) {
+    const auto address = reinterpret_cast<uintptr_t>(text);
+    if (address <= p->projectionProbe && p->projectionProbe - address < size)
+      p->projectionContext = STMarkdownParser::RejectedContext::literalBlock;
+  }
+  // Accept a preview only if MD4C consumed THIS header as table cell text.
+  // An unrelated earlier table must not authorize synthetic syntax in HTML/code.
+  if (p->tableDepth > 0 && p->provisionalHeaderStart != 0 && size != 0) {
+    const auto address = reinterpret_cast<uintptr_t>(text);
+    if (address >= p->provisionalHeaderStart && address < p->provisionalHeaderEnd)
+      p->provisionalHeaderSeen = true;
+  }
   if (p->imageDepth > 0 && p->tableDepth == 0) {
     // MD4C already distinguishes escaped/code text from entities: decode exactly once here.
     p->text.swap(p->imageAlt);
@@ -792,13 +1144,32 @@ static int textCallback(MD_TEXTTYPE type, const MD_CHAR* text, MD_SIZE size, voi
 
 extern "C" STMarkdownParser* stmd_create(void) { return new STMarkdownParser(); }
 extern "C" void stmd_destroy(STMarkdownParser* parser) { delete parser; }
+extern "C" void stmd_set_track_changes(STMarkdownParser* parser, bool enabled) {
+  if (!parser) return;
+  parser->trackChanges = enabled;
+  if (!enabled) {
+    parser->previousText.clear();
+    parser->previousRuns.clear();
+    parser->previousBlocks.clear();
+  }
+}
+#ifdef STMD_TESTING
+extern "C" size_t stmd_test_parse_calls(const STMarkdownParser* parser) { return parser->parseCalls; }
+#endif
 static const STMarkdownDocument* parse(
     STMarkdownParser* p, const char* utf8, size_t length, bool github,
     bool stripBom, bool progressive, bool final) {
   if (!p) return nullptr;
-  p->text.clear(); p->runs.clear(); p->urls.clear(); p->runUrls.clear(); p->blocks.clear(); p->blockUrls.clear(); p->blockAlts.clear(); p->tableOwned.clear(); p->tablePublic.clear(); p->tableBlockIndices.clear(); p->tableDepth = 0; p->activeTable = p->activeCell = static_cast<size_t>(-1); p->imageDepth = 0; p->activeImage = static_cast<size_t>(-1); p->imageAlt.clear(); p->document = {};
+  p->projectionProbe = 0;
+  p->projectionContext = STMarkdownParser::RejectedContext::none;
+  p->htmlDepth = 0;
+  p->text.clear(); p->runs.clear(); p->urls.clear(); p->runUrls.clear(); p->blocks.clear(); p->blockUrls.clear(); p->blockAlts.clear(); p->tableOwned.clear(); p->tablePublic.clear(); p->tableBlockIndices.clear(); p->tableDepth = 0; p->activeTable = p->activeCell = static_cast<size_t>(-1); p->imageDepth = 0; p->activeImage = static_cast<size_t>(-1); p->imageAlt.clear(); p->pendingImageMarker = nullptr; p->pendingImageSeen = false; p->document = {};
   p->flags = 0; p->heading = 0; p->listDepth = 0; p->lists.clear(); p->quoteDepth = 0; p->codeDepth = 0; p->boldDepth = p->italicDepth = p->strikeDepth = p->inlineCodeDepth = 0; p->rowHasCell = false;
   if (length > static_cast<size_t>(UINT_MAX) || (!utf8 && length != 0)) { p->document.error = -1; return &p->document; }
+  const bool skipRejectedProjection = rejectedProjectionApplies(p, utf8, length, github, stripBom, progressive, final);
+  p->unfinishedSourceEnd = nullptr;
+  p->provisionalHeaderStart = p->provisionalHeaderEnd = 0;
+  p->provisionalHeaderSeen = false;
   MD_PARSER parser{};
   parser.flags = github ? MD_DIALECT_GITHUB : MD_DIALECT_COMMONMARK;
   parser.enter_block = enterBlock; parser.leave_block = leaveBlock;
@@ -807,26 +1178,127 @@ static const STMarkdownDocument* parse(
   // marker, not visible Markdown content. Later U+FEFF code points stay text.
   const char* input = utf8 ? utf8 : "";
   std::string projection;
-  if (progressive && !final && utf8 && makeStreamingProjection(utf8, length, &projection) &&
-      !hasOpenFencedBlock(utf8, length)) {
-    input = projection.data();
+  bool pendingImage = false;
+  bool provisionalTable = false;
+  bool inlineProjection = false;
+  size_t inlineProjectionProbeOffset = static_cast<size_t>(-1);
+  size_t provisionalTableColumns = 0, headerOffset = 0, headerLimit = 0, imageOffset = 0;
+  if (progressive && !final && utf8 && !skipRejectedProjection) {
+    if (github && makeProvisionalTableProjection(utf8, length, &projection, &provisionalTableColumns, &headerOffset, &headerLimit) &&
+               !hasOpenFencedBlock(utf8, length)) {
+      // A provisional header can itself end in an unfinished image. Complete
+      // that image before restoring the private table delimiter so its cell
+      // has the same readable alt label as a confirmed table row.
+      std::string headerImageProjection;
+      size_t headerImageOffset = 0;
+      if (makePendingImageProjection(utf8, headerLimit, &headerImageProjection, &headerImageOffset)) {
+        projection.swap(headerImageProjection);
+        headerLimit = projection.size();
+        appendProvisionalTableDelimiter(&projection, provisionalTableColumns);
+        pendingImage = true;
+        imageOffset = headerImageOffset;
+      }
+      input = projection.data();
+      provisionalTable = true;
+    } else if (makePendingImageProjection(utf8, length, &projection, &imageOffset)) {
+      pendingImage = true;
+      input = projection.data();
+    } else if (github && hasEarlyTable(utf8, length)) {
+      // MD4C already materializes the table header at this boundary.
+    } else {
+      const size_t boundedStart = length > kStreamingTailBytes ? length - kStreamingTailBytes : 0;
+      size_t lineStart = length;
+      while (lineStart > boundedStart && utf8[lineStart - 1] != '\n') --lineStart;
+      const bool referenceAtBoundary = !(lineStart == boundedStart && boundedStart != 0 && utf8[lineStart - 1] != '\n') &&
+          endsWithReferenceImage(utf8, lineStart, length);
+      if (!referenceAtBoundary && makeStreamingProjection(utf8, length, github, &projection,
+          &inlineProjectionProbeOffset) && !hasOpenFencedBlock(utf8, length) &&
+          !hasIndentedLiteralTail(utf8, length)) {
+        input = projection.data();
+        // Inline projections normally only remove unfinished syntax.  When
+        // they append a closer, however, that closer can become literal text
+        // inside an indented-code or HTML block.  Probe the manufactured byte
+        // so the callbacks can reject that preview before it is published.
+        inlineProjection = true;
+      }
+    }
   }
   size_t inputLength = input == utf8 ? length : projection.size();
+  // A private projection may be longer than an otherwise valid caller buffer.
+  // MD4C's MD_SIZE is narrower than size_t on 64-bit Apple targets, so never
+  // truncate a fabricated suffix at the parser boundary.
+  if (inputLength > static_cast<size_t>(UINT_MAX)) {
+    p->document.error = -1;
+    return &p->document;
+  }
+  if (pendingImage) {
+    const size_t marker = projection.rfind(kStreamingImageMarker);
+    p->pendingImageMarker = marker == std::string::npos ? nullptr : projection.data() + marker;
+  }
   if (stripBom && inputLength >= 3 && static_cast<unsigned char>(input[0]) == 0xef &&
       static_cast<unsigned char>(input[1]) == 0xbb && static_cast<unsigned char>(input[2]) == 0xbf) {
     input += 3;
     inputLength -= 3;
   }
+  if (progressive && !final) p->unfinishedSourceEnd = input + inputLength;
+  if (provisionalTable) {
+    p->provisionalHeaderStart = reinterpret_cast<uintptr_t>(projection.data() + headerOffset);
+    p->provisionalHeaderEnd = reinterpret_cast<uintptr_t>(projection.data() + headerLimit);
+  }
+  const size_t probeOffset = provisionalTable ? headerOffset : imageOffset;
+  if (provisionalTable || pendingImage)
+    p->projectionProbe = reinterpret_cast<uintptr_t>(projection.data() + probeOffset);
+  else if (inlineProjection && inlineProjectionProbeOffset != static_cast<size_t>(-1))
+    p->projectionProbe = reinterpret_cast<uintptr_t>(projection.data() + inlineProjectionProbeOffset);
+#ifdef STMD_TESTING
+  ++p->parseCalls;
+#endif
   p->document.error = md_parse(input, static_cast<MD_SIZE>(inputLength), &parser, p);
+  if (p->document.error == 0 && provisionalTable &&
+      (!p->provisionalHeaderSeen || p->blocks.empty() || p->blocks.back().kind != STMD_BLOCK_TABLE ||
+       p->blocks.back().rowCount != 1 || p->blocks.back().columnCount != provisionalTableColumns)) {
+    // The private delimiter was not accepted in this Markdown context (for
+    // example an HTML or indented-code block). Reparse the exact caller source
+    // rather than leaking any synthetic syntax into the visible document.
+    const auto context = p->projectionContext;
+    const auto* result = parse(p, utf8, length, github, stripBom, false, true);
+    if (result->error == 0) rememberRejectedProjection(p, utf8, length, probeOffset, context, github, stripBom);
+    return result;
+  }
+  if (p->document.error == 0 && pendingImage && !p->pendingImageSeen) {
+      // The fabricated URL was not accepted as an image. Preserve literal
+      // Markdown until the final parser decides.
+      const auto context = p->projectionContext;
+      const auto* result = parse(p, utf8, length, github, stripBom, false, true);
+      if (result->error == 0) rememberRejectedProjection(p, utf8, length, probeOffset, context, github, stripBom);
+      return result;
+  }
+  if (p->document.error == 0 && inlineProjection &&
+      p->projectionContext == STMarkdownParser::RejectedContext::literalBlock) {
+    // A transformed tail was consumed as literal block text. Reparse the
+    // caller bytes so the preview cannot hide or add source syntax.
+    const auto context = p->projectionContext;
+    const auto* result = parse(p, utf8, length, github, stripBom, false, true);
+    if (result->error == 0 && length != 0) {
+      // For an opener-only tail the probe can be on an earlier literal line.
+      // Do not cache that classification onto the active line after a blank.
+      const size_t sourceProbe = inlineProjectionProbeOffset < length
+          ? inlineProjectionProbeOffset : length - 1;
+      rememberRejectedProjection(p, utf8, length, sourceProbe, context, github, stripBom);
+    }
+    return result;
+  }
   p->document.text = p->text.data(); p->document.textLength = p->text.size();
   p->document.runs = p->runs.data(); p->document.runCount = p->runs.size();
   p->document.blocks = p->blocks.data(); p->document.blockCount = p->blocks.size();
   p->document.sourceBytesConsumed = p->document.error == 0 ? length : 0;
-  p->document.changedStartUTF16 = p->document.error == 0 ? changedStart(p) : 0;
+  p->document.changedStartUTF16 = p->document.error == 0 && p->trackChanges ? changedStart(p) : 0;
   if (p->document.error == 0) {
-    const size_t blockStart = changedBlockStart(p);
-    p->document.changedStartUTF16 = std::min(p->document.changedStartUTF16, blockStart);
-    saveDocument(p, blockStart != static_cast<size_t>(-1));
+    if (p->trackChanges) {
+      const size_t blockStart = changedBlockStart(p);
+      p->document.changedStartUTF16 = std::min(p->document.changedStartUTF16, blockStart);
+      saveDocument(p, blockStart != static_cast<size_t>(-1));
+    }
   }
   return &p->document;
 }

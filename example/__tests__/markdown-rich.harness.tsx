@@ -1,7 +1,7 @@
 import React from 'react';
 import { Platform } from 'react-native';
 import { describe, expect, it, render, waitFor } from 'react-native-harness';
-import { StreamText, type StreamTextHandle } from 'react-native-text-stream';
+import { StreamText, streamFetch, type StreamTextHandle } from 'react-native-text-stream';
 import { buffer, busyWait, Column, itIOS, newKey, sleep, testing, TSB, waitForSnapshot, write } from './helpers';
 
 type Block = {
@@ -222,6 +222,21 @@ describe('StreamText rich Markdown native seams', () => {
     await imageStatus(secondKey, 'loaded');
     const counts = await (await fetch(`${endpoint}/counts?key=${key}`)).json();
     expect(counts).toEqual({ count: 1, authorization: false, cookie: false });
+  });
+
+  it('isolates image credentials from an authenticated stream and its response cookies', async () => {
+    const key = newKey();
+    const source = streamFetch(`${endpoint}/credential-markdown?key=${key}`, {
+      headers: { Authorization: 'Bearer fixture-token', Cookie: 'fixture=session' },
+    });
+    expect((await source.response).status).toBe(200);
+    await render(<Column><StreamText source={source} nativeID={key} recordDisplayLog format="markdown" /></Column>);
+    await imageStatus(key, 'loaded');
+    const streamCounts = await (await fetch(`${endpoint}/counts?key=${key}-stream`)).json();
+    expect(streamCounts).toEqual({ count: 1, authorization: true, cookie: true });
+    const imageCounts = await (await fetch(`${endpoint}/counts?key=${key}`)).json();
+    expect(imageCounts).toEqual({ count: 1, authorization: false, cookie: false });
+    expect((await source.done).status).toBe('done');
   });
 
   it('shares an in-flight download between subscribers and limits active requests to two', async () => {

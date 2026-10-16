@@ -1,0 +1,34 @@
+{
+  "date": "2026-10-15",
+  "target": {
+    "platform": "android",
+    "device": "StreamText_Markdown_Tests",
+    "serial": "emulator-5556"
+  },
+  "source": {
+    "file": "packages/react-native-text-stream/cpp/markdown/StreamMarkdown.cpp",
+    "sha256": "a467f6224086bbf0509d5f294c270566fcb4aa9a415b0baa4966413fd779e85a"
+  },
+  "build": {
+    "command": "./gradlew :app:assembleDebug",
+    "result": "passed",
+    "durationSeconds": 22
+  },
+  "harness": {
+    "command": "HARNESS_ANDROID_AVD=StreamText_Markdown_Tests HARNESS_TEST_TIMEOUT=20000 HARNESS_METRO_PORT=8085 HARNESS_APP_PATH=/Users/alex/WebstormProjects/react-native-text-stream/example/android/app/build/outputs/apk/debug/app-debug.apk bun x --no-install react-native-harness --config jest.harness.config.mjs --harnessRunner android --watchman=false --testPathPatterns='markdown[^.]*\\.harness' --json --outputFile=/private/tmp/markdown-rejected-projection-android-harness.json",
+    "result": "passed",
+    "suites": { "total": 6, "passed": 6 },
+    "tests": { "total": 77, "passed": 75, "skipped": 2 },
+    "resultJson": "/private/tmp/markdown-rejected-projection-android-harness.json",
+    "resultSha256": "6739b287691c539f31e51430886fb4b80c88a3ea9c9add9a3424a911ab3e60f8",
+    "priorInfrastructureAttempts": [
+      {
+        "result": "failed-before-tests",
+        "failure": "adb shell am force-stop com.textstreamexample returned exit code 1; the harness reported an app-bridge disconnect."
+      }
+    ],
+    "reportingDelay": "The retry initially had no visible test result after 'Runner android ready'. Its delayed JSON was subsequently read and confirmed all six suites passed; this was not a second failed run.",
+    "deviceStateAfterAttempts": "device"
+  },
+  "note": "Metro 8081 was not modified; the harness used isolated port 8085. The initial setup failure was transient; the retry's delayed harness result JSON records the successful final run."
+}

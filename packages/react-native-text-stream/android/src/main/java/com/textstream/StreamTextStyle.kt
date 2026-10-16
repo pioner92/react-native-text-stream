@@ -12,6 +12,7 @@ import android.text.Spanned
 import android.text.StaticLayout
 import android.text.TextDirectionHeuristics
 import android.text.TextPaint
+import android.text.style.RelativeSizeSpan
 import com.facebook.react.uimanager.PixelUtil
 import com.facebook.react.views.text.ReactTypefaceUtils
 import kotlin.math.ceil
@@ -53,17 +54,16 @@ data class StreamTextStyle(
   /** Sets (or removes) the line height span over the whole text, for a text laid out once. */
   fun applyLineHeight(text: Spannable) {
     for (span in text.getSpans(0, text.length, StreamTextLineHeightSpan::class.java)) text.removeSpan(span)
-    if (lineHeight > 0) {
-      text.setSpan(StreamTextLineHeightSpan(PixelUtil.toPixelFromDIP(lineHeight)), 0, text.length, Spanned.SPAN_INCLUSIVE_INCLUSIVE)
-    }
+    addLineHeight(text, 0, text.length)
   }
 
   /**
    * For a text that grows: the line height in spans of at most [SEGMENT] characters. A
    * LineHeightSpan is a WrapTogetherSpan, so a DynamicLayout re-wraps all of one when an edit
    * touches it: a span over the whole text made every append re-wrap everything. The span's
-   * height is idempotent (a second one on a line changes nothing), so where the spans start and
-   * end doesn't matter.
+   * height is idempotent (a second one on a line changes nothing). Spans can end anywhere within
+   * a paragraph and may include its terminator, but never cross into the next paragraph:
+   * DynamicLayout's reflow depends on that boundary.
    */
   fun applySegmentedLineHeight(text: Spannable) {
     for (span in text.getSpans(0, text.length, StreamTextLineHeightSpan::class.java)) text.removeSpan(span)
@@ -83,8 +83,23 @@ data class StreamTextStyle(
     val px = PixelUtil.toPixelFromDIP(lineHeight)
     var start = from
     while (start < to) {
-      val end = minOf(to, start + SEGMENT)
-      text.setSpan(StreamTextLineHeightSpan(px), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+      var end = minOf(to, start + SEGMENT)
+      // DynamicLayout expands its paragraph range to include WrapTogetherSpans only
+      // after finding that paragraph's start. A LineHeightSpan crossing a newline
+      // can move the range into the middle of the previous paragraph, corrupting
+      // its stored line offsets. A span may include its paragraph terminator, but never crosses
+      // into the next paragraph.
+      for (i in start until end) {
+        if (text[i] == '\n') {
+          end = i + 1
+          break
+        }
+      }
+      // Measure relative heading size once per paragraph span. LineHeightSpan.chooseHeight runs
+      // for every visual line, so looking up RelativeSizeSpan there would tax long headings.
+      val scale = text.getSpans(start, end, RelativeSizeSpan::class.java)
+          .maxOfOrNull { it.sizeChange } ?: 1f
+      text.setSpan(StreamTextLineHeightSpan(px, scale), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
       start = end
     }
   }

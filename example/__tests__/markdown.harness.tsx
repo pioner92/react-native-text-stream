@@ -1,4 +1,5 @@
 import React from 'react';
+import { Platform } from 'react-native';
 import { describe, expect, it, render, waitFor } from 'react-native-harness';
 import { StreamText, type StreamTextHandle } from 'react-native-text-stream';
 import { arrayBuffer, buffer, busyWait, Column, newKey, snapshot, testing, TSB, utf8, waitForSnapshot, write } from './helpers';
@@ -49,7 +50,10 @@ describe('StreamText native Markdown', () => {
     const image = buffer('Image ![alt](https://example.com/a.png');
     await view.rerender(nativeView(image, key));
     await waitForSnapshot(key, state => {
-      expect(state.text).toContain('Image alt');
+      expect(state.text).toContain('Image \uFFFC');
+      // Android includes the replacement attachment's role after the visible prefix; iOS
+      // exposes the alt label directly. Both forms must retain the alt text without the URL.
+      expect(state.accessibilityValue).toContain(Platform.OS === 'android' ? 'Image image alt' : 'Image alt');
       expect(state.text).not.toContain('![');
       expect(state.text).not.toContain('https://');
     });
@@ -57,7 +61,7 @@ describe('StreamText native Markdown', () => {
     await waitRendered(key, 'Image ![alt](https://example.com/a.png');
   });
 
-  it('suppresses an unfinished GFM table tail and restores it after a reset', async () => {
+  it('shows a partial GFM table as a rich block and clears it on reset', async () => {
     const key = newKey();
     const ref = React.createRef<StreamTextHandle>();
     const source = buffer('| Name | Value |\n| --- | --- |\n| partial');
@@ -65,7 +69,9 @@ describe('StreamText native Markdown', () => {
       format="markdown" markdownFlavor="gfm" /></Column>);
     await waitForSnapshot(key, state => {
       expect(state.status).toBe('streaming');
+      expect(state.text).toContain('\uFFFC');
       expect(state.text).not.toContain('| partial');
+      expect(state.accessibilityValue).toContain('partial');
     });
     ref.current!.clear();
     await waitForSnapshot(key, state => { expect(state.text).toBe(''); expect(state.height).toBe(0); });

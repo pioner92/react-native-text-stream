@@ -8,6 +8,7 @@
     "postinstall": "sh scripts/apply-patches.sh",
     "test": "bun run --cwd packages/react-native-text-stream test",
     "test:harness": "bun run --cwd example test:harness",
+    "test:fixtures": "node --experimental-strip-types --test server/fixtures/*.test.mjs example/__tests__/stream-scroll.test.mjs",
     "test:markdown": "sh scripts/test-markdown-native.sh",
     "test:native": "sh scripts/test-stream-fetch-native.sh",
     "test:protocol": "sh scripts/test-response-parser-native.sh"

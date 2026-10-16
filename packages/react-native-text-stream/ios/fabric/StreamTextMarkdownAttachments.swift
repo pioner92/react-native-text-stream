@@ -10,9 +10,13 @@ func streamTextMarkdownAccessibleText(_ text: NSAttributedString, range: NSRange
     if attachmentRange.location > cursor {
       value += raw.substring(with: NSRange(location: cursor, length: attachmentRange.location - cursor))
     }
+    var nextCursor = NSMaxRange(attachmentRange)
     switch attachment {
     case let task as StreamTextMarkdownTaskAttachment:
-      value += task.checked ? "Checked task" : "Unchecked task"
+      value += task.checked ? "Checked task " : "Unchecked task "
+      // The three zero-width UTF-16 units retain source offsets after the four-byte `[x] `
+      // marker is replaced by a single attachment. They are presentation padding, not words.
+      nextCursor = min(NSMaxRange(range), NSMaxRange(attachmentRange) + 3)
     case let image as StreamTextMarkdownImageAttachment:
       value += image.block.alt.isEmpty ? "Image" : image.block.alt
     case let table as StreamTextMarkdownTableAttachment:
@@ -23,12 +27,14 @@ func streamTextMarkdownAccessibleText(_ text: NSAttributedString, range: NSRange
     default:
       value += raw.substring(with: attachmentRange)
     }
-    cursor = NSMaxRange(attachmentRange)
+    cursor = nextCursor
   }
   if cursor < NSMaxRange(range) {
     value += raw.substring(with: NSRange(location: cursor, length: NSMaxRange(range) - cursor))
   }
-  return value
+  // U+200B is an internal UTF-16 offset placeholder for task attachments; VoiceOver must never
+  // receive it even when an attributed-range boundary changes during TextKit replacement.
+  return value.replacingOccurrences(of: "\u{200B}", with: "")
 }
 
 /// One small attachment rather than four styled marker glyphs. The source remains in the stream
@@ -89,13 +95,13 @@ final class StreamTextMarkdownTaskAttachment: NSTextAttachment {
   }
 }
 
-/// MD4C only inserts these markers for GFM task list items. We additionally require the parser's
-/// list indent on the run that owns the prefix, so ordinary `[x]` text and code are never changed.
+/// The parser marks only generated GFM task prefixes, so ordinary `[x]` text and code are never
+/// changed by this native presentation pass.
 func streamTextMarkdownAttachTaskMarkers(_ runs: [StreamTextMarkdownRun], to output: NSMutableAttributedString,
                                          base: [NSAttributedString.Key: Any]) {
   guard output.length >= 4 else { return }
   let string = output.string as NSString
-  let listRuns = runs.filter { $0.indent > 0 && $0.flags & UInt32(STMD_RUN_CODE) == 0 }
+  let listRuns = runs.filter { $0.flags & UInt32(STMD_RUN_TASK_MARKER) != 0 }
   guard !listRuns.isEmpty else { return }
   var cursor = 0
   var runIndex = 0
@@ -111,10 +117,10 @@ func streamTextMarkdownAttachTaskMarkers(_ runs: [StreamTextMarkdownRun], to out
     let isMarker = first == 91 && (state == 120 || state == 88 || state == 32) &&
       string.character(at: marker + 2) == 93 && string.character(at: marker + 3) == 32
     while runIndex < listRuns.count && NSMaxRange(listRuns[runIndex].range) <= marker { runIndex += 1 }
-    let parserOwned = runIndex < listRuns.count && listRuns[runIndex].range.location <= marker &&
+    let parserOwned = runIndex < listRuns.count && listRuns[runIndex].range.location == marker &&
       NSMaxRange(listRuns[runIndex].range) >= marker + 4
     guard isMarker, parserOwned else { cursor = NSMaxRange(line); continue }
-    let checked = state == 120 || state == 88
+    let checked = listRuns[runIndex].flags & UInt32(STMD_RUN_TASK_CHECKED) != 0
     let attachment = StreamTextMarkdownTaskAttachment(checked: checked,
       font: base[.font] as? UIFont ?? .systemFont(ofSize: 15),
       foreground: base[.foregroundColor] as? UIColor ?? .label)
@@ -199,7 +205,11 @@ final class StreamTextMarkdownTableAttachment: StreamTextMarkdownAttachment {
     let format = UIGraphicsImageRendererFormat(); format.scale = 1
     return UIGraphicsImageRenderer(size: CGSize(width: 1, height: 1), format: format).image { _ in }
   }()
-  struct Cell { let frame: CTFrame; let rect: CGRect; let header: Bool }
+  /// CoreText draws underline attributes but does not paint UIKit's
+  /// `NSStrikethroughStyleAttributeName` in a CTFrame. Keep the tiny amount of strike geometry
+  /// alongside the immutable frame, so drawing a visible table row never typesets or scans runs.
+  private struct Strike { let rect: CGRect; let color: CGColor }
+  private struct Cell { let frame: CTFrame; let rect: CGRect; let header: Bool; let strikes: [Strike] }
   private let cells: [Cell]
   private let rowOffsets: [CGFloat]
   private let columns: Int
@@ -214,6 +224,7 @@ final class StreamTextMarkdownTableAttachment: StreamTextMarkdownAttachment {
     color = base[.foregroundColor] as? UIColor ?? .label
     let font = base[.font] as? UIFont ?? .systemFont(ofSize: 15)
     var setters: [CTFramesetter] = []
+    var attributedCells: [NSMutableAttributedString] = []
     var heights = Array(repeating: font.lineHeight + padding * 2, count: max(1, block.rows))
     for (index, cell) in block.cells.enumerated() {
       var attributes = base
@@ -229,6 +240,7 @@ final class StreamTextMarkdownTableAttachment: StreamTextMarkdownAttachment {
       text.addAttribute(.paragraphStyle, value: paragraph, range: NSRange(location: 0, length: text.length))
       let setter = CTFramesetterCreateWithAttributedString(text)
       setters.append(setter)
+      attributedCells.append(text)
       let size = CTFramesetterSuggestFrameSizeWithConstraints(setter, CFRange(location: 0, length: 0), nil,
         CGSize(width: textWidth, height: CGFloat.greatestFiniteMagnitude), nil)
       let row = index / columns
@@ -244,14 +256,21 @@ final class StreamTextMarkdownTableAttachment: StreamTextMarkdownAttachment {
       let rect = CGRect(x: CGFloat(index % columns) * cellWidth + padding,
         y: offsets[row] + padding, width: textWidth, height: heights[row] - padding * 2)
       let path = CGPath(rect: CGRect(origin: .zero, size: rect.size), transform: nil)
-      built.append(Cell(frame: CTFramesetterCreateFrame(setter, CFRange(location: 0, length: 0), path, nil),
-        rect: rect, header: block.cells[index].header))
+      let frame = CTFramesetterCreateFrame(setter, CFRange(location: 0, length: 0), path, nil)
+      built.append(Cell(frame: frame, rect: rect, header: block.cells[index].header,
+        strikes: block.cells[index].runs.contains { $0.flags & UInt32(STMD_RUN_STRIKE) != 0 }
+          ? Self.strikes(in: frame, attributedText: attributedCells[index]) : []))
     }
     cells = built
     super.init(block: block, size: CGSize(width: available, height: offsets.last! + 1))
     image = Self.transparentImage
   }
   required init?(coder: NSCoder) { return nil }
+  override var debugBlock: [String: Any] {
+    var value = super.debugBlock
+    value["strikeCount"] = cells.reduce(0) { $0 + $1.strikes.count }
+    return value
+  }
   func draw(at origin: CGPoint, context: CGContext) {
     context.saveGState()
     context.translateBy(x: origin.x, y: origin.y)
@@ -279,16 +298,70 @@ final class StreamTextMarkdownTableAttachment: StreamTextMarkdownAttachment {
         context.scaleBy(x: 1, y: -1)
         context.textMatrix = .identity
         CTFrameDraw(cell.frame, context)
+        // These rectangles are prepared together with the CTFrame. This is O(strikes) for only
+        // visible rows, without a per-frame CoreText layout or attributed-string walk.
+        for strike in cell.strikes {
+          context.setFillColor(strike.color)
+          context.fill(strike.rect)
+        }
         context.restoreGState()
       }
     }
     context.restoreGState()
   }
+
+  private static func strikes(in frame: CTFrame, attributedText text: NSAttributedString) -> [Strike] {
+    guard text.length > 0 else { return [] }
+    let lines = CTFrameGetLines(frame) as NSArray
+    guard lines.count > 0 else { return [] }
+    var origins = Array(repeating: CGPoint.zero, count: lines.count)
+    CTFrameGetLineOrigins(frame, CFRange(location: 0, length: 0), &origins)
+    let pixel = 1 / UIScreen.main.scale
+    var result: [Strike] = []
+    for index in 0..<lines.count {
+      let line = lines[index] as! CTLine
+      let lineRange = CTLineGetStringRange(line)
+      guard lineRange.location != kCFNotFound, lineRange.length > 0 else { continue }
+      let range = NSRange(location: lineRange.location, length: lineRange.length)
+      text.enumerateAttribute(.strikethroughStyle, in: range) { value, candidate, _ in
+        let style = (value as? NSNumber)?.intValue ?? (value as? Int ?? 0)
+        guard style != 0 else { return }
+        let overlap = NSIntersectionRange(range, candidate)
+        guard overlap.length > 0 else { return }
+        let start = CTLineGetOffsetForStringIndex(line, overlap.location, nil)
+        let end = CTLineGetOffsetForStringIndex(line, NSMaxRange(overlap), nil)
+        guard abs(end - start) > 0.25 else { return }
+        let font = text.attribute(.font, at: overlap.location, effectiveRange: nil) as? UIFont
+          ?? .systemFont(ofSize: 15)
+        let thickness = max(pixel, font.pointSize * 0.06)
+        let y = origins[index].y + font.ascender * 0.30 - thickness / 2
+        let foreground = text.attribute(.foregroundColor, at: overlap.location, effectiveRange: nil) as? UIColor ?? .label
+        result.append(Strike(rect: CGRect(x: origins[index].x + min(start, end), y: y,
+          width: abs(end - start), height: thickness),
+                             color: foreground.cgColor))
+      }
+    }
+    return result
+  }
 }
 
 final class StreamTextMarkdownImageAttachment: StreamTextMarkdownAttachment {
+  // The image is fixed-size; TextKit scales it to the attachment bounds for narrow columns. It is
+  // shared by all incomplete-image attachments, so a growing alt label never causes raster work.
+  private static let pendingPlaceholder: UIImage = {
+    let size = CGSize(width: 120, height: 48)
+    // UIKit's default renderer format uses the display scale, keeping this shared raster crisp
+    // on Retina while retaining the same 120 × 48 point attachment geometry.
+    let format = UIGraphicsImageRendererFormat()
+    return UIGraphicsImageRenderer(size: size, format: format).image { _ in
+      UIColor(white: 0.5, alpha: 0.12).setFill(); UIRectFill(CGRect(origin: .zero, size: size))
+      ("Image" as NSString).draw(in: CGRect(x: 4, y: 4, width: 112, height: 40),
+        withAttributes: [.font: UIFont.systemFont(ofSize: 12), .foregroundColor: UIColor.gray])
+    }
+  }()
   private let availableWidth: CGFloat
-  private(set) var status = "placeholder"
+  private let isPending: Bool
+  private(set) var status: String
   private var pixelSize = CGSize.zero
   private var cancellation: (() -> Void)?
   private var started = false
@@ -296,20 +369,51 @@ final class StreamTextMarkdownImageAttachment: StreamTextMarkdownAttachment {
   init(block: StreamTextMarkdownBlock, width: CGFloat) {
     availableWidth = max(1, width)
     let size = CGSize(width: min(120, max(1, width)), height: 48)
+    // An unfinished image has no trustworthy network address. Its attachment is deliberately
+    // visible now, but the loader is not even asked to validate or queue a request until a later
+    // parser result supplies the complete URL.
+    isPending = block.kind == UInt32(STMD_BLOCK_IMAGE_PENDING) || block.url == nil
+    status = isPending ? "pending" : "placeholder"
     super.init(block: block, size: size)
-    image = Self.placeholder(block.alt, size: size)
+    image = Self.pendingPlaceholder
   }
   required init?(coder: NSCoder) { return nil }
   deinit { cancellation?() }
   func cancel() { cancellation?(); cancellation = nil; onChange = nil }
-  func fits(width: CGFloat) -> Bool { abs(availableWidth - width) < 0.5 }
+  /// A decoded attachment can survive a rebuilt attributed document only when its immutable
+  /// Markdown block and *effective text-column width* agree. Comparing against the view width
+  /// would incorrectly retain a quote/list image after its paragraph indentation changed.
+  func canReuseLayout(for replacement: StreamTextMarkdownImageAttachment) -> Bool {
+    block == replacement.block && abs(availableWidth - replacement.availableWidth) < 0.5
+  }
+  /// A width change needs a new attachment geometry, but a completed immutable image must not
+  /// flash back to its placeholder while the shared loader cache answers again.
+  @discardableResult
+  func adoptLoadedState(from existing: StreamTextMarkdownImageAttachment) -> Bool {
+    guard block == existing.block, existing.status == "loaded", let loaded = existing.image else { return false }
+    image = loaded
+    pixelSize = existing.pixelSize
+    let width = min(availableWidth, loaded.size.width)
+    displaySize = CGSize(width: width, height: width * loaded.size.height / max(1, loaded.size.width))
+    bounds = CGRect(origin: .zero, size: displaySize)
+    status = "loaded"
+    started = true
+    return true
+  }
   // Started only after the attachment is installed; worker creation never starts stale downloads.
   func start(onChange: @escaping (StreamTextMarkdownImageAttachment) -> Void) {
     self.onChange = onChange
+    guard !isPending else {
+      status = "pending"
+      return
+    }
+    // A completed empty target is not an unfinished image. Route it through the ordinary loader
+    // so it reports the same invalid/error state as any other malformed completed URL.
+    let url = block.url ?? ""
     guard !started else { return }
     started = true
     status = "loading"
-    cancellation = StreamTextMarkdownImageLoader.shared.load(url: block.url ?? "") { [weak self] result in
+    cancellation = StreamTextMarkdownImageLoader.shared.load(url: url) { [weak self] result in
       guard let self else { return }
       switch result {
       case .success(let image):
@@ -320,16 +424,20 @@ final class StreamTextMarkdownImageAttachment: StreamTextMarkdownAttachment {
         self.status = "loaded"
       case .failure(let error):
         self.status = (error as? StreamTextMarkdownImageError)?.status ?? "error"
+        // The shared generic skeleton is intentionally cheap while the source is streaming.
+        // Once a completed request fails, render its alt text once as the persistent fallback.
+        self.image = Self.failurePlaceholder(self.block.alt, size: self.displaySize)
       }
       self.bounds = CGRect(origin: .zero, size: self.displaySize)
       self.onChange?(self)
     }
   }
-  private static func placeholder(_ alt: String, size: CGSize) -> UIImage {
-    let format = UIGraphicsImageRendererFormat(); format.scale = 1
-    return UIGraphicsImageRenderer(size: size, format: format).image { context in
-      UIColor(white: 0.5, alpha: 0.12).setFill(); context.fill(CGRect(origin: .zero, size: size))
-      ((alt.isEmpty ? "Image" : alt) as NSString).draw(in: CGRect(x: 4, y: 4, width: max(1, size.width - 8), height: size.height - 8),
+  private static func failurePlaceholder(_ alt: String, size: CGSize) -> UIImage {
+    let format = UIGraphicsImageRendererFormat()
+    return UIGraphicsImageRenderer(size: size, format: format).image { _ in
+      UIColor(white: 0.5, alpha: 0.12).setFill(); UIRectFill(CGRect(origin: .zero, size: size))
+      ((alt.isEmpty ? "Image" : alt) as NSString).draw(in: CGRect(x: 4, y: 4,
+        width: max(1, size.width - 8), height: max(1, size.height - 8)),
         withAttributes: [.font: UIFont.systemFont(ofSize: 12), .foregroundColor: UIColor.gray])
     }
   }

@@ -26,6 +26,10 @@ enum {
   STMD_RUN_LANGUAGE_TYPESCRIPT = 1u << 9,
   STMD_RUN_LANGUAGE_JSON = 1u << 10,
   STMD_RUN_LANGUAGE_PYTHON = 1u << 11,
+  // Generated list marker only. Platforms must not infer task state by
+  // rescanning arbitrary list body text such as "[x]".
+  STMD_RUN_TASK_MARKER = 1u << 12,
+  STMD_RUN_TASK_CHECKED = 1u << 13,
   STMD_RUN_LANGUAGE_MASK = 15u << 8,
   STMD_RUN_TOKEN_KEYWORD = 1u << 16,
   STMD_RUN_TOKEN_STRING = 1u << 17,
@@ -34,7 +38,14 @@ enum {
   STMD_RUN_TOKEN_TYPE = 1u << 20,
 };
 
-enum { STMD_BLOCK_TABLE = 1, STMD_BLOCK_IMAGE = 2 };
+enum {
+  STMD_BLOCK_TABLE = 1,
+  STMD_BLOCK_IMAGE = 2,
+  // A syntactically valid image opener is already visible in the stream, but
+  // its source has not closed yet. `url` is null: platform renderers may show
+  // a local placeholder but must not begin a network request.
+  STMD_BLOCK_IMAGE_PENDING = 3,
+};
 enum { STMD_ALIGN_DEFAULT = 0, STMD_ALIGN_LEFT = 1, STMD_ALIGN_CENTER = 2, STMD_ALIGN_RIGHT = 3 };
 
 typedef struct {
@@ -64,7 +75,7 @@ typedef struct {
   size_t rowCount;
   size_t columnCount;
   const STMarkdownCell *cells; /* Row-major; table only. */
-  const char *url; /* Image source UTF-8; null for tables. */
+  const char *url; /* Image source UTF-8; null for tables and pending images. */
   const uint16_t *alt;
   size_t altLength;
 } STMarkdownBlock;
@@ -83,6 +94,9 @@ typedef struct {
 
 STMarkdownParser *stmd_create(void);
 void stmd_destroy(STMarkdownParser *parser);
+// Consumers that compute their own rich-text diff can disable retained
+// snapshots. It affects changedStartUTF16 only, never parsing output.
+void stmd_set_track_changes(STMarkdownParser *parser, bool enabled);
 const STMarkdownDocument *stmd_parse(
     STMarkdownParser *parser, const char *utf8, size_t length, bool github);
 // Parses text already passed through the platform stream decoder. Unlike

@@ -73,8 +73,14 @@ internal class MarkdownTableSpan(
   }
 }
 
-internal class MarkdownImageSpan(private val url: String, private val alt: String, private val maxWidth: Int) : ReplacementSpan() {
-  @Volatile var status = "placeholder"; private set
+/**
+ * A stable image attachment. A null [url] is an intentionally incomplete streaming image: it
+ * paints the same low-cost placeholder as a loading image, but never enters the loader or
+ * allocates a request subscription. The next snapshot replaces it at the same U+FFFC position
+ * once the parser supplies the complete URL.
+ */
+internal class MarkdownImageSpan(private val url: String?, private val alt: String, private val maxWidth: Int) : ReplacementSpan() {
+  @Volatile var status = if (url == null) "pending" else "placeholder"; private set
   @Volatile private var bitmap: android.graphics.Bitmap? = null
   private var requested = false
   private var onChanged: (() -> Unit)? = null
@@ -87,11 +93,18 @@ internal class MarkdownImageSpan(private val url: String, private val alt: Strin
   private val placeholderHeight get() = (placeholderWidth * 0.56f).toInt().coerceAtLeast(1)
   private val bounds = RectF()
   private val fill = Paint()
-  private val label = if (alt.isEmpty()) "[image]" else "[$alt]"
+  private val labelPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+  // The pending and loading states deliberately use one short fixed label. Growing alt text is
+  // transport metadata, not visual content: rendering it here would reflow or clip each chunk.
+  private val pendingLabel = "Image"
+  private val errorLabel = if (alt.isEmpty()) "Image" else "[$alt]"
   fun bind(onChanged: () -> Unit) {
     this.onChanged = onChanged
+    // Do not turn a partial Markdown URL into an HTTP request. The parser only provides a URL
+    // for a fully closed image destination, so pending -> loading is an explicit state change.
+    val source = url ?: return
     if (requested) return; requested = true; status = "loading"
-    cancel = StreamTextMarkdownImages.load(url) { result ->
+    cancel = StreamTextMarkdownImages.load(source) { result ->
       when (result) { is StreamTextMarkdownImages.Result.Loaded -> { bitmap = result.bitmap; status = "loaded" }
         StreamTextMarkdownImages.Result.Blocked -> status = "blocked"; StreamTextMarkdownImages.Result.Oversize -> status = "oversize"; else -> status = "error" }
       this.onChanged?.invoke()
@@ -109,7 +122,13 @@ internal class MarkdownImageSpan(private val url: String, private val alt: Strin
     fill.color = (paint.color and 0x00ffffff) or 0x18000000
     canvas.drawRect(bounds, fill)
     canvas.save(); canvas.clipRect(bounds)
-    canvas.drawText(label, x + 8, y - paint.textSize, paint)
+    labelPaint.set(paint)
+    labelPaint.textSize = PixelUtil.toPixelFromDIP(12f)
+    // Keep the compact fixed label for the streaming states. Alt remains in accessibility, and
+    // is intentionally shown only for a terminal image error as useful fallback context.
+    val visibleLabel = if (status == "error" || status == "blocked" || status == "oversize") errorLabel else pendingLabel
+    val inset = PixelUtil.toPixelFromDIP(4f)
+    canvas.drawText(visibleLabel, x + inset, topY + inset + labelPaint.textSize, labelPaint)
     canvas.restore()
   }
 }

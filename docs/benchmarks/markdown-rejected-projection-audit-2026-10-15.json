@@ -1,0 +1,45 @@
+{
+  "date": "2026-10-15",
+  "parserSha256": "b8a58c77079cb55b3f3d4a590b09eb77405f7e7ae0e71fe7ad80aec881c28c18",
+  "method": "Temporary instrumented copy of StreamMarkdown.cpp wraps its md_parse call; production source is unchanged. Each case is parsed as a non-final GFM stream on a fresh parser.",
+  "cases": [
+    {
+      "name": "indented code image",
+      "source": "    ![alt",
+      "fullParserCalls": 2,
+      "error": 0
+    },
+    {
+      "name": "HTML comment header",
+      "source": "<!--\n| Name",
+      "fullParserCalls": 2,
+      "error": 0
+    },
+    {
+      "name": "HTML pre header",
+      "source": "<pre>\n| Name",
+      "fullParserCalls": 2,
+      "error": 0
+    },
+    {
+      "name": "image in later table row",
+      "source": "| A |\n| --- |\n| row |\n| ![alt",
+      "fullParserCalls": 2,
+      "error": 0
+    },
+    {
+      "name": "ordinary provisional header",
+      "source": "| Name",
+      "fullParserCalls": 1,
+      "error": 0
+    },
+    {
+      "name": "ordinary pending image",
+      "source": "![alt",
+      "fullParserCalls": 1,
+      "error": 0
+    }
+  ],
+  "conclusion": "Rejected projections still perform two full parses in these literal/table contexts. Ordinary early table/image cases perform one. This counts parser calls, not a measured 2x end-to-end latency.",
+  "status": "confirmed remaining optimization opportunity"
+}

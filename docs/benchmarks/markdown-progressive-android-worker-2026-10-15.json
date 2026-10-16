@@ -1,0 +1,24 @@
+{
+  "name": "com.textstream.StreamTextMarkdownWorkerTest",
+  "tests": "12",
+  "skipped": "0",
+  "failures": "0",
+  "errors": "0",
+  "timestamp": "2026-10-15T19:26:41.594Z",
+  "hostname": "MacBook-Pro.local",
+  "time": "0.02",
+  "cases": [
+    "terminalParseIsDeliveredAsFinalEvenAtTheSameByteOffset",
+    "pendingImageUrlBytesReuseTheAcknowledgedVisualSnapshot",
+    "lateAcknowledgementCannotRestoreOldSourceAfterClear",
+    "styleEpochResetForcesAFullPatchEvenWhenTextIsUnchanged",
+    "resetDropsAnOldQueuedDeliveryAndRestartsFromANewBase",
+    "failedParserStillDeliversSourceAndAcknowledgesNextSnapshot",
+    "rapidStyleResetsCoalesceToTheLatestEpochBeforeParsing",
+    "idleWorkerSchedulesASecondIndependentStream",
+    "richWidthChangeReplacesAttachmentsEvenWhenParsedTextIsIdentical",
+    "deliversOnlyOneSnapshotUntilTheUiAcknowledgesIt",
+    "visualSnapshotReuseNeverCrossesColorStyleOrGenerationBoundaries",
+    "coalescesWhileWaitingForUIAndDiffsAgainstAcknowledgedOutput"
+  ]
+}

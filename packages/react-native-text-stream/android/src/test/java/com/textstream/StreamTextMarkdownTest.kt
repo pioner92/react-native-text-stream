@@ -1,6 +1,7 @@
 package com.textstream
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -54,6 +55,44 @@ class StreamTextMarkdownTest {
     assertEquals(listOf(0 to 7, 8 to 13, 14 to 18), margins)
   }
 
+  @Test fun emptyStreamingFenceKeepsItsNewlineAsADrawableCodeSurface() {
+    val margins = StreamTextMarkdown.codeBlockMarginRanges(
+        "\n", intArrayOf(0), intArrayOf(1), intArrayOf(StreamTextMarkdown.CODE_BLOCK))
+    // The newline must stay inside the paragraph span: otherwise Android has a mono run and
+    // measured height, but LineBackgroundSpan receives no visual line to paint.
+    assertEquals(listOf(0 to 1), margins)
+  }
+
+  @Test fun emptyCodeLineCoalescesWithItsFollowingCodeParagraph() {
+    val sections = StreamTextMarkdown.codeBlockSections(
+        listOf(0 to 1, 1 to 5), listOf(null, null))
+    assertEquals(listOf(StreamTextMarkdown.Companion.CodeBlockSection(0, 5, null, 1)), sections)
+  }
+
+  @Test fun ordinaryEmptyLineDoesNotBecomeACodeSurface() {
+    val margins = StreamTextMarkdown.codeBlockMarginRanges(
+        "\n", intArrayOf(1), intArrayOf(0), intArrayOf(StreamTextMarkdown.CODE_BLOCK))
+    assertEquals(emptyList<Pair<Int, Int>>(), margins)
+  }
+
+  @Test fun codeSectionsKeepARealGapBetweenSeparateFences() {
+    val sections = StreamTextMarkdown.codeBlockSections(
+        listOf(0 to 4, 6 to 10), listOf(null, null))
+    assertEquals(listOf(
+        StreamTextMarkdown.Companion.CodeBlockSection(0, 4, null, 4),
+        StreamTextMarkdown.Companion.CodeBlockSection(6, 10, null, 10),
+    ), sections)
+  }
+
+  @Test fun emptyClosedFenceDoesNotMergeAcrossItsPlainSeparator() {
+    val sections = StreamTextMarkdown.codeBlockSections(
+        listOf(0 to 1, 2 to 7), listOf(null, null), "\n\nvalue\n")
+    assertEquals(listOf(
+        StreamTextMarkdown.Companion.CodeBlockSection(0, 1, null, 1),
+        StreamTextMarkdown.Companion.CodeBlockSection(2, 7, null, 7),
+    ), sections)
+  }
+
   @Test fun codeBlockClusterRewindsSuffixToFirstFenceParagraph() {
     val text = "before\nconst answer = streamFetch(\n  '/plan'\n)\nafter"
     val starts = intArrayOf(7, 35, 45)
@@ -75,17 +114,26 @@ class StreamTextMarkdownTest {
   }
 
   @Test fun codeLanguageHeaderAppearsOnceForAContiguousFence() {
-    assertEquals(listOf("JS", null, "TS"), StreamTextMarkdown.codeLanguageSectionLabels(
-        listOf(0 to 13, 14 to 27, 30 to 40), listOf("JS", "JS", "TS")))
+    assertEquals(listOf("JAVASCRIPT", null, "TYPESCRIPT"), StreamTextMarkdown.codeLanguageSectionLabels(
+        listOf(0 to 13, 14 to 27, 30 to 40), listOf("JAVASCRIPT", "JAVASCRIPT", "TYPESCRIPT")))
   }
 
   @Test fun codeSurfaceKeepsSparseLanguageMetadataInOneContiguousSection() {
     val sections = StreamTextMarkdown.codeBlockSections(
-        listOf(0 to 9, 10 to 19, 20 to 29, 31 to 40), listOf("TS", null, "TS", "JSON"))
+        listOf(0 to 9, 10 to 19, 20 to 29, 31 to 40), listOf("TYPESCRIPT", null, "TYPESCRIPT", "JSON"))
     assertEquals(listOf<StreamTextMarkdown.Companion.CodeBlockSection>(
-        StreamTextMarkdown.Companion.CodeBlockSection(0, 29, "TS", 9),
+        StreamTextMarkdown.Companion.CodeBlockSection(0, 29, "TYPESCRIPT", 9),
         StreamTextMarkdown.Companion.CodeBlockSection(31, 40, "JSON", 40),
     ), sections)
+  }
+
+  @Test fun codeLanguageLabelsUseAStableProfessionalFallback() {
+    assertEquals("CODE", StreamTextMarkdown.languageLabel(0))
+    assertEquals("PYTHON", StreamTextMarkdown.languageLabel(StreamTextMarkdown.LANGUAGE_PYTHON))
+  }
+
+  @Test fun headingLineHeightScalesWithHeadingRelativeSize() {
+    assertEquals(31, StreamTextLineHeightSpan(20f, 1.55f).lineHeight)
   }
 
   @Test fun multilineCodeRunKeepsMarginsForEveryCoveredParagraph() {
@@ -102,10 +150,12 @@ class StreamTextMarkdownTest {
         decorations.map { "${it.start}:${it.end}:${it.quote}:${it.indent}" })
   }
 
-  @Test fun taskMarkersRecognizeOnlyLineContentEdges() {
-    assertEquals(listOf("0:true", "9:false", "20:true"),
-        StreamTextMarkdown.taskMarkers("[x] done\n[ ] todo\n> [X] quoted\ninline [x] stays text",
-            intArrayOf(0, 9, 18, 27), intArrayOf(8, 8, 12, 21), IntArray(4), intArrayOf(1, 1, 1, 0))
+  @Test fun taskMarkersUseOnlyNativeParserFlags() {
+    assertEquals(listOf("0:true", "9:false"),
+        StreamTextMarkdown.taskMarkers("[x] done\n[ ] todo\n[x] prose after a hard break",
+            intArrayOf(0, 9, 18), intArrayOf(4, 4, 4),
+            intArrayOf(StreamTextMarkdown.TASK_MARKER or StreamTextMarkdown.TASK_CHECKED,
+                StreamTextMarkdown.TASK_MARKER, 0))
             .map { "${it.start}:${it.checked}" })
   }
 
@@ -114,7 +164,8 @@ class StreamTextMarkdownTest {
     val starts = IntArray(1000)
     var offset = 0
     repeat(1000) { index -> starts[index] = offset; offset += "[x] row-$index\n".length }
-    val markers = StreamTextMarkdown.taskMarkers(text, starts, IntArray(1000) { 8 }, IntArray(1000), IntArray(1000) { 1 })
+    val markers = StreamTextMarkdown.taskMarkers(text, starts, IntArray(1000) { 4 },
+        IntArray(1000) { StreamTextMarkdown.TASK_MARKER or StreamTextMarkdown.TASK_CHECKED })
     assertEquals(1000, markers.size)
     assertEquals(0, markers.first().start)
     assertEquals(starts.last(), markers.last().start)
@@ -140,14 +191,16 @@ class StreamTextMarkdownTest {
 
   @Test fun accessibleReadingDescribesParserConfirmedTaskState() {
     val text = "[x] done\n[ ] todo\nprose [x] stays"
-    val document = document(text, intArrayOf(0, 9, 18), intArrayOf(8, 8, 17), IntArray(3),
+    val document = document(text, intArrayOf(0, 9, 18), intArrayOf(4, 4, 17), intArrayOf(
+        StreamTextMarkdown.TASK_MARKER or StreamTextMarkdown.TASK_CHECKED, StreamTextMarkdown.TASK_MARKER, 0),
         IntArray(3), intArrayOf(1, 1, 0), arrayOf(null, null, null))
     assertEquals("Checked task done\nUnchecked task todo\nprose [x] stays", document.accessibleReading(0, 200).text)
   }
 
   @Test fun accessibleReadingKeepsSemanticExpansionInsideTheVisibleSourceRange() {
     val text = "[x] done\n[ ] next\noffscreen"
-    val document = document(text, intArrayOf(0, 9, 18), intArrayOf(8, 8, 9), IntArray(3),
+    val document = document(text, intArrayOf(0, 9, 18), intArrayOf(4, 4, 9), intArrayOf(
+        StreamTextMarkdown.TASK_MARKER or StreamTextMarkdown.TASK_CHECKED, StreamTextMarkdown.TASK_MARKER, 0),
         IntArray(3), intArrayOf(1, 1, 0), arrayOf(null, null, null))
     val visible = document.accessibleReading(0, 200, sourceEnd = 17).text
     assertEquals("Checked task done\nUnchecked task next", visible)
@@ -169,6 +222,26 @@ class StreamTextMarkdownTest {
     assertEquals(7, image("https://example.test/two", "old").changedStartFrom(original))
     assertEquals(7, image("https://example.test/one", "new").changedStartFrom(original))
     assertEquals(9, image("https://example.test/one", "old").changedStartFrom(original))
+  }
+
+  @Test fun pendingImageChangesInvalidateTheSameAttachmentWithoutInventingAUrl() {
+    fun image(kind: Int, url: String?, alt: String) = rich(
+        StreamTextMarkdown.RichBlock(kind, 7, 0, 0, null, url, alt))
+    val pending = image(StreamTextMarkdown.BLOCK_IMAGE_PENDING, null, "diagram")
+    // The replacement character remains stable; metadata alone must still replace the suffix.
+    assertEquals(7, image(StreamTextMarkdown.BLOCK_IMAGE, "https://example.test/image.png", "diagram")
+        .changedStartFrom(pending))
+    assertEquals(7, image(StreamTextMarkdown.BLOCK_IMAGE_PENDING, null, "updated diagram")
+        .changedStartFrom(pending))
+    assertEquals(9, image(StreamTextMarkdown.BLOCK_IMAGE_PENDING, null, "diagram").changedStartFrom(pending))
+  }
+
+  @Test fun pendingImageSpanStaysPendingUntilACompleteUrlExists() {
+    val pending = MarkdownImageSpan(null, "diagram", 300)
+    val loading = MarkdownImageSpan("https://example.test/image.png", "diagram", 300)
+    assertEquals("pending", pending.status)
+    assertEquals("placeholder", loading.status)
+    assertFalse(pending.matches(loading))
   }
   private fun document(
       text: String,

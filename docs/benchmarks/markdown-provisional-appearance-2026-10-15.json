@@ -1,0 +1,16 @@
+{
+  "parserSha256": "b8a58c77079cb55b3f3d4a590b09eb77405f7e7ae0e71fe7ad80aec881c28c18",
+  "baselineParserSha256": "d5ffc7b164204a352fe6e2766b2c60c46ed6bc61dbf80255ceec62cf9ac2ca79",
+  "fixtureSha256": "9836beb5bd74f13099fc223728456eda009ea20d0bbd7172c84c8c8d254b28e2",
+  "chunkBytes": 8,
+  "demoIntervalMs": 100,
+  "previousFirstTableByte": 944,
+  "currentFirstTableByte": 896,
+  "firstTableRows": 1,
+  "firstTableColumns": 1,
+  "deliveryIntervalsEarlier": 6,
+  "normalNativeChecks": "passed",
+  "addressAndUndefinedBehaviorSanitizers": "passed",
+  "httpHeldPrefixChecks": 13,
+  "limitations": "Parser availability on the fixed simulated response, not measured mobile display latency or a claim of zero network/frame delay."
+}

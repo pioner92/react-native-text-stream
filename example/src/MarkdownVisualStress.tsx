@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Platform, Pressable, ScrollView, Text, View, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
 import { StreamScrollFollow } from './StreamScrollFollow';
+import { MarkdownProgressiveStress } from './MarkdownProgressiveStress';
 import { StreamText, streamFetch, useStreamTextRef, type TextStream } from 'react-native-text-stream';
 
 const host = Platform.OS === 'android' ? '10.0.2.2' : '127.0.0.1';
@@ -19,10 +20,11 @@ export function MarkdownVisualStress({ onBack }: { onBack: () => void }) {
   const [pitch, setPitch] = useState(false);
   const [slow, setSlow] = useState(false);
   const [film, setFilm] = useState(false);
+  const [progressive, setProgressive] = useState(false);
   const [status, setStatus] = useState('Loading');
 
   useEffect(() => {
-    if (film) return;
+    if (film || progressive) return;
     scroll.current?.scrollTo({ y: 0, animated: false });
     const timer = setTimeout(() => {
       active.current?.abort(); ref.clear();
@@ -30,7 +32,8 @@ export function MarkdownVisualStress({ onBack }: { onBack: () => void }) {
       active.current = stream; ref.attach(stream);
     }, 80);
     return () => { clearTimeout(timer); active.current?.abort(); };
-  }, [index, run, slow, film, ref]);
+  }, [index, run, slow, film, progressive, ref]);
+  if (progressive) return <MarkdownProgressiveStress onBack={() => setProgressive(false)} />;
   if (film) return <MarkdownAnnouncement onBack={() => setFilm(false)} />;
   const foreground = light ? '#172033' : '#EDF1FA';
   const background = light ? '#FFFFFF' : '#10141E';
@@ -43,6 +46,7 @@ export function MarkdownVisualStress({ onBack }: { onBack: () => void }) {
         {button('Back', onBack)}{button('Prev', () => setIndex((index + cases.length - 1) % cases.length))}
         {button('Next', () => setIndex((index + 1) % cases.length))}{button('All', () => setIndex(8))}
         {button('Replay', () => setRun(run + 1))}{button('Film', () => setFilm(true))}
+        {button('Early blocks', () => setProgressive(true))}
       </View>
       <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>
         {button(light ? 'Light' : 'Dark', () => setLight(!light))}{button(narrow ? '220 dp' : 'Full width', () => setNarrow(!narrow))}

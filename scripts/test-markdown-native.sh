@@ -9,11 +9,11 @@ fi
 if [ "$sanitize" -eq 1 ]; then
   build_dir="${TMPDIR:-/tmp}/streamtext-markdown-native-sanitize"
   c_flags="-std=c99 -O1 -g -fsanitize=address,undefined -fno-omit-frame-pointer"
-  cxx_flags="-std=c++17 -O1 -g -fsanitize=address,undefined -fno-omit-frame-pointer"
+  cxx_flags="-DSTMD_TESTING -std=c++17 -O1 -g -fsanitize=address,undefined -fno-omit-frame-pointer"
 else
   build_dir="${TMPDIR:-/tmp}/streamtext-markdown-native"
   c_flags="-std=c99 -O3 -DNDEBUG"
-  cxx_flags="-std=c++17 -O3"
+  cxx_flags="-DSTMD_TESTING -std=c++17 -O3"
 fi
 mkdir -p "$build_dir"
 cc $c_flags -c "$root/packages/react-native-text-stream/cpp/markdown/vendor/md4c/md4c.c" -o "$build_dir/md4c.o"

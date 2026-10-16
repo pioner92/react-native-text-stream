@@ -50,7 +50,9 @@ for supported elements and performance limits.
 - **A built-in fetcher.** URLSession on iOS and React Native’s OkHttp client on Android. No extra streaming library.
 - **Control the lifetime.** Use a request prop for a single view, a `streamId` for remounting list items, or an imperative ref.
 
-[Watch the JS-blocking demo](media/native-text-streaming-demo.mp4) · [Explore the architecture](docs/architecture.md)
+[Watch the rich Markdown demo](media/markdown-announcement/streamtext-rich-markdown-twitter-v4.mp4) ·
+[Watch the JS-blocking demo](media/native-text-streaming-demo.mp4) ·
+[Explore the architecture](docs/architecture.md)
 
 ## Quick start
 

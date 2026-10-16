@@ -43,7 +43,7 @@
     },
     "packages/react-native-text-stream": {
       "name": "react-native-text-stream",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "devDependencies": {
         "@jamesacarr/eslint-formatter-github-actions": "^0.2.0",
         "@react-native/babel-preset": "0.86.0",

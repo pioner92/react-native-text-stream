@@ -12,6 +12,7 @@ jsconfig.json
 # Xcode
 #
 build/
+build-release/
 build-device/
 *.pbxuser
 !default.pbxuser
@@ -79,6 +80,9 @@ lib/
 *.tsbuildinfo
 
 # Local notes and scratch files
+.argent/
+__pycache__/
+*.pyc
 HANDOFF.md
 REVIEW.md
 STREAM_FETCH_REVIEW.md
@@ -86,5 +90,11 @@ img.png
 logs/
 media/*-prompt.txt
 
+# Intermediate media and local build diagnostics. Final exports remain trackable.
+media/**/*-raw.mp4
+media/**/*.wav
+media/**/*-build.log
+
 # Benchmark runs: only the results the docs cite are committed (git add -f)
 bench-results/*.json
+docs/benchmarks/*.json

@@ -142,9 +142,9 @@ internal class StreamTextMarkdown @DoNotStrip constructor(
       if (blocks[mid].start < position) low = mid + 1 else high = mid
     }
     var index = low
-    // Task markers are derived once from parser-confirmed list runs, then consumed in document
+    // Task markers are derived once from parser-confirmed marker runs, then consumed in document
     // order. Accessibility gets the semantic control state rather than literal Markdown syntax.
-    val markers = taskMarkers(text, starts, lengths, flags, indents)
+    val markers = taskMarkers(text, starts, lengths, flags)
     var markerIndex = 0
     while (markerIndex < markers.size && markers[markerIndex].start < position) markerIndex++
     while (position < end && out.length < limit) {
@@ -185,7 +185,7 @@ internal class StreamTextMarkdown @DoNotStrip constructor(
     val out = SpannableStringBuilder(text)
     val codeBlockMargins = codeBlockMarginRanges(text, starts, lengths, flags)
     val paragraphDecorations = paragraphDecorations(text, starts, lengths, flags, indents)
-    val taskMarkers = taskMarkers(text, starts, lengths, flags, indents)
+    val taskMarkers = taskMarkers(text, starts, lengths, flags)
     for (i in starts.indices) {
       val start = starts[i].coerceIn(0, out.length)
       val end = (start + lengths[i]).coerceIn(start, out.length)
@@ -223,10 +223,10 @@ internal class StreamTextMarkdown @DoNotStrip constructor(
       // each contiguous block, which keeps its rounded outer corners seamless across lines.
       out.setSpan(LeadingMarginSpan.Standard(dp(8)), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
     }
-    for (section in codeBlockSections(codeBlockMargins, paragraphLanguages)) {
+    for (section in codeBlockSections(codeBlockMargins, paragraphLanguages, text)) {
       out.setSpan(MarkdownCodeBlockSpan(section.start, section.end, section.label), section.start, section.end,
           Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-      if (section.label != null) out.setSpan(MarkdownCodeHeaderSpan(section.start,
+      out.setSpan(MarkdownCodeHeaderSpan(section.start,
           if (style.lineHeight > 0f) ceil(PixelUtil.toPixelFromDIP(style.lineHeight).toDouble()).toInt() else 0),
           section.start, section.firstParagraphEnd,
           Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
@@ -246,7 +246,13 @@ internal class StreamTextMarkdown @DoNotStrip constructor(
       if (start >= out.length) continue
       when (block.kind) {
         BLOCK_TABLE -> out.setSpan(MarkdownTableSpan(block, width, style), start, start + 1, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-        BLOCK_IMAGE -> out.setSpan(MarkdownImageSpan(block.url.orEmpty(), block.alt.orEmpty(), width), start, start + 1, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        // A streaming image has a stable attachment as soon as its `![alt]` prefix is
+        // recognized. Its URL remains null until the closing `)` arrives. Keeping that state
+        // explicit prevents a partial URL from reaching the network layer and lets the span be
+        // replaced in-place when the real image becomes loadable.
+        BLOCK_IMAGE, BLOCK_IMAGE_PENDING -> out.setSpan(
+            MarkdownImageSpan(block.url, block.alt.orEmpty(), width), start, start + 1,
+            Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
       }
     }
     return out
@@ -399,14 +405,8 @@ internal class StreamTextMarkdown @DoNotStrip constructor(
       var label: String? = null
       while (candidate < starts.size && starts[candidate] < end) {
         if (starts[candidate] + lengths.getOrElse(candidate) { 0 } > start) {
-          label = when (flags[candidate] and LANGUAGE_MASK) {
-            LANGUAGE_TYPESCRIPT -> "TS"
-            LANGUAGE_JSON -> "JSON"
-            LANGUAGE_JAVASCRIPT -> "JS"
-            LANGUAGE_PYTHON -> "PY"
-            else -> null
-          }
-          if (label != null) break
+          label = languageLabel(flags[candidate])
+          break
         }
         candidate++
       }
@@ -440,39 +440,34 @@ internal class StreamTextMarkdown @DoNotStrip constructor(
     const val LANGUAGE_JSON = 1 shl 10
     const val LANGUAGE_PYTHON = 1 shl 11
     const val LANGUAGE_MASK = 15 shl 8
+    const val TASK_MARKER = 1 shl 12
+    const val TASK_CHECKED = 1 shl 13
 
-    /** Finds GFM markers only in parser-confirmed list content; prose and fenced code stay literal. */
+    internal fun languageLabel(flags: Int) = when (flags and LANGUAGE_MASK) {
+      LANGUAGE_TYPESCRIPT -> "TYPESCRIPT"
+      LANGUAGE_JSON -> "JSON"
+      LANGUAGE_JAVASCRIPT -> "JAVASCRIPT"
+      LANGUAGE_PYTHON -> "PYTHON"
+      else -> "CODE"
+    }
+
+    /** Uses the parser's task-marker run, never task-like prose within a list paragraph. */
     internal fun taskMarkers(
-        text: String, starts: IntArray, lengths: IntArray, flags: IntArray, indents: IntArray,
+        text: String, starts: IntArray, lengths: IntArray, flags: IntArray,
     ): List<TaskMarker> {
-      if (indents.none { it > 0 }) return emptyList()
+      if (flags.none { it and TASK_MARKER != 0 }) return emptyList()
       val result = ArrayList<TaskMarker>()
-      var line = 0
-      var run = 0
-      while (line < text.length) {
-        val end = text.indexOf('\n', line).let { if (it < 0) text.length else it }
-        var at = line
-        while (at < end && text[at] == ' ') at++
-        // MD4C's normalized display text retains a quote marker before a GFM task marker.
-        if (at < end && text[at] == '>') {
-          at++
-          while (at < end && text[at] == ' ') at++
+      for (index in starts.indices) {
+        if (flags.getOrElse(index) { 0 } and TASK_MARKER == 0) continue
+        val start = starts[index]
+        val end = start + lengths.getOrElse(index) { 0 }
+        // The native parser flags exactly its normalized four-character marker. Keep the source
+        // check defensive, so malformed native data cannot conceal arbitrary content.
+        if (end - start == 4 && start >= 0 && end <= text.length && text[start] == '[' &&
+            (text[start + 1] == ' ' || text[start + 1] == 'x' || text[start + 1] == 'X') &&
+            text[start + 2] == ']' && text[start + 3] == ' ') {
+          result.add(TaskMarker(start, flags[index] and TASK_CHECKED != 0))
         }
-        while (run < starts.size && starts[run] + lengths.getOrElse(run) { 0 } <= at) run++
-        var candidate = run
-        var parserConfirmedList = false
-        while (candidate < starts.size && starts[candidate] <= at) {
-          if (starts[candidate] + lengths.getOrElse(candidate) { 0 } > at &&
-              indents.getOrElse(candidate) { 0 } > 0 && flags.getOrElse(candidate) { 0 } and CODE_BLOCK == 0) {
-            parserConfirmedList = true
-            break
-          }
-          candidate++
-        }
-        if (parserConfirmedList && at + 3 <= end && text[at] == '[' && (text[at + 1] == ' ' || text[at + 1] == 'x' || text[at + 1] == 'X') && text[at + 2] == ']' && (at + 3 == end || text[at + 3] == ' ')) {
-          result.add(TaskMarker(at, text[at + 1] != ' '))
-        }
-        line = end + 1
       }
       return result
     }
@@ -491,7 +486,9 @@ internal class StreamTextMarkdown @DoNotStrip constructor(
     }
 
     /** Coalesces same-language adjacent code paragraphs without scanning syntax-token runs again. */
-    internal fun codeBlockSections(ranges: List<Pair<Int, Int>>, labels: List<String?>): List<CodeBlockSection> {
+    internal fun codeBlockSections(
+        ranges: List<Pair<Int, Int>>, labels: List<String?>, text: String? = null,
+    ): List<CodeBlockSection> {
       if (ranges.isEmpty()) return emptyList()
       val result = ArrayList<CodeBlockSection>()
       var start = ranges[0].first
@@ -504,7 +501,16 @@ internal class StreamTextMarkdown @DoNotStrip constructor(
         // Syntax tokenization is sparse: a comment-only or punctuation-only paragraph may carry
         // no language bit. Keep it on the surrounding fence surface, adopting the first known
         // label, while a different explicit label still starts a new fence section.
-        if (range.first == end + 1 && (label == null || nextLabel == null || nextLabel == label)) {
+        // A streaming fence with no body is represented by a CODE_BLOCK run over its newline:
+        // [lineStart, lineStart + 1). Its following paragraph starts at that same exclusive end,
+        // whereas ordinary code paragraphs leave their newline outside the range. Both belong to
+        // one surface; distinct fences retain a real separator gap.
+        // Normal paragraphs exclude their newline, so the next code line starts at end + 1.
+        // An empty streaming fence instead owns its newline ([start, end)); its closing fence's
+        // plain separator is the following character and must keep the next fence separate.
+        val previousOwnsNewline = text != null && end > start && text[end - 1] == '\n'
+        if ((range.first == end || (range.first == end + 1 && !previousOwnsNewline)) &&
+            (label == null || nextLabel == null || nextLabel == label)) {
           end = range.second
           if (label == null) label = nextLabel
         } else {
@@ -531,6 +537,7 @@ internal class StreamTextMarkdown @DoNotStrip constructor(
     const val TOKEN_TYPE = 1 shl 20
     const val BLOCK_TABLE = 1
     const val BLOCK_IMAGE = 2
+    const val BLOCK_IMAGE_PENDING = 3
 
     /**
      * Returns each code-block paragraph once. This scans text and ordered parser runs forward,
@@ -549,7 +556,10 @@ internal class StreamTextMarkdown @DoNotStrip constructor(
         while (run < starts.size && starts[run] + lengths.getOrElse(run) { 0 } <= lineStart) run++
         var candidate = run
         var hasCode = false
-        while (candidate < starts.size && starts[candidate] < lineEnd) {
+        // A just-opened fence has one synthetic CODE_BLOCK run over its newline. Include that
+        // zero-glyph paragraph so LineBackgroundSpan receives a drawable visual line.
+        while (candidate < starts.size && (starts[candidate] < lineEnd ||
+            (lineStart == lineEnd && starts[candidate] == lineEnd))) {
           val runEnd = starts[candidate] + lengths.getOrElse(candidate) { 0 }
           if (runEnd > lineStart && flags.getOrElse(candidate) { 0 } and CODE_BLOCK != 0) {
             hasCode = true
@@ -557,7 +567,10 @@ internal class StreamTextMarkdown @DoNotStrip constructor(
           }
           candidate++
         }
-        if (hasCode && lineStart < lineEnd) result.add(lineStart to lineEnd)
+        val paragraphEnd = if (lineStart == lineEnd && hasCode) {
+          (lineEnd + 1).coerceAtMost(text.length)
+        } else lineEnd
+        if (hasCode && lineStart < paragraphEnd) result.add(lineStart to paragraphEnd)
         lineStart = lineEnd + 1
       }
       return result

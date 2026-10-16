@@ -17,6 +17,7 @@
 #include <react/fabric/StateWrapperImpl.h>
 
 #include <climits>
+#include <limits>
 #include <memory>
 #include <vector>
 
@@ -36,6 +37,40 @@ using StreamTextConcreteState = StreamTextViewShadowNode::ConcreteState;
 struct JStreamTextMarkdown : jni::JavaClass<JStreamTextMarkdown> {
   static constexpr auto kJavaDescriptor = "Lcom/textstream/StreamTextMarkdown;";
 };
+struct JStreamTextMarkdownCell : jni::JavaClass<JStreamTextMarkdownCell> {
+  static constexpr auto kJavaDescriptor = "Lcom/textstream/StreamTextMarkdown$RichCell;";
+};
+struct JStreamTextMarkdownBlock : jni::JavaClass<JStreamTextMarkdownBlock> {
+  static constexpr auto kJavaDescriptor = "Lcom/textstream/StreamTextMarkdown$RichBlock;";
+};
+
+struct MarkdownJniMetadata {
+  jclass stringClass, resultClass, cellClass, blockClass;
+  jmethodID resultConstructor, cellConstructor, blockConstructor;
+};
+
+const MarkdownJniMetadata &markdownJniMetadata() {
+  // javaClassStatic retains global references. Resolve constructors once while
+  // JNI_OnLoad has the app class loader, before any prepare/parser worker runs.
+  static const MarkdownJniMetadata metadata = [] {
+    JNIEnv *env = jni::Environment::current();
+    const auto constructor = [env](jclass type, const char *signature) {
+      const auto method = env->GetMethodID(type, "<init>", signature);
+      if (!method) jni::throwPendingJniExceptionAsCppException();
+      return method;
+    };
+    MarkdownJniMetadata value{};
+    value.stringClass = jni::JString::javaClassStatic().get();
+    value.resultClass = JStreamTextMarkdown::javaClassStatic().get();
+    value.cellClass = JStreamTextMarkdownCell::javaClassStatic().get();
+    value.blockClass = JStreamTextMarkdownBlock::javaClassStatic().get();
+    value.resultConstructor = constructor(value.resultClass, "(Ljava/lang/String;[I[I[I[I[I[Ljava/lang/String;[Lcom/textstream/StreamTextMarkdown$RichBlock;)V");
+    value.cellConstructor = constructor(value.cellClass, "(Ljava/lang/String;[I[I[I[I[I[Ljava/lang/String;ZI)V");
+    value.blockConstructor = constructor(value.blockClass, "(IIII[Lcom/textstream/StreamTextMarkdown$RichCell;Ljava/lang/String;Ljava/lang/String;)V");
+    return value;
+  }();
+  return metadata;
+}
 
 struct MarkdownParserHolder {
   STMarkdownParser *parser = nullptr;
@@ -287,7 +322,7 @@ struct JStreamTextNative : jni::JavaClass<JStreamTextNative> {
     return static_cast<jint>(tsb_status(reinterpret_cast<const void *>(base)));
   }
 
-  /** MD4C output materialized as primitive arrays; invoked only on StreamTextMarkdown workers. */
+  /** MD4C output materialized as primitive arrays on Markdown or prepare workers. */
   static jni::local_ref<JStreamTextMarkdown> parseMarkdownStreaming(
       jni::alias_ref<jclass>,
       jni::alias_ref<jstring> markdown,
@@ -295,29 +330,98 @@ struct JStreamTextNative : jni::JavaClass<JStreamTextNative> {
       jboolean final) {
     if (!markdown) return nullptr;
     const auto input = markdown->toStdString();
-    // The fixed Markdown worker pool owns at most two of these. Keeping MD4C's vectors avoids
-    // reallocating parser state for every coalesced stream update; thread teardown destroys it.
+    // Worker-local vectors avoid reallocating parser state for every coalesced update.
+    // Prepare workers also use this entry point; thread teardown releases their buffers.
     thread_local MarkdownParserHolder holder;
     STMarkdownParser *parser = holder.parser;
-    if (!parser) parser = holder.parser = stmd_create();
+    if (!parser) {
+      parser = holder.parser = stmd_create();
+      // Kotlin owns the per-view diff. This worker can serve different views and
+      // never consumes the C++ changedStartUTF16/history snapshot.
+      if (parser) stmd_set_track_changes(parser, false);
+    }
     if (!parser) return nullptr;
     const STMarkdownDocument *document = stmd_parse_decoded_streaming(
         parser, input.data(), input.size(), github == JNI_TRUE, final == JNI_TRUE);
     if (!document || document->textLength > static_cast<size_t>(INT32_MAX) ||
-        document->runCount > static_cast<size_t>(INT32_MAX)) {
+        document->runCount > static_cast<size_t>(INT32_MAX) ||
+        document->blockCount > static_cast<size_t>(INT32_MAX)) {
       return nullptr;
     }
     if (document->error != 0) return nullptr;
     JNIEnv *env = jni::Environment::current();
+    // JNI could propagate a pending exception to Java, but this method instead
+    // returns null because Kotlin deliberately falls back to plain text for a
+    // snapshot it cannot materialize. Clear it before making another JNI call.
+    const auto allocationFailed = [env](jobject value) {
+      if (value && !env->ExceptionCheck()) return false;
+      if (env->ExceptionCheck()) env->ExceptionClear();
+      return true;
+    };
+    const auto callFailed = [env] {
+      if (!env->ExceptionCheck()) return false;
+      env->ExceptionClear();
+      return true;
+    };
+    const auto fitsJint = [](size_t value) {
+      return value <= static_cast<size_t>(INT32_MAX);
+    };
+    if (!document->text || !fitsJint(document->textLength) ||
+        (document->runCount && !document->runs) ||
+        (document->blockCount && !document->blocks)) {
+      return nullptr;
+    }
+    for (size_t i = 0; i < document->runCount; ++i) {
+      const auto &run = document->runs[i];
+      if (!fitsJint(run.start) || !fitsJint(run.length) ||
+          run.start > document->textLength || run.length > document->textLength - run.start) {
+        return nullptr;
+      }
+    }
+    for (size_t bi = 0; bi < document->blockCount; ++bi) {
+      const auto &block = document->blocks[bi];
+      if (!fitsJint(block.start) || !fitsJint(block.rowCount) || !fitsJint(block.columnCount) ||
+          !fitsJint(block.altLength)) {
+        return nullptr;
+      }
+      if (block.kind != STMD_BLOCK_TABLE) continue;
+      if (block.columnCount && block.rowCount > std::numeric_limits<size_t>::max() / block.columnCount) {
+        return nullptr;
+      }
+      const size_t cellCount = block.rowCount * block.columnCount;
+      if (!fitsJint(cellCount) || (cellCount && !block.cells)) return nullptr;
+      for (size_t ci = 0; ci < cellCount; ++ci) {
+        const auto &cell = block.cells[ci];
+        if (!fitsJint(cell.textLength) || !fitsJint(cell.runCount) ||
+            (cell.textLength && !cell.text) || (cell.runCount && !cell.runs)) {
+          return nullptr;
+        }
+        for (size_t ri = 0; ri < cell.runCount; ++ri) {
+          const auto &run = cell.runs[ri];
+          if (!fitsJint(run.start) || !fitsJint(run.length) ||
+              run.start > cell.textLength || run.length > cell.textLength - run.start) {
+            return nullptr;
+          }
+        }
+      }
+    }
+    const auto &metadata = markdownJniMetadata();
     const jsize count = static_cast<jsize>(document->runCount);
     jstring text = env->NewString(reinterpret_cast<const jchar *>(document->text), static_cast<jsize>(document->textLength));
+    if (allocationFailed(text)) return nullptr;
     jintArray starts = env->NewIntArray(count);
+    if (allocationFailed(starts)) return nullptr;
     jintArray lengths = env->NewIntArray(count);
+    if (allocationFailed(lengths)) return nullptr;
     jintArray flags = env->NewIntArray(count);
+    if (allocationFailed(flags)) return nullptr;
     jintArray headings = env->NewIntArray(count);
+    if (allocationFailed(headings)) return nullptr;
     jintArray indents = env->NewIntArray(count);
-    jclass stringClass = env->FindClass("java/lang/String");
+    if (allocationFailed(indents)) return nullptr;
+    jclass stringClass = metadata.stringClass;
     jobjectArray urls = env->NewObjectArray(count, stringClass, nullptr);
+    if (allocationFailed(urls)) return nullptr;
     std::vector<jint> startsOut(count), lengthsOut(count), flagsOut(count), headingsOut(count), indentsOut(count);
     for (jsize i = 0; i < count; ++i) {
       const auto &run = document->runs[i];
@@ -328,37 +432,59 @@ struct JStreamTextNative : jni::JavaClass<JStreamTextNative> {
       indentsOut[i] = static_cast<jint>(run.indent);
       if (run.url) {
         jstring url = utf8String(env, run.url);
+        if (allocationFailed(url)) return nullptr;
         env->SetObjectArrayElement(urls, i, url);
+        if (callFailed()) return nullptr;
         env->DeleteLocalRef(url);
       }
     }
     env->SetIntArrayRegion(starts, 0, count, startsOut.data());
+    if (callFailed()) return nullptr;
     env->SetIntArrayRegion(lengths, 0, count, lengthsOut.data());
+    if (callFailed()) return nullptr;
     env->SetIntArrayRegion(flags, 0, count, flagsOut.data());
+    if (callFailed()) return nullptr;
     env->SetIntArrayRegion(headings, 0, count, headingsOut.data());
+    if (callFailed()) return nullptr;
     env->SetIntArrayRegion(indents, 0, count, indentsOut.data());
-    jclass resultClass = JStreamTextMarkdown::javaClassStatic().get();
-    jclass cellClass = env->FindClass("com/textstream/StreamTextMarkdown$RichCell");
-    jclass blockClass = env->FindClass("com/textstream/StreamTextMarkdown$RichBlock");
-    jmethodID cellConstructor = env->GetMethodID(cellClass, "<init>", "(Ljava/lang/String;[I[I[I[I[I[Ljava/lang/String;ZI)V");
-    jmethodID blockConstructor = env->GetMethodID(blockClass, "<init>", "(IIII[Lcom/textstream/StreamTextMarkdown$RichCell;Ljava/lang/String;Ljava/lang/String;)V");
+    if (callFailed()) return nullptr;
+    jclass resultClass = metadata.resultClass;
+    jclass cellClass = metadata.cellClass;
+    jclass blockClass = metadata.blockClass;
+    jmethodID cellConstructor = metadata.cellConstructor;
+    jmethodID blockConstructor = metadata.blockConstructor;
     jobjectArray blocks = env->NewObjectArray(static_cast<jsize>(document->blockCount), blockClass, nullptr);
+    if (allocationFailed(blocks)) return nullptr;
     for (jsize bi = 0; bi < static_cast<jsize>(document->blockCount); ++bi) {
       const auto &block = document->blocks[bi];
       jobjectArray cells = nullptr;
       const size_t cellCount = block.rowCount * block.columnCount;
-      if (block.kind == STMD_BLOCK_TABLE && cellCount <= static_cast<size_t>(INT32_MAX)) {
+      if (block.kind == STMD_BLOCK_TABLE) {
         cells = env->NewObjectArray(static_cast<jsize>(cellCount), cellClass, nullptr);
+        if (allocationFailed(cells)) return nullptr;
         for (jsize ci = 0; ci < static_cast<jsize>(cellCount); ++ci) {
           const auto &cell = block.cells[ci]; const jsize runs = static_cast<jsize>(cell.runCount);
           jstring cellText = env->NewString(reinterpret_cast<const jchar *>(cell.text), static_cast<jsize>(cell.textLength));
-          jintArray cs = env->NewIntArray(runs), cl = env->NewIntArray(runs), cf = env->NewIntArray(runs), ch = env->NewIntArray(runs), ciIndent = env->NewIntArray(runs);
+          if (allocationFailed(cellText)) return nullptr;
+          jintArray cs = env->NewIntArray(runs);
+          if (allocationFailed(cs)) return nullptr;
+          jintArray cl = env->NewIntArray(runs);
+          if (allocationFailed(cl)) return nullptr;
+          jintArray cf = env->NewIntArray(runs);
+          if (allocationFailed(cf)) return nullptr;
+          jintArray ch = env->NewIntArray(runs);
+          if (allocationFailed(ch)) return nullptr;
+          jintArray ciIndent = env->NewIntArray(runs);
+          if (allocationFailed(ciIndent)) return nullptr;
           jobjectArray cu = env->NewObjectArray(runs, stringClass, nullptr);
+          if (allocationFailed(cu)) return nullptr;
           std::vector<jint> vs(runs), vl(runs), vf(runs), vh(runs), vi(runs);
-          for (jsize ri = 0; ri < runs; ++ri) { const auto &r = cell.runs[ri]; vs[ri]=r.start; vl[ri]=r.length; vf[ri]=r.flags; vh[ri]=r.headingLevel; vi[ri]=r.indent; if (r.url) { jstring u=utf8String(env,r.url); env->SetObjectArrayElement(cu,ri,u); env->DeleteLocalRef(u); } }
-          if (runs) { env->SetIntArrayRegion(cs,0,runs,vs.data()); env->SetIntArrayRegion(cl,0,runs,vl.data()); env->SetIntArrayRegion(cf,0,runs,vf.data()); env->SetIntArrayRegion(ch,0,runs,vh.data()); env->SetIntArrayRegion(ciIndent,0,runs,vi.data()); }
+          for (jsize ri = 0; ri < runs; ++ri) { const auto &r = cell.runs[ri]; vs[ri]=r.start; vl[ri]=r.length; vf[ri]=r.flags; vh[ri]=r.headingLevel; vi[ri]=r.indent; if (r.url) { jstring u=utf8String(env,r.url); if (allocationFailed(u)) return nullptr; env->SetObjectArrayElement(cu,ri,u); if (callFailed()) return nullptr; env->DeleteLocalRef(u); } }
+          if (runs) { env->SetIntArrayRegion(cs,0,runs,vs.data()); if (callFailed()) return nullptr; env->SetIntArrayRegion(cl,0,runs,vl.data()); if (callFailed()) return nullptr; env->SetIntArrayRegion(cf,0,runs,vf.data()); if (callFailed()) return nullptr; env->SetIntArrayRegion(ch,0,runs,vh.data()); if (callFailed()) return nullptr; env->SetIntArrayRegion(ciIndent,0,runs,vi.data()); if (callFailed()) return nullptr; }
           jobject cellObject = env->NewObject(cellClass, cellConstructor, cellText, cs, cl, cf, ch, ciIndent, cu, (cell.flags & STMD_BLOCK_CELL_HEADER) ? JNI_TRUE : JNI_FALSE, static_cast<jint>(cell.alignment));
+          if (allocationFailed(cellObject)) return nullptr;
           env->SetObjectArrayElement(cells, ci, cellObject);
+          if (callFailed()) return nullptr;
           env->DeleteLocalRef(cellObject);
           env->DeleteLocalRef(cellText);
           env->DeleteLocalRef(cs); env->DeleteLocalRef(cl); env->DeleteLocalRef(cf);
@@ -366,13 +492,18 @@ struct JStreamTextNative : jni::JavaClass<JStreamTextNative> {
         }
       }
       jstring imageUrl = block.url ? utf8String(env, block.url) : nullptr;
+      if (block.url && allocationFailed(imageUrl)) return nullptr;
       jstring alt = block.alt ? env->NewString(reinterpret_cast<const jchar *>(block.alt), static_cast<jsize>(block.altLength)) : nullptr;
+      if (block.alt && allocationFailed(alt)) return nullptr;
       jobject rich = env->NewObject(blockClass, blockConstructor, static_cast<jint>(block.kind), static_cast<jint>(block.start), static_cast<jint>(block.rowCount), static_cast<jint>(block.columnCount), cells, imageUrl, alt);
+      if (allocationFailed(rich)) return nullptr;
       env->SetObjectArrayElement(blocks, bi, rich); env->DeleteLocalRef(rich);
+      if (callFailed()) return nullptr;
       if (cells) env->DeleteLocalRef(cells); if (imageUrl) env->DeleteLocalRef(imageUrl); if (alt) env->DeleteLocalRef(alt);
     }
-    jmethodID constructor = env->GetMethodID(resultClass, "<init>", "(Ljava/lang/String;[I[I[I[I[I[Ljava/lang/String;[Lcom/textstream/StreamTextMarkdown$RichBlock;)V");
+    jmethodID constructor = metadata.resultConstructor;
     jobject result = env->NewObject(resultClass, constructor, text, starts, lengths, flags, headings, indents, urls, blocks);
+    if (allocationFailed(result)) return nullptr;
     return jni::adopt_local(reinterpret_cast<JStreamTextMarkdown::javaobject>(result));
   }
 
@@ -412,6 +543,6 @@ JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM *vm, void *) {
     facebook::react::JStreamTextFetch::registerNatives();
     // Looked up here, with the app's class loader: the prepare threads use it without one.
     facebook::react::JStreamTextPreparedLayout::javaClassStatic();
-    facebook::react::JStreamTextMarkdown::javaClassStatic();
+    facebook::react::markdownJniMetadata();
   });
 }

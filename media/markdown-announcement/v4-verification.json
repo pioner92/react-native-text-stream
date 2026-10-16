@@ -1,0 +1,42 @@
+{
+  "file": "streamtext-rich-markdown-twitter-v4.mp4",
+  "sha256": "7d32c2a8f857b3fce08f27e3b3fc055ff7017e8ccf850e12df923a292de38199",
+  "bytes": 2701850,
+  "durationSeconds": 24,
+  "width": 1080,
+  "height": 1920,
+  "framesPerSecond": 30,
+  "codec": "h264",
+  "pixelFormat": "yuv420p",
+  "colorRange": "tv",
+  "audio": false,
+  "fullDecode": "passed",
+  "fastStart": true,
+  "source": "StreamText Markdown iOS26.5 simulator, current Release build",
+  "entryFile": "example/index.markdown-announce.js",
+  "rawCapture": ".argent/recordings/screen-recording-3151717D-25E3-40D9-8D93-4BB90C4C6C18-1792138134829.mp4",
+  "streamChunkBytes": 8,
+  "streamIntervalMs": 100,
+  "playbackSpeed": 1,
+  "staticFrameTrimming": false,
+  "leadInTrimSeconds": 0,
+  "tailTrim": "Only static time after COMPLETE; no streaming interval removed",
+  "crop": {
+    "x": 48,
+    "y": 186,
+    "width": 1224,
+    "height": 2580
+  },
+  "watermark": false,
+  "date": "2026-10-16",
+  "checks": [
+    "first frame shows READY before request",
+    "image placeholder then loaded concept",
+    "checklist and nested lists",
+    "progressive table header and rows",
+    "TypeScript and JSON code",
+    "COMPLETE plus final sentence"
+  ],
+  "contactSheet": "v4-contact-sheet.jpg",
+  "finalPreview": "v4-export-preview.png"
+}

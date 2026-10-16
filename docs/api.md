@@ -29,6 +29,7 @@ import { StreamText } from 'react-native-text-stream'
 | `textAlign` | `StreamTextAlign` | `'auto'` | Text alignment. |
 | `selectable` | `boolean` | `true` | Enables native text selection. |
 | `selectionColor` | `ColorValue` | platform tint | Selection highlight color. |
+| `recordDisplayLog` | `boolean` | `false` | Test and benchmark instrumentation: records display timing under `nativeID` when the native library is built with `STREAMTEXT_TESTING`. |
 | `onStatusChange` | `(status, bytes) => void` | — | Emits display lifecycle updates. |
 
 `source` takes precedence over `streamId` while it is present. Removing `source`
@@ -169,5 +170,5 @@ interface StreamTextState {
 
 `StreamTextProps`, `StreamTextRequest`, `StreamTextHandle`, `StreamTextRef`,
 `StreamTextStatus`, `StreamTextState`, `StreamTextAlign`,
-`StreamTextFontWeight`, `StreamFetchInit`, `StreamFetchResponse`,
+`StreamTextFontWeight`, `StreamTextFormat`, `StreamTextMarkdownFlavor`, `StreamFetchInit`, `StreamFetchResponse`,
 `StreamFetchResult`, `StreamFetchParser`, `StreamFetchProvider`, and `TextStream` are exported for TypeScript users.

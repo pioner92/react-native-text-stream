@@ -3,8 +3,10 @@ package com.textstream
 import android.os.Build
 import android.text.DynamicLayout
 import android.text.Layout
+import android.text.SpanWatcher
 import android.text.SpannableStringBuilder
 import android.text.TextPaint
+import android.text.TextWatcher
 import android.text.TextUtils
 
 /**
@@ -104,10 +106,23 @@ internal class StreamTextFlow {
   fun replaceFrom(from: Int, replacement: CharSequence): Boolean {
     if (frozen.isNotEmpty() || from !in 0..text.length || from > live.length) return false
     val layout = liveLayout ?: return false
+    // Spannable keeps some exclusive-exclusive spans at a replacement boundary. Replacing a
+    // Markdown suffix then adds fresh spans beside those stale objects on every update. Remove
+    // only suffix-owned formatting first; DynamicLayout's watcher spans must remain attached.
+    removeSuffixSpans(text, from)
+    removeSuffixSpans(live, from)
     text.replace(from, text.length, replacement)
     live.replace(from, live.length, replacement)
     liveBlocks?.markDirty(maxOf(layout.getLineForOffset(from.coerceAtMost(layout.text.length)) - 1, 0) / StreamTextBlocks.LINES)
     return true
+  }
+
+  private fun removeSuffixSpans(buffer: SpannableStringBuilder, from: Int) {
+    for (span in buffer.getSpans(from, buffer.length, Any::class.java)) {
+      if (buffer.getSpanStart(span) >= from && span !is TextWatcher && span !is SpanWatcher) {
+        buffer.removeSpan(span)
+      }
+    }
   }
 
   /** Freezes all but the last lines once the paragraph the stream is in is long (see the class). */

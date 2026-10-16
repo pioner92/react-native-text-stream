@@ -27,7 +27,57 @@ class StreamTextMarkdownWorkerTest {
     submit(300)
     submit(190)
     assertEquals(listOf(0, 1, 0), deliveries.map { it.changed })
-    assertEquals(listOf(300, 300, 190), widths)
+    // The unchanged 300px snapshot reuses its worker-built attachments; only a width change
+    // needs a new measured table/image span.
+    assertEquals(listOf(300, 190), widths)
+  }
+
+  @Test fun pendingImageUrlBytesReuseTheAcknowledgedVisualSnapshot() {
+    val queue = Queue()
+    val deliveries = mutableListOf<Delivery>()
+    val pending = StreamTextMarkdown("\uFFFC", intArrayOf(0), intArrayOf(1), intArrayOf(0),
+        intArrayOf(0), intArrayOf(0), arrayOf(null),
+        arrayOf(StreamTextMarkdown.RichBlock(StreamTextMarkdown.BLOCK_IMAGE_PENDING, 0, 0, 0, null, null, "diagram")))
+    var styleCalls = 0
+    val worker = StreamTextMarkdownWorker(executor = queue, parse = { _, _, _ -> pending },
+        style = { document, _, _, _ -> styleCalls++; document.text },
+        deliver = { generation, bytes, final, value, _, changed, acknowledge ->
+          deliveries.add(Delivery(generation, bytes, final, value.text, changed, acknowledge))
+        })
+    worker.submit("![diagram](https://exa", 1, 22, true, 0, 300)
+    queue.runNext()
+    deliveries.single().acknowledge()
+    queue.runNext()
+    worker.submit("![diagram](https://example.test/longer", 1, 37, true, 0, 300)
+    queue.runNext()
+    assertEquals(1, styleCalls)
+    assertEquals(1, deliveries.last().changed)
+  }
+
+  @Test fun visualSnapshotReuseNeverCrossesColorStyleOrGenerationBoundaries() {
+    val queue = Queue()
+    val deliveries = mutableListOf<Delivery>()
+    val pending = StreamTextMarkdown("\uFFFC", intArrayOf(0), intArrayOf(1), intArrayOf(0),
+        intArrayOf(0), intArrayOf(0), arrayOf(null),
+        arrayOf(StreamTextMarkdown.RichBlock(StreamTextMarkdown.BLOCK_IMAGE_PENDING, 0, 0, 0, null, null, "diagram")))
+    var styleCalls = 0
+    val worker = StreamTextMarkdownWorker(executor = queue, parse = { _, _, _ -> pending },
+        style = { document, _, _, _ -> styleCalls++; document.text },
+        deliver = { generation, bytes, final, value, _, changed, acknowledge ->
+          deliveries.add(Delivery(generation, bytes, final, value.text, changed, acknowledge))
+        })
+    fun submit(generation: Long, color: Int, style: StreamTextStyle = StreamTextStyle()) {
+      worker.submit("![diagram](partial", generation, 19, true, color, 300, style)
+      queue.runNext()
+      deliveries.last().acknowledge()
+      queue.runNext()
+    }
+    submit(1, 0xff112233.toInt())
+    submit(1, 0xff223344.toInt())
+    submit(1, 0xff223344.toInt(), StreamTextStyle(fontSize = 18f))
+    worker.clear()
+    submit(2, 0xff223344.toInt(), StreamTextStyle(fontSize = 18f))
+    assertEquals(4, styleCalls)
   }
   private class Queue : Executor {
     val work = ArrayDeque<Runnable>()

@@ -17,20 +17,23 @@ REVIEW_EVIDENCE_PATH="$results/evidence.jsonl" node server/review-test-server.mj
 review_pid=$!
 node server/protocol-server.mjs > "$results/protocol-fixtures.log" 2>&1 &
 protocol_pid=$!
-trap 'kill "$stream_pid" "$fixture_pid" "$review_pid" "$protocol_pid" 2>/dev/null || true' EXIT
-for port in 9877 9878 19878 9881; do
+node server/rich-markdown-server.mjs > "$results/rich-markdown-fixtures.log" 2>&1 &
+rich_pid=$!
+trap 'kill "$stream_pid" "$fixture_pid" "$review_pid" "$protocol_pid" "$rich_pid" 2>/dev/null || true' EXIT
+for port in 9877 9878 19878 9881 9882; do
   for attempt in {1..50}; do
-    kill -0 "$stream_pid" "$fixture_pid" "$review_pid" "$protocol_pid"
+    kill -0 "$stream_pid" "$fixture_pid" "$review_pid" "$protocol_pid" "$rich_pid"
     route='/empty?repeat=0'
     if [ "$port" = 9881 ]; then route='/health'; fi
     if [ "$port" = 19878 ]; then route='/count?key=ready'; fi
+    if [ "$port" = 9882 ]; then route='/daylight-concept.png'; fi
     if curl --silent --fail --max-time 1 "http://127.0.0.1:$port$route" > /dev/null; then break; fi
     if [ "$attempt" = 50 ]; then echo "Fixture $port did not start" >&2; exit 1; fi
     sleep 0.1
   done
 done
 if [ "$platform" = android ]; then
-  for port in 9877 9878 19878 9881; do adb reverse "tcp:$port" "tcp:$port"; done
+  for port in 9877 9878 19878 9881 9882; do adb reverse "tcp:$port" "tcp:$port"; done
 fi
 cd example
 suites=("$suite")

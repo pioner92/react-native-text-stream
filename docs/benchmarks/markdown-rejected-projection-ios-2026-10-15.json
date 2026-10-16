@@ -1,0 +1,22 @@
+{
+  "date": "2026-10-15",
+  "source": {
+    "file": "packages/react-native-text-stream/cpp/markdown/StreamMarkdown.cpp",
+    "sha256": "a467f6224086bbf0509d5f294c270566fcb4aa9a415b0baa4966413fd779e85a"
+  },
+  "device": {
+    "name": "StreamText Markdown",
+    "udid": "3151717D-25E3-40D9-8D93-4BB90C4C6C18",
+    "runtime": "iOS 26.5"
+  },
+  "nativeBuild": "Debug iphonesimulator rebuilt and installed before the harness run",
+  "command": "HARNESS_IOS_DEVICE='StreamText Markdown' HARNESS_IOS_VERSION=26.5 HARNESS_METRO_PORT=8082 HARNESS_TEST_TIMEOUT=20000 bun run --cwd example test:harness -- markdown.harness.tsx markdown-rich.harness.tsx markdown-rendering.harness.tsx markdown-seams.harness.tsx markdown-rich-accessibility.harness.tsx markdown-progressive.harness.tsx",
+  "result": {
+    "suites": 6,
+    "passed": 77,
+    "failed": 0,
+    "skipped": 0,
+    "seconds": 42.4
+  },
+  "scope": "All Markdown harness suites, including the added rejected-projection regression in the progressive suite."
+}

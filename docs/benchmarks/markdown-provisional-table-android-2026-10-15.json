@@ -1,0 +1,47 @@
+{
+  "date": "2026-10-15",
+  "target": {
+    "platform": "android",
+    "device": "StreamText_Markdown_Tests",
+    "serial": "emulator-5556"
+  },
+  "source": {
+    "file": "packages/react-native-text-stream/cpp/markdown/StreamMarkdown.cpp",
+    "sha256": "b8a58c77079cb55b3f3d4a590b09eb77405f7e7ae0e71fe7ad80aec881c28c18"
+  },
+  "androidRenderer": {
+    "file": "packages/react-native-text-stream/android/src/main/java/com/textstream/StreamTextMarkdown.kt",
+    "sha256": "fd550726b2818896b0e159c3ac69a49dddd5ae0ec16d39d18ef4271b387507b9"
+  },
+  "build": {
+    "command": "./gradlew :app:assembleDebug",
+    "result": "passed"
+  },
+  "harness": {
+    "command": "HARNESS_ANDROID_AVD=StreamText_Markdown_Tests HARNESS_TEST_TIMEOUT=20000 HARNESS_METRO_PORT=8085 HARNESS_APP_PATH=/Users/alex/WebstormProjects/react-native-text-stream/example/android/app/build/outputs/apk/debug/app-debug.apk bun x --no-install react-native-harness --config jest.harness.config.mjs --harnessRunner android --watchman=false --testPathPatterns='markdown[^.]*\\.harness' --json --outputFile=/private/tmp/markdown-full-android-final-harness.json",
+    "metroPort": 8085,
+    "durationSeconds": 43.179,
+    "suites": { "total": 6, "passed": 6 },
+    "tests": { "total": 76, "passed": 74, "skipped": 2 },
+    "resultJson": "/private/tmp/markdown-full-android-final-harness.json",
+    "resultSha256": "6278c9eb66e2d95723d6aa3d9aa8806bcf0b87bf441a72458fcff83c0dffb63d"
+  },
+  "androidUnitTests": {
+    "command": "./gradlew :react-native-text-stream:testDebugUnitTest --tests com.textstream.StreamTextMarkdownTest",
+    "result": "passed"
+  },
+  "visualControl": {
+    "status": "passed-for-key-held-stages",
+    "foregroundConfirmed": "Markdown demo on the dedicated emulator",
+    "coordinateSpace": "1080x2400 physical pixels; matched Mobile Dev input dimensions",
+    "failure": "Mobile Dev accessibility endpoint returned HTTP 400 for /api/accessibility; a temporary isolated visual entry was used, then removed.",
+    "stages": ["first", "cells", "separator", "fence"],
+    "screenshots": [
+      "media/markdown-announcement/provisional-table-android/first-dark-full.png",
+      "media/markdown-announcement/provisional-table-android/cells-dark-full.png",
+      "media/markdown-announcement/provisional-table-android/separator-dark-full.png",
+      "media/markdown-announcement/provisional-table-android/fence-dark-full-final.png"
+    ],
+    "note": "The final fence screenshot confirms an immediate visible rounded code surface. Normal debug entry and Metro 8081 were restored after capture."
+  }
+}

@@ -2,15 +2,36 @@
 
 All notable changes to StreamText are documented in this file.
 
-## Unreleased
+## 0.2.0 — 2026-10-16
 
-- Native GFM table grids with wrapped/aligned cells, asynchronous HTTP(S) images,
-  and bounded lexical highlighting for JavaScript, TypeScript, JSON and Python fences.
-- Native rich-block metadata, width/lifecycle handling, and image download/decode/cache limits.
-- Native CommonMark/GFM rendering with `format="markdown"`, incremental updates and platform seam tests.
-- Native SSE/NDJSON framing with OpenAI Chat/Responses, Anthropic and Ollama text presets.
-- Custom JSON Pointer text extraction, bounded record size, terminal-marker completion and parser-aware request identity.
-- Shared sanitizer coverage and iOS/Android networking-to-Markdown regression tests.
+### Added
+
+- Native CommonMark/GFM rendering through `format="markdown"` and `markdownFlavor`.
+- Native table grids with wrapped/aligned cells, asynchronous HTTP(S) images, task markers,
+  and lexical highlighting for JavaScript, TypeScript, JSON and Python fences.
+- Progressive table headers/cells, pending image placeholders and incomplete inline previews.
+  Terminal statuses always restore an exact parse of the original source.
+- Native SSE/NDJSON framing with OpenAI Chat/Responses, Anthropic and Ollama presets;
+  custom JSON Pointer extraction, bounded event size and parser-aware request identity.
+- Native parser/renderer seam tests, HTTP fixture tests in CI, and a complete streaming demo.
+
+### Fixed
+
+- Literal code/HTML text corruption from synthetic or shortened inline projections,
+  rejected-projection cache transitions, Markdown dialect/fence handling and task marker ownership.
+- iOS parser restarts on width/color changes, excessive long-paragraph patch rewinds,
+  lost code/task/table styling, accessibility spacing and image request continuity on resize.
+- Android paragraph line-height behavior, suffix span cleanup, Markdown worker finality,
+  plain-text preparation and code/table/image geometry.
+- JNI allocation failure handling and native Markdown projection size validation.
+
+### Scope
+
+- Markdown parsing still consumes full snapshots; progressive presentation and native suffix
+  updates do not constitute a fully incremental parser or constant-time layout.
+- Image requests use a separate client without stream credentials/cookies; incomplete URLs
+  do not start downloads. Existing network/decode limits and unsupported schemes remain enforced.
+- Experimental, New Architecture only; developed and tested with React Native 0.86.0.
 
 ## 0.1.0 — 2026-10-13
 

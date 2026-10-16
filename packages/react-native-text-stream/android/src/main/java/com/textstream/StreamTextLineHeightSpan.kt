@@ -10,8 +10,8 @@ import kotlin.math.floor
  * CustomLineHeightSpan does: lines with fallback fonts (emoji, CJK) keep the pitch. It is not an
  * UpdateLayout span, so growing with the appended text doesn't re-wrap what came before.
  */
-internal class StreamTextLineHeightSpan(height: Float) : LineHeightSpan {
-  val lineHeight: Int = ceil(height.toDouble()).toInt()
+internal class StreamTextLineHeightSpan(height: Float, scale: Float = 1f) : LineHeightSpan {
+  val lineHeight: Int = ceil(height * scale).toInt()
 
   override fun chooseHeight(text: CharSequence, start: Int, end: Int, spanstartv: Int, v: Int, fm: FontMetricsInt) {
     // A fenced language header owns its paragraph's metrics deterministically. Skipping here

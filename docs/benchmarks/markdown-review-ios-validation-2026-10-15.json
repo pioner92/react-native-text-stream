@@ -1,0 +1,59 @@
+{
+  "platform": "iOS Simulator 26.5",
+  "device": "StreamText Markdown (3151717D-25E3-40D9-8D93-4BB90C4C6C18)",
+  "parserSourceSha256": "c737a5907720d9754328b7c7b27bf6e52a6b413253670d3eb2a20738b7b1ae41",
+  "harness": {
+    "command": "HARNESS_IOS_DEVICE=StreamText Markdown HARNESS_IOS_VERSION=26.5 HARNESS_METRO_PORT=8082 react-native-harness --harnessRunner ios --testPathPatterns=markdown[^.]*\\.harness",
+    "resultFile": "/private/tmp/ios-markdown-full-final.json",
+    "resultSha256": "077daafe5374e29dc8af1566c6c414e031b43b5ccd6235c540755670c5ae0e09",
+    "suites": {
+      "passed": 7,
+      "total": 7
+    },
+    "tests": {
+      "passed": 79,
+      "failed": 0,
+      "pending": 0,
+      "total": 79
+    },
+    "durationSeconds": 47.181
+  },
+  "coverage": [
+    "canvas-to-TextKit rebuild preserves task attachments and code-block spacing",
+    "table strikethrough geometry is cached and plain tables produce zero strike geometry",
+    "loaded quoted image survives width and style rebuilds without a second request",
+    "task accessibility text excludes presentation-only zero-width padding"
+  ],
+  "visualInspection": {
+    "status": "completed on the dedicated simulator",
+    "scenarios": [
+      "typography",
+      "nested lists and task items",
+      "multi-column and quoted tables",
+      "code blocks and images"
+    ],
+    "notes": "No visual double-indent was observed for the iOS nested-list scenario.",
+    "savedScreenshot": "media/markdown-announcement/review-ios/current-heading-code-aligned-strike.png",
+    "savedScreenshotScenarios": [
+      "wrapped H1 with fixed lineHeight",
+      "task controls",
+      "PYTHON header padding and rounded code surface",
+      "CODE fallback for Swift",
+      "center/right aligned table strikes",
+      "plain table cells without strikes"
+    ],
+    "capture": "Mobile Dev mobile_screenshot image saved verbatim; fixed harness fixture, current native build"
+  },
+  "limitations": [
+    "A bare-CoreText before/after pixel comparison was not performed; table strike implementation is verified through geometry assertions and the final rendered screen.",
+    "In-flight image color-only style reuse was not separately isolated; loaded quote-image resize and request count are covered."
+  ],
+  "visualHarness": {
+    "passed": 1,
+    "total": 1,
+    "durationSeconds": 53.565,
+    "resultFile": "/private/tmp/ios-review-visual-capture.json",
+    "resultSha256": "24a4081db269eea4abab445780bfb165f7f2dcf5b9e977bd69289abba5da049c",
+    "temporaryFixtureRemoved": true
+  }
+}

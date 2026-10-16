@@ -181,6 +181,90 @@ static void assertStreamingProjectionSeam(const std::string& source, bool github
   stmd_destroy(retained);
 }
 
+static void assertLiteralBlockProjectionChunks(const std::string& source, bool decoded = false) {
+  for (const size_t chunk : {size_t(17), size_t(128), size_t(1024)}) {
+    auto* retained = stmd_create();
+    assert(retained);
+    for (size_t length = 0; length < source.size();) {
+      length = std::min(source.size(), length + chunk);
+      const auto actual = copyDocument(decoded
+          ? stmd_parse_decoded_streaming(retained, source.data(), length, true, false)
+          : stmd_parse_streaming(retained, source.data(), length, true, false));
+      auto* fresh = stmd_create();
+      assert(fresh);
+      const auto expected = copyDocument(decoded
+          ? stmd_parse_decoded_streaming(fresh, source.data(), length, true, false)
+          : stmd_parse_streaming(fresh, source.data(), length, true, false));
+      stmd_destroy(fresh);
+      assertSame(actual, expected);
+    }
+    const auto final = copyDocument(decoded
+        ? stmd_parse_decoded_streaming(retained, source.data(), source.size(), true, true)
+        : stmd_parse_streaming(retained, source.data(), source.size(), true, true));
+    auto* fresh = stmd_create();
+    assert(fresh);
+    const auto literal = copyDocument(decoded
+        ? stmd_parse_decoded(fresh, source.data(), source.size(), true)
+        : stmd_parse(fresh, source.data(), source.size(), true));
+    stmd_destroy(fresh);
+    assertSame(final, literal);
+    stmd_destroy(retained);
+  }
+}
+
+static void assertMixedStreamingProjectionChunks() {
+  std::string source = "\xef\xbb\xbf\xf0\x9f\x98\x80 CJK: \xe6\xbc\xa2\xe5\xad\x97\n";
+  while (source.size() <= 8300) source += "ordinary streamed paragraph text with UTF-8 \xe6\xbc\xa2\n";
+  source += "\n```text\n**literal**\n```\n\n| A | B |\n| --- | --- |\n| one | two |\n\n<div>\n[unfinished";
+  assertLiteralBlockProjectionChunks(source);
+  assertLiteralBlockProjectionChunks(source, true);
+}
+
+static void assertClosedHtmlDoesNotRejectFollowingProjection() {
+  for (const std::string& prefix : {"<div>old</div>\n\n", "<pre>x</pre>\n\n"}) {
+    auto* parser = stmd_create();
+    assert(parser);
+    const std::string opener = prefix + "**";
+    const auto first = copyDocument(stmd_parse_streaming(parser, opener.data(), opener.size(), true, false));
+    auto* fresh = stmd_create();
+    assert(fresh);
+    assertSame(first, copyDocument(stmd_parse_streaming(fresh, opener.data(), opener.size(), true, false)));
+    stmd_destroy(fresh);
+    const std::string payload = opener + "bold";
+    const auto preview = copyDocument(stmd_parse_streaming(parser, payload.data(), payload.size(), true, false));
+    fresh = stmd_create();
+    assert(fresh);
+    assertSame(preview, copyDocument(stmd_parse_streaming(fresh, payload.data(), payload.size(), true, false)));
+    stmd_destroy(fresh);
+    assert(ascii(stmd_parse_streaming(parser, payload.data(), payload.size(), true, false)).find("bold") != std::string::npos);
+    const std::string complete = payload + "**";
+    fresh = stmd_create();
+    assertSame(copyDocument(stmd_parse_streaming(parser, complete.data(), complete.size(), true, false)),
+        copyDocument(stmd_parse_streaming(fresh, complete.data(), complete.size(), true, false)));
+    stmd_destroy(fresh);
+    stmd_destroy(parser);
+  }
+}
+
+static void assertInlineProjectionLiteralBlocks() {
+  for (const std::string& suffix : {"    **bo", "    **bo ", "<div>\n**bo", "<div>\n**bo ",
+       "    **", "\t**", "<div>\n**", "<div>[unfinished", "    [unfinished", "\t[unfinished",
+       "<div>\n[unfinished", "<pre>\n\n[unfinished"}) {
+    auto* parser = stmd_create();
+    assert(parser);
+    const auto streamed = copyDocument(stmd_parse_streaming(parser, suffix.data(), suffix.size(), true, false));
+    auto* fresh = stmd_create();
+    assert(fresh);
+    assertSame(streamed, copyDocument(stmd_parse(fresh, suffix.data(), suffix.size(), true)));
+    stmd_destroy(fresh);
+    stmd_destroy(parser);
+
+    // Exercise the bounded tail path beyond its 8 KiB seam at the chunk sizes
+    // used by transport clients, then verify the terminal parse is literal.
+    assertLiteralBlockProjectionChunks(std::string(8200, 'x') + "\n\n" + suffix);
+  }
+}
+
 static void assertNoStreamingSyntaxFlash() {
   auto* parser = stmd_create();
   assert(parser);
@@ -191,16 +275,23 @@ static void assertNoStreamingSyntaxFlash() {
   };
   const auto link = progressive("before [read](https://example.test");
   assert(link.find("before read") != std::string::npos && link.find("https://") == std::string::npos && link.find('[') == std::string::npos);
-  const auto image = progressive("before ![cover](https://example.test/image.png");
-  assert(image.find("before cover") != std::string::npos && image.find("https://") == std::string::npos && image.find('!') == std::string::npos);
+  const std::string pendingImageSource = "before ![cover](https://example.test/image.png";
+  const auto* pendingImage = stmd_parse_streaming(parser, pendingImageSource.data(), pendingImageSource.size(), true, false);
+  const auto image = ascii(pendingImage);
+  assert(image.find("before ") != std::string::npos && image.find("https://") == std::string::npos && image.find('!') == std::string::npos);
+  assert(pendingImage->blockCount == 1 && pendingImage->blocks[0].kind == STMD_BLOCK_IMAGE_PENDING &&
+      pendingImage->blocks[0].url == nullptr && copyUtf16(pendingImage->blocks[0].alt, pendingImage->blocks[0].altLength) == u"cover");
   assert(progressive("before **emphasis").find("before emphasis") != std::string::npos);
   for (const std::string& marker : {"Before *", "Before **", "Before `"}) {
     const auto rendered = progressive(marker);
     assert(rendered.find('*') == std::string::npos && rendered.find('`') == std::string::npos);
   }
   assert(progressive("**bold*").find("bold") != std::string::npos);
-  const auto imageLabel = progressive("before ![alt]");
+  const std::string imageLabelSource = "before ![alt]";
+  const auto* imageLabelDoc = stmd_parse_streaming(parser, imageLabelSource.data(), imageLabelSource.size(), true, false);
+  const auto imageLabel = ascii(imageLabelDoc);
   assert(imageLabel.find('!') == std::string::npos && imageLabel.find('[') == std::string::npos && imageLabel.find(']') == std::string::npos);
+  assert(imageLabelDoc->blockCount == 1 && imageLabelDoc->blocks[0].kind == STMD_BLOCK_IMAGE_PENDING);
   const auto linkLabel = progressive("before [alt]");
   assert(linkLabel.find('[') == std::string::npos && linkLabel.find(']') == std::string::npos);
   const auto nested = progressive("before **bold *italic");
@@ -208,15 +299,93 @@ static void assertNoStreamingSyntaxFlash() {
   const auto mixed = progressive("before ~~**mixed");
   assert(mixed.find("~~") == std::string::npos && mixed.find("**") == std::string::npos);
   assert(has(stmd_parse_streaming(parser, "before **bold *italic", 21, true, false), STMD_RUN_BOLD));
-  const auto partialTable = progressive("A | B\n| --");
-  assert(partialTable.find('A') == std::string::npos && partialTable.find('B') == std::string::npos);
-  assert(progressive("A | B\n").find('A') == std::string::npos);
-  assert(progressive("A | B\n|").find('A') == std::string::npos);
-  assert(progressive("prose\n| Header | ").find("Header") == std::string::npos);
+  // A leading-pipe table header is visible as it is written; its generated
+  // delimiter is private to the projection and never appears in text/cells.
+  const std::string provisionalOne = "| Fea";
+  const auto* oneCell = stmd_parse_streaming(parser, provisionalOne.data(), provisionalOne.size(), true, false);
+  assert(oneCell->blockCount == 1 && oneCell->blocks[0].kind == STMD_BLOCK_TABLE &&
+      oneCell->blocks[0].rowCount == 1 && oneCell->blocks[0].columnCount == 1 &&
+      copyUtf16(oneCell->blocks[0].cells[0].text, oneCell->blocks[0].cells[0].textLength) == u"Fea");
+  const std::string provisionalTwo = "| Feature | Sta";
+  const auto* twoCells = stmd_parse_streaming(parser, provisionalTwo.data(), provisionalTwo.size(), true, false);
+  assert(twoCells->blockCount == 1 && twoCells->blocks[0].rowCount == 1 && twoCells->blocks[0].columnCount == 2 &&
+      copyUtf16(twoCells->blocks[0].cells[0].text, twoCells->blocks[0].cells[0].textLength) == u"Feature" &&
+      copyUtf16(twoCells->blocks[0].cells[1].text, twoCells->blocks[0].cells[1].textLength) == u"Sta");
+  const std::string partialDelimiter = "| Feature | Status |\n| :--";
+  const auto* delimiter = stmd_parse_streaming(parser, partialDelimiter.data(), partialDelimiter.size(), true, false);
+  assert(delimiter->blockCount == 1 && delimiter->blocks[0].kind == STMD_BLOCK_TABLE &&
+      delimiter->blocks[0].rowCount == 1 && delimiter->blocks[0].columnCount == 2);
+  // Non-delimiter prose abandons the preview and is parsed exactly as source.
+  const std::string rejectedTable = "| Feature | Status |\nthis is prose";
+  const auto rejected = copyDocument(stmd_parse_streaming(parser, rejectedTable.data(), rejectedTable.size(), true, false));
+  auto* freshRejected = stmd_create();
+  assertSame(rejected, copyDocument(stmd_parse(freshRejected, rejectedTable.data(), rejectedTable.size(), true)));
+  stmd_destroy(freshRejected);
+  // Inline pipes remain ordinary prose; only leading-pipe table candidates are
+  // allowed to use the reversible table projection.
+  const std::string inlinePipe = "A | B is ordinary prose";
+  const auto* inlinePipeDoc = stmd_parse_streaming(parser, inlinePipe.data(), inlinePipe.size(), true, false);
+  assert(inlinePipeDoc->blockCount == 0);
+  assert(progressive("prose | Header | ").find("prose | Header |") != std::string::npos);
   const auto completeTable = progressive("prose\n\n| A | B |\n| --- | --- |");
   assert(completeTable.find('|') == std::string::npos);
+  const std::string headerOnlyTable = "prose\n\n| A | B |\n| --- | --- |";
+  const auto* headerOnly = stmd_parse_streaming(parser, headerOnlyTable.data(), headerOnlyTable.size(), true, false);
+  assert(headerOnly->blockCount == 1 && headerOnly->blocks[0].kind == STMD_BLOCK_TABLE &&
+      headerOnly->blocks[0].rowCount == 1 && headerOnly->blocks[0].columnCount == 2 &&
+      copyUtf16(headerOnly->blocks[0].cells[0].text, headerOnly->blocks[0].cells[0].textLength) == u"A");
   const auto tableRow = progressive("prose\n\n| A | B |\n| --- | --- |\n| one | two |\n");
   assert(tableRow.find('|') == std::string::npos);
+  const std::string partialRowTable = "| A | B |\n| --- | --- |\n| Fir";
+  const auto* partialRow = stmd_parse_streaming(parser, partialRowTable.data(), partialRowTable.size(), true, false);
+  assert(partialRow->blockCount == 1 && partialRow->blocks[0].rowCount == 2 &&
+      copyUtf16(partialRow->blocks[0].cells[2].text, partialRow->blocks[0].cells[2].textLength) == u"Fir" &&
+      partialRow->blocks[0].cells[3].textLength == 0);
+  const std::string noLeadingPipeRow = "| A | B |\n| --- | --- |\nFir";
+  const auto* noLeadingPipe = stmd_parse_streaming(parser, noLeadingPipeRow.data(), noLeadingPipeRow.size(), true, false);
+  assert(noLeadingPipe->blockCount == 1 && noLeadingPipe->blocks[0].rowCount == 2 &&
+      copyUtf16(noLeadingPipe->blocks[0].cells[2].text, noLeadingPipe->blocks[0].cells[2].textLength) == u"Fir");
+  const std::string twoDataRows = "| A | B |\n| --- | --- |\n| one | two |\n| three | four";
+  const auto* twoRows = stmd_parse_streaming(parser, twoDataRows.data(), twoDataRows.size(), true, false);
+  assert(twoRows->blockCount == 1 && twoRows->blocks[0].rowCount == 3 && twoRows->blocks[0].columnCount == 2 &&
+      copyUtf16(twoRows->blocks[0].cells[4].text, twoRows->blocks[0].cells[4].textLength) == u"three" &&
+      copyUtf16(twoRows->blocks[0].cells[5].text, twoRows->blocks[0].cells[5].textLength) == u"four");
+  for (const std::string& fence : {"```", "```typescript", "~~~", "~~~python"}) {
+    const auto* codeFence = stmd_parse_streaming(parser, fence.data(), fence.size(), true, false);
+    assert(codeFence->textLength > 0 && ascii(codeFence).find('`') == std::string::npos && ascii(codeFence).find('~') == std::string::npos);
+    bool styledCode = false;
+    for (size_t run = 0; run < codeFence->runCount; ++run) {
+      styledCode = styledCode || ((codeFence->runs[run].flags & STMD_RUN_CODE_BLOCK) != 0 && codeFence->runs[run].length != 0);
+    }
+    assert(styledCode);
+  }
+  for (const std::string& literalTableContext : {"    | Name", "<pre>\n| Name",
+       "| Old |\n| --- |\n\n<pre>\n| Name",
+       "| Old |\n| --- |\n\n<!--\n| Name"}) {
+    const auto streamedContext = copyDocument(stmd_parse_streaming(parser, literalTableContext.data(), literalTableContext.size(), true, false));
+    auto* freshContext = stmd_create();
+    assertSame(streamedContext, copyDocument(stmd_parse(freshContext, literalTableContext.data(), literalTableContext.size(), true)));
+    stmd_destroy(freshContext);
+  }
+  // Ending a confirmed row must not manufacture an extra delimiter/data row.
+  for (const std::string& suffix : {"", "\n", "\n|", "\n| next"}) {
+    const std::string source = "| A | B |\n| --- | --- |\n| one | two |" + suffix;
+    const auto actual = copyDocument(stmd_parse_streaming(parser, source.data(), source.size(), true, false));
+    auto* freshRow = stmd_create();
+    assertSame(actual, copyDocument(stmd_parse(freshRow, source.data(), source.size(), true)));
+    stmd_destroy(freshRow);
+  }
+  for (const std::string& info : {"py", "pyt", "python"}) {
+    const std::string earlier = "```js\nconst old = 1;\n```\n\n";
+    const std::string source = earlier + "```" + info;
+    const auto* open = stmd_parse_streaming(parser, source.data(), source.size(), true, false);
+    assert(has(open, STMD_RUN_LANGUAGE_JAVASCRIPT));
+    assert(!has(open, STMD_RUN_LANGUAGE_PYTHON));
+    const std::string completeInfo = source + "\n";
+    const auto* complete = stmd_parse_streaming(parser, completeInfo.data(), completeInfo.size(), true, false);
+    assert(has(complete, STMD_RUN_LANGUAGE_JAVASCRIPT));
+    if (info != "pyt") assert(has(complete, STMD_RUN_LANGUAGE_PYTHON));
+  }
   const std::string code = "```text\n![literal](https://example.test/image.png";
   assert(progressive(code).find("![literal](https://example.test/image.png") != std::string::npos);
   const std::string literal = "before [read](https://example.test";
@@ -228,10 +397,108 @@ static void assertNoStreamingSyntaxFlash() {
   const auto completeItalic = progressive("complete *italic* before whitespace ");
   assert(completeItalic.find("complete italic before whitespace") != std::string::npos);
   assert(progressive("complete _italic_ before whitespace ").find("complete italic before whitespace") != std::string::npos);
-  assert(progressive("snake_case and $5 * 2").find("snake_case and $5 * 2") != std::string::npos);
+  assert(progressive("snake_case and $5 * 2") == "snake_case and $5 * 2\n");
+  assert(progressive("Hello **   ") == "Hello **\n");
+  // ascii() represents the normalized U+2022 list marker as '?'.
+  assert(progressive("* hello") == "? hello\n");
+  assert(progressive("* item with *italic* text") == "? item with italic text\n");
+  assert(progressive("**bold** rest") == "bold rest\n");
+  assert(progressive("*italic* text") == "italic text\n");
+  assert(progressive("~~gone~~ rest") == "gone rest\n");
   assert(progressive("escaped \\*literal and `code * literal`").find("escaped *literal and code * literal") != std::string::npos);
   assert(progressive("``code ` literal``").find("code ` literal") != std::string::npos);
+  const std::string commonStrike = "~~gone";
+  const auto* commonStrikeDoc = stmd_parse_streaming(parser, commonStrike.data(), commonStrike.size(), false, false);
+  assert(ascii(commonStrikeDoc) == "~~gone\n");
+  const std::string inlineFence = "```inline code``` and *italic";
+  const auto inlineFenceStreamed = copyDocument(stmd_parse_streaming(parser, inlineFence.data(), inlineFence.size(), true, false));
+  assert(ascii(stmd_parse_streaming(parser, inlineFence.data(), inlineFence.size(), true, false)).find("inline code and italic") != std::string::npos);
+  auto* freshInlineFence = stmd_create();
+  const auto inlineFenceFinal = copyDocument(stmd_parse_streaming(parser, inlineFence.data(), inlineFence.size(), true, true));
+  assertSame(inlineFenceFinal, copyDocument(stmd_parse(freshInlineFence, inlineFence.data(), inlineFence.size(), true)));
+  stmd_destroy(freshInlineFence);
+  assert(!inlineFenceStreamed.text.empty());
+  const std::string malformedFence = "```js\n```ts\n![alt](https://example.test";
+  const auto malformedStreamed = copyDocument(stmd_parse_streaming(parser, malformedFence.data(), malformedFence.size(), true, false));
+  auto* freshMalformedFence = stmd_create();
+  assertSame(malformedStreamed, copyDocument(stmd_parse(freshMalformedFence, malformedFence.data(), malformedFence.size(), true)));
+  stmd_destroy(freshMalformedFence);
+  const std::string listThenCode = "- item\n  ```js";
+  const auto* listCodeDoc = stmd_parse_streaming(parser, listThenCode.data(), listThenCode.size(), true, false);
+  size_t firstCode = listCodeDoc->textLength;
+  for (size_t run = 0; run < listCodeDoc->runCount; ++run) {
+    if ((listCodeDoc->runs[run].flags & STMD_RUN_CODE_BLOCK) != 0) firstCode = std::min(firstCode, listCodeDoc->runs[run].start);
+  }
+  assert(firstCode >= 7);
+  for (size_t run = 0; run < listCodeDoc->runCount; ++run) {
+    if (listCodeDoc->runs[run].start < firstCode) assert((listCodeDoc->runs[run].flags & STMD_RUN_CODE_BLOCK) == 0);
+  }
+  const std::string task = "- [x] Done";
+  const auto* taskDoc = stmd_parse_streaming(parser, task.data(), task.size(), true, false);
+  assert(taskDoc->runCount > 0 && taskDoc->runs[0].length == 4 &&
+      (taskDoc->runs[0].flags & (STMD_RUN_TASK_MARKER | STMD_RUN_TASK_CHECKED)) ==
+          (STMD_RUN_TASK_MARKER | STMD_RUN_TASK_CHECKED));
+  assert(taskDoc->runCount > 1 && (taskDoc->runs[1].flags & STMD_RUN_TASK_MARKER) == 0);
   stmd_destroy(fresh);
+  stmd_destroy(parser);
+}
+
+static void assertPendingImageContexts() {
+  auto* parser = stmd_create();
+  assert(parser);
+  const auto pending = [&](const std::string& source) {
+    const auto* doc = stmd_parse_streaming(parser, source.data(), source.size(), true, false);
+    assert(doc && doc->error == 0);
+    return doc;
+  };
+  const std::string nested = "before ![a [b] c";
+  const auto* nestedDoc = pending(nested);
+  assert(nestedDoc->blockCount == 1 && nestedDoc->blocks[0].kind == STMD_BLOCK_IMAGE_PENDING &&
+      copyUtf16(nestedDoc->blocks[0].alt, nestedDoc->blocks[0].altLength) == u"a [b] c");
+  const std::string trailingText = "before ![label] ordinary text";
+  const auto streamedTrailing = copyDocument(pending(trailingText));
+  auto* freshTrailing = stmd_create();
+  assertSame(streamedTrailing, copyDocument(stmd_parse(freshTrailing, trailingText.data(), trailingText.size(), true)));
+  stmd_destroy(freshTrailing);
+  assert(streamedTrailing.blocks.empty());
+  const std::string referenceImage = "[ref]: https://example.test/image.png\n\n![label][ref] tail";
+  const auto streamedReference = copyDocument(pending(referenceImage));
+  auto* freshReference = stmd_create();
+  assertSame(streamedReference, copyDocument(stmd_parse(freshReference, referenceImage.data(), referenceImage.size(), true)));
+  stmd_destroy(freshReference);
+  assert(streamedReference.blocks.size() == 1 && streamedReference.blocks[0].kind == STMD_BLOCK_IMAGE);
+  const std::string referenceAtBoundary = "[ref]: https://example.test/image.png\n\n![label][ref]";
+  const auto streamedBoundary = copyDocument(pending(referenceAtBoundary));
+  auto* freshBoundary = stmd_create();
+  assertSame(streamedBoundary, copyDocument(stmd_parse(freshBoundary, referenceAtBoundary.data(), referenceAtBoundary.size(), true)));
+  stmd_destroy(freshBoundary);
+  assert(streamedBoundary.blocks.size() == 1 && streamedBoundary.blocks[0].kind == STMD_BLOCK_IMAGE &&
+      streamedBoundary.blocks[0].url == "https://example.test/image.png");
+  const std::string escaped = "before \\![literal](https://example.test";
+  const auto* escapedDoc = pending(escaped);
+  assert(escapedDoc->blockCount == 0);
+  const std::string inlineCode = "before `![literal](https://example.test";
+  const auto* inlineCodeDoc = pending(inlineCode);
+  assert(inlineCodeDoc->blockCount == 0);
+  const std::string indentedCode = "    ![literal](https://example.test";
+  const auto* indentedCodeDoc = pending(indentedCode);
+  assert(indentedCodeDoc->blockCount == 0);
+  const std::string inTable = "| A |\n| --- |\n| ![literal](https://example.test";
+  const auto* tableDoc = pending(inTable);
+  assert(tableDoc->blockCount == 1 && tableDoc->blocks[0].kind == STMD_BLOCK_TABLE &&
+      tableDoc->blocks[0].rowCount == 2 && tableDoc->blocks[0].cells[1].textLength == 7 &&
+      copyUtf16(tableDoc->blocks[0].cells[1].text, tableDoc->blocks[0].cells[1].textLength) == u"literal");
+  const std::string imageHeader = "| ![header";
+  const auto* headerDoc = pending(imageHeader);
+  assert(headerDoc->blockCount == 1 && headerDoc->blocks[0].kind == STMD_BLOCK_TABLE &&
+      headerDoc->blocks[0].rowCount == 1 && headerDoc->blocks[0].cells[0].textLength == 6 &&
+      copyUtf16(headerDoc->blocks[0].cells[0].text, headerDoc->blocks[0].cells[0].textLength) == u"header");
+  // A user-owned URL matching our internal marker cannot change an earlier
+  // image when a later syntactically invalid opener is streamed.
+  const std::string markerCollision = "![normal](streamtext:pending)\n\n    ![literal](https://example.test";
+  const auto* collisionDoc = pending(markerCollision);
+  assert(collisionDoc->blockCount == 1 && collisionDoc->blocks[0].kind == STMD_BLOCK_IMAGE &&
+      collisionDoc->blocks[0].url && std::string(collisionDoc->blocks[0].url) == "streamtext:pending");
   stmd_destroy(parser);
 }
 
@@ -268,7 +535,10 @@ static void assertAnnouncementPrefixProjection() {
         // belongs to Markdown syntax and must never flash while streaming.
         assert(visible.find('*') == std::string::npos && visible.find('~') == std::string::npos);
       } else {
-        assert(visible.find('|') == std::string::npos);
+        // A lone opening pipe is held as ordinary source until its first cell
+        // byte arrives; from that point the provisional table tests above
+        // verify the grid path and this prefix loop verifies parser safety.
+        assert(!visible.empty() || length == 0);
       }
     }
   }
@@ -328,6 +598,28 @@ static void assertBorrowedDocumentSnapshot() {
   stmd_destroy(parser);
 }
 
+static void assertOptionalChangeTracking() {
+  auto* parser = stmd_create();
+  assert(parser);
+  const std::string first = "before **first**";
+  const std::string second = "before **second**";
+  stmd_parse(parser, first.data(), first.size(), true);
+  stmd_set_track_changes(parser, false);
+  const auto disabled = copyDocument(stmd_parse(parser, second.data(), second.size(), true));
+  const auto* disabledDoc = stmd_parse(parser, second.data(), second.size(), true);
+  assert(disabledDoc->changedStartUTF16 == 0);
+  auto* fresh = stmd_create();
+  assertSame(disabled, copyDocument(stmd_parse(fresh, second.data(), second.size(), true)));
+  stmd_destroy(fresh);
+  // Re-enabling begins a new history; it must never reuse a stale snapshot.
+  stmd_set_track_changes(parser, true);
+  const auto* reenabled = stmd_parse(parser, first.data(), first.size(), true);
+  assert(reenabled->changedStartUTF16 == 0);
+  const auto* changed = stmd_parse(parser, second.data(), second.size(), true);
+  assert(changed->changedStartUTF16 <= changed->textLength);
+  stmd_destroy(parser);
+}
+
 static void assertDialectDifference() {
   const std::string source = "~~gone~~\n\n- [x] done\n\nA | B\n--|--\n1 | 2\n";
   auto* parser = stmd_create();
@@ -354,7 +646,111 @@ static bool has(const STMarkdownDocument* d, uint32_t flag) {
   for (size_t i = 0; i < d->runCount; ++i) if ((d->runs[i].flags & flag) != 0) return true;
   return false;
 }
+
+#ifdef STMD_TESTING
+extern "C" size_t stmd_test_parse_calls(const STMarkdownParser* parser);
+static void assertRejectedProjectionWork() {
+  const std::vector<std::string> contexts = {
+    "    ![alt", "\t![alt", "<!--\n| Name", "<pre>\n| Name",
+    "<script>\n![alt", "<div>\n![alt", "<!--\n![alt", "```\n![alt",
+    "| A |\n| --- |\n| first |\n| ![alt",
+  };
+  for (const auto& initial : contexts) {
+    auto* parser = stmd_create();
+    auto* reference = stmd_create();
+    std::string source = initial;
+    for (size_t step = 0; step < 40; ++step) {
+      const size_t before = stmd_test_parse_calls(parser);
+      const auto actual = copyDocument(stmd_parse_streaming(parser, source.data(), source.size(), true, false));
+      const size_t calls = stmd_test_parse_calls(parser) - before;
+      const bool tableImage = initial.rfind("| A |", 0) == 0;
+      if (calls != (tableImage ? 1u : (step == 0 ? 2u : 1u))) {
+        std::cerr << "Rejected projection calls=" << calls << " step=" << step << " source=" << source << '\n';
+        std::abort();
+      }
+      if (tableImage) {
+        assert(actual.blocks.size() == 1 && actual.blocks[0].kind == STMD_BLOCK_TABLE &&
+            actual.blocks[0].cells.size() == 3 && actual.blocks[0].cells.back().text ==
+                std::u16string(u"alt") + std::u16string(step, u'a'));
+      } else {
+        assertSame(actual, copyDocument(stmd_parse(reference, source.data(), source.size(), true)));
+      }
+      source += "a";
+    }
+    // A terminal status and subsequent reuse must not keep the negative cache.
+    const auto terminal = copyDocument(stmd_parse_streaming(parser, source.data(), source.size(), true, true));
+    assertSame(terminal, copyDocument(stmd_parse(reference, source.data(), source.size(), true)));
+    const size_t before = stmd_test_parse_calls(parser);
+    stmd_parse_streaming(parser, source.data(), source.size(), true, false);
+    assert(stmd_test_parse_calls(parser) - before == (initial.rfind("| A |", 0) == 0 ? 1u : 2u));
+    stmd_destroy(reference); stmd_destroy(parser);
+  }
+
+  auto* parser = stmd_create();
+  auto* reference = stmd_create();
+  // Close a literal HTML block on the same line, then start a real image/table
+  // on the next one. Cache invalidation must honor CR as well as LF.
+  for (const auto& newline : {std::string("\n"), std::string("\r\n"), std::string("\r")}) {
+    std::string source = "<pre>\n![alt";
+    stmd_parse_streaming(parser, source.data(), source.size(), true, false);
+    source += "]</pre>";
+    auto before = stmd_test_parse_calls(parser);
+    assertSame(copyDocument(stmd_parse_streaming(parser, source.data(), source.size(), true, false)),
+               copyDocument(stmd_parse(reference, source.data(), source.size(), true)));
+    assert(stmd_test_parse_calls(parser) - before == 1);
+    source += newline + newline + "![real";
+    auto* document = stmd_parse_streaming(parser, source.data(), source.size(), true, false);
+    assert(document->blockCount == 1 && document->blocks[0].kind == STMD_BLOCK_IMAGE_PENDING);
+  }
+
+  // A changed prefix outside the bounded tail must invalidate the cache even
+  // when total length, allocation address, candidate position and tail match.
+  std::string source = "<pre>\n" + std::string(9000, 'x') + "\n\n| Name";
+  stmd_parse_streaming(parser, source.data(), source.size(), true, false);
+  source.replace(0, 5, "plain");
+  auto* document = stmd_parse_streaming(parser, source.data(), source.size(), true, false);
+  assert(document->blockCount == 1 && document->blocks[0].kind == STMD_BLOCK_TABLE);
+
+  // The literal-fence cache is exact: replacing bytes outside the tail turns
+  // the same unfinished image into a real pending image immediately.
+  source = "```\n![alt";
+  stmd_parse_streaming(parser, source.data(), source.size(), true, false);
+  source.replace(0, 3, "text");
+  document = stmd_parse_streaming(parser, source.data(), source.size(), true, false);
+  assert(document->blockCount == 1 && document->blocks[0].kind == STMD_BLOCK_IMAGE_PENDING);
+
+  // A four-space continuation does not interrupt a paragraph: it can contain
+  // a real inline image. Never suppress it by guessing from indentation alone.
+  source = "paragraph\n    ![real";
+  document = stmd_parse_streaming(parser, source.data(), source.size(), true, false);
+  assert(document->blockCount == 1 && document->blocks[0].kind == STMD_BLOCK_IMAGE_PENDING);
+
+  // Dialect and BOM handling are part of the cache key, not just source bytes.
+  source = "| A |\n| --- |\n| row |\n| ![alt";
+  stmd_parse_streaming(parser, source.data(), source.size(), true, false);
+  document = stmd_parse_streaming(parser, source.data(), source.size(), false, false);
+  assert(document->blockCount == 1 && document->blocks[0].kind == STMD_BLOCK_IMAGE_PENDING);
+  source = "\xef\xbb\xbf    ![alt";
+  stmd_parse_streaming(parser, source.data(), source.size(), true, false);
+  document = stmd_parse_decoded_streaming(parser, source.data(), source.size(), true, false);
+  assert(document->blockCount == 1 && document->blocks[0].kind == STMD_BLOCK_IMAGE_PENDING);
+
+  // Once a table image closes, ordinary inline projection must remain live.
+  source = "| A |\n| --- |\n| row |\n| ![alt";
+  stmd_parse_streaming(parser, source.data(), source.size(), true, false);
+  source += "](https://example.test/a) **bold";
+  auto* fresh = stmd_create();
+  assertSame(copyDocument(stmd_parse_streaming(parser, source.data(), source.size(), true, false)),
+             copyDocument(stmd_parse_streaming(fresh, source.data(), source.size(), true, false)));
+  stmd_destroy(fresh);
+  stmd_destroy(reference); stmd_destroy(parser);
+}
+#endif
+
 int main(int argc, char** argv) {
+#ifdef STMD_TESTING
+  assertRejectedProjectionWork();
+#endif
   STMarkdownParser* parser = stmd_create();
   assert(parser);
   const std::string sample =
@@ -515,10 +911,17 @@ int main(int argc, char** argv) {
       {"```js\nconst literal = \"![not image](x\";\n", true},
       {"escaped \\[literal](x) and `![literal](x`", true},
       {"![escaped \\[label\\]](https://example.test/a_(b)", true},
+      {"before ![label] ordinary text", true},
+      {"[ref]: https://example.test/image.png\n\n![label][ref] tail", true},
+      {"[ref]: https://example.test/image.png\n\n![label][ref]", true},
       {"prose\n| Header |\n| ---", true},
   };
   for (const auto& streaming : incompleteStreamingCases) assertStreamingProjectionSeam(streaming.first, streaming.second);
+  assertInlineProjectionLiteralBlocks();
+  assertMixedStreamingProjectionChunks();
+  assertClosedHtmlDoesNotRejectFollowingProjection();
   assertNoStreamingSyntaxFlash();
+  assertPendingImageContexts();
   assertNoRawLinkOrImagePrefixes("before [read](https://example.test/a_(b)) after");
   assertNoRawLinkOrImagePrefixes("before ![alt](https://example.test/a_(b)) after");
   assertAnnouncementPrefixProjection();
@@ -541,6 +944,7 @@ int main(int argc, char** argv) {
   assert(doc->error == 0 && doc->textLength > 0);
   assertAbiErrorAndRecovery();
   assertBorrowedDocumentSnapshot();
+  assertOptionalChangeTracking();
   assertDialectDifference();
   fuzzDeterministic();
   if (argc > 1 && std::string(argv[1]) == "--bench") {

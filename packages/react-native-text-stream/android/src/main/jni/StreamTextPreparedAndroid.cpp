@@ -452,9 +452,10 @@ streamTextPrepare(const StreamTextViewProps &props, Float width, const StreamTex
     }
     return waiting.get();
   }
-  // Parsing Markdown and building spans are never paid by Fabric's main-thread measure. The view
-  // uses its current height until this prepared result is published on a later state update.
-  if (main) {
+  // Parsing Markdown and building spans are never paid by Fabric's main-thread measure. Plain
+  // text keeps the synchronous prepared-layout path, which has no parser/span work and supplies
+  // the exact height to a resize measure immediately.
+  if (main && job.style.format == "markdown") {
     PrepareQueue::shared().add([job = std::move(job), mine] { run(job, mine); });
     return nullptr;
   }

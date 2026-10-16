@@ -146,6 +146,13 @@ and `StreamText_Markdown_Tests` (Pixel 8, Android 15 arm64 emulator).
 
 See [streaming polish validation](markdown-streaming-polish.md) for the subsequent
 partial-syntax, task-marker, code-surface and announcement-video pass.
+
+See [early rich blocks](markdown-progressive-blocks.md) for progressive tables,
+pending images and the visual transport-seam fixture.
+
+See the [review follow-up](markdown-review-fixes.md) for verified parser, native
+style/resize, task semantics and performance fixes after those historical runs.
+
 # Performance evidence
 
 See [rich Markdown performance evidence](markdown-rich-performance.md).
@@ -166,13 +173,15 @@ See [rich Markdown performance evidence](markdown-rich-performance.md).
   [rich performance evidence](markdown-rich-performance.md). They do not establish
   physical-device performance or hitch-free bulk mounting.
 
-The latest per-test results across these runs are **126 passed / one platform skip on iOS**
+The historical per-test results across these runs were **126 passed / one platform skip on iOS**
 and **124 passed / two failed / one platform skip on Android**. All **23 rich Markdown**
 tests pass on each platform. [Validation evidence](benchmarks/markdown-rich-validation-2026-10-15.json)
 identifies the selected suites and the comparison experiment.
 
-The two Android failures are existing plain-text resize assertions: a width-cache miss can
-show the prior-height canvas before switching to a newly measured text view. Both reproduced
-with the baseline view/line-height implementation from `867c265`; the comparison retained
-other feature files and therefore is not a clean full-baseline checkout. This feature does
-not fix that plain-renderer behavior. Physical-device checks were not performed.
+The two Android failures were plain-text resize assertions: a width-cache miss could
+show the prior-height canvas before switching to a newly measured text view. They reproduced
+with the baseline view/line-height implementation from `867c265`, but that comparison retained
+other feature files and was not a clean full-baseline checkout. The subsequent
+[review follow-up](markdown-review-fixes.md) found the missing Markdown-only condition in
+prepared measurement, restored synchronous plain-text measurement, and passed both resize
+tests on the dedicated emulator. The earlier comparison did not rule out that cause.

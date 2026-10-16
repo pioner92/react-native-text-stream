@@ -195,6 +195,9 @@ func streamTextMarkdownAttributes(for run: StreamTextMarkdownRun,
     font = .monospacedSystemFont(ofSize: baseFont.pointSize, weight: .regular)
   } else if run.headingLevel > 0 {
     font = UIFont(descriptor: font.fontDescriptor, size: baseFont.pointSize * (1.55 - CGFloat(run.headingLevel) * 0.08))
+    if let offset = base[.baselineOffset] as? CGFloat {
+      attributes[.baselineOffset] = offset * (font.pointSize / baseFont.pointSize)
+    }
   }
   attributes[.font] = font
   if run.flags & UInt32(STMD_RUN_STRIKE) != 0 { attributes[.strikethroughStyle] = NSUnderlineStyle.single.rawValue }
@@ -255,13 +258,16 @@ func streamTextMarkdownStyleCodeBlocks(_ output: NSMutableAttributedString) {
 }
 
 func streamTextMarkdownAttributed(_ result: StreamTextMarkdownResult,
-                                  base: [NSAttributedString.Key: Any], width: CGFloat = 300) -> NSAttributedString {
-  let output = NSMutableAttributedString(string: result.text, attributes: base)
-  let length = output.length
+                                  base: [NSAttributedString.Key: Any], width: CGFloat = 300,
+                                  offset: Int = 0) -> NSAttributedString {
+  let text = result.text as NSString
+  let output = NSMutableAttributedString(string: text.substring(from: offset), attributes: base)
+  let length = text.length
   var styles: [String: [NSAttributedString.Key: Any]] = [:]
   for run in result.runs {
+    let from = max(offset, run.range.location)
     let end = min(NSMaxRange(run.range), length)
-    guard end > run.range.location else { continue }
+    guard end > from else { continue }
     let key = "\(run.flags)-\(run.headingLevel)-\(run.indent)"
     var attributes: [NSAttributedString.Key: Any]
     if let cached = styles[key] { attributes = cached } else {
@@ -275,13 +281,19 @@ func streamTextMarkdownAttributed(_ result: StreamTextMarkdownResult,
       attributes[.underlineStyle] = NSUnderlineStyle.single.rawValue
     }
     output.addAttributes(attributes,
-                         range: NSRange(location: run.range.location, length: end - run.range.location))
+                         range: NSRange(location: from - offset, length: end - from))
   }
-  if result.runs.contains(where: { $0.flags & UInt32(STMD_RUN_CODE_BLOCK) != 0 }) {
+  if result.runs.contains(where: { $0.flags & UInt32(STMD_RUN_CODE_BLOCK) != 0 && NSMaxRange($0.range) > offset }) {
     streamTextMarkdownStyleCodeBlocks(output)
   }
-  streamTextMarkdownAttachBlocks(result.blocks, to: output, offset: 0, base: base, width: width)
-  streamTextMarkdownAttachTaskMarkers(result.runs, to: output, base: base)
+  streamTextMarkdownAttachBlocks(result.blocks, to: output, offset: offset, base: base, width: width)
+  let localRuns = result.runs.compactMap { run -> StreamTextMarkdownRun? in
+    let from = max(offset, run.range.location), to = min(length, NSMaxRange(run.range))
+    guard to > from else { return nil }
+    var local = run; local.range = NSRange(location: from - offset, length: to - from)
+    return local
+  }
+  streamTextMarkdownAttachTaskMarkers(localRuns, to: output, base: base)
   return output
 }
 
@@ -294,6 +306,8 @@ struct StreamTextMarkdownUpdate {
   let sourceBytes: Int
   let final: Bool
   let revision: Int
+  let attributes: [NSAttributedString.Key: Any]
+  let width: CGFloat
 }
 
 final class StreamTextMarkdownPipeline {
@@ -359,8 +373,15 @@ final class StreamTextMarkdownPipeline {
     if start > 0 && start < text.length {
       start = text.rangeOfComposedCharacterSequence(at: start).location
     }
-    // Paragraph attributes/layout require invalidating the changed paragraph, not the document.
-    while start > 0 && text.character(at: start - 1) != 10 { start -= 1 }
+    // Prefer a nearby paragraph boundary, but do not rebuild an arbitrarily long open paragraph
+    // just to find one. TextKit invalidates paragraph layout on replacement itself; the parser's
+    // actual changed offset still covers any earlier text or paragraph-style change.
+    var paragraphStart = start
+    let rewindLimit = max(0, start - 1024)
+    while paragraphStart > rewindLimit && text.character(at: paragraphStart - 1) != 10 { paragraphStart -= 1 }
+    if paragraphStart == 0 || (paragraphStart > 0 && text.character(at: paragraphStart - 1) == 10) {
+      start = paragraphStart
+    }
     // A streamed parse can change the final line of a fenced block. Rebuilding only that line
     // would leave the old block's bottom spacing in the retained prefix and treat the new line
     // as a new block (adding its header spacing). Find its contiguous CODE_BLOCK run cluster in
@@ -390,43 +411,10 @@ final class StreamTextMarkdownPipeline {
       start = text.lineRange(for: NSRange(location: codeBoundaryStart, length: 0)).location
     }
     parsedBefore = parsed != nil
-    let suffix = NSMutableAttributedString(string: text.substring(from: start), attributes: job.attributes)
-    // Cache styles within this patch: repeated paragraphs should not construct the same UIFont
-    // descriptor thousands of times. URLs are applied separately and don't inflate the cache.
-    var styles: [String: [NSAttributedString.Key: Any]] = [:]
-    for run in result.runs {
-      let from = max(start, run.range.location)
-      let end = min(text.length, NSMaxRange(run.range))
-      guard end > from else { continue }
-      let key = "\(run.flags)-\(run.headingLevel)-\(run.indent)"
-      var attributes: [NSAttributedString.Key: Any]
-      if let cached = styles[key] { attributes = cached } else {
-        var styleRun = run; styleRun.url = nil
-        attributes = streamTextMarkdownAttributes(for: styleRun, base: job.attributes)
-        styles[key] = attributes
-      }
-      if let url = run.url, run.flags & UInt32(STMD_RUN_LINK) != 0,
-         let scheme = URL(string: url)?.scheme?.lowercased(), ["http", "https", "mailto"].contains(scheme) {
-        attributes[.link] = url
-        attributes[.underlineStyle] = NSUnderlineStyle.single.rawValue
-      }
-      suffix.addAttributes(attributes, range: NSRange(location: from - start, length: end - from))
-    }
-    if result.runs.contains(where: {
-      $0.flags & UInt32(STMD_RUN_CODE_BLOCK) != 0 && NSMaxRange($0.range) > start
-    }) {
-      streamTextMarkdownStyleCodeBlocks(suffix)
-    }
-    streamTextMarkdownAttachBlocks(result.blocks, to: suffix, offset: start, base: job.attributes, width: job.width)
-    let localRuns = result.runs.compactMap { run -> StreamTextMarkdownRun? in
-      let from = max(start, run.range.location), to = min(text.length, NSMaxRange(run.range))
-      guard to > from else { return nil }
-      var local = run; local.range = NSRange(location: from - start, length: to - from)
-      return local
-    }
-    streamTextMarkdownAttachTaskMarkers(localRuns, to: suffix, base: job.attributes)
+    let suffix = streamTextMarkdownAttributed(result, base: job.attributes, width: job.width, offset: start)
     let update = StreamTextMarkdownUpdate(result: result, start: start, suffix: suffix,
-                                          sourceBytes: job.data.count, final: job.final, revision: job.revision)
+                                          sourceBytes: job.data.count, final: job.final, revision: job.revision,
+                                          attributes: job.attributes, width: job.width)
     DispatchQueue.main.async { [self] in
       if !lock.withLock({ cancelled }) { job.deliver(update) }
       // One in-flight result per view, including UI delivery. Memory stays bounded if UI is busy.

@@ -1,0 +1,306 @@
+{
+  "startTime": 1792093311915,
+  "numTotalTestSuites": 6,
+  "numPassedTestSuites": 6,
+  "numTotalTests": 66,
+  "numPassedTests": 64,
+  "numFailedTests": 0,
+  "numPendingTests": 2,
+  "success": true,
+  "suites": [
+    {
+      "name": "markdown-rich.harness.tsx",
+      "tests": [
+        {
+          "title": "StreamText rich Markdown native seams lays out an aligned grid with styled Unicode cells and wraps on resize",
+          "status": "passed"
+        },
+        {
+          "title": "StreamText rich Markdown native seams materializes a large table across native language boundaries",
+          "status": "passed"
+        },
+        {
+          "title": "StreamText rich Markdown native seams updates table metadata even when its document placeholder stays identical",
+          "status": "passed"
+        },
+        {
+          "title": "StreamText rich Markdown native seams styles fenced syntax while preserving raw source and unknown languages",
+          "status": "passed"
+        },
+        {
+          "title": "StreamText rich Markdown native seams loads and measures images natively after source completion, without another terminal event",
+          "status": "passed"
+        },
+        {
+          "title": "StreamText rich Markdown native seams does not crop an inline loaded image to an explicit text lineHeight",
+          "status": "pending"
+        },
+        {
+          "title": "StreamText rich Markdown native seams keeps quote indentation while measuring an inline image beyond text lineHeight",
+          "status": "pending"
+        },
+        {
+          "title": "StreamText rich Markdown native seams finishes image loading while JavaScript is blocked",
+          "status": "passed"
+        },
+        {
+          "title": "StreamText rich Markdown native seams keeps a pending image subscription when later text appends after its unchanged prefix",
+          "status": "passed"
+        },
+        {
+          "title": "StreamText rich Markdown native seams keeps image completion layout live across a pending font-style change",
+          "status": "passed"
+        },
+        {
+          "title": "StreamText rich Markdown native seams shows a stable fallback for broken.png",
+          "status": "passed"
+        },
+        {
+          "title": "StreamText rich Markdown native seams shows a stable fallback for invalid.png",
+          "status": "passed"
+        },
+        {
+          "title": "StreamText rich Markdown native seams shows a stable fallback for oversize.png",
+          "status": "passed"
+        },
+        {
+          "title": "StreamText rich Markdown native seams shows a stable fallback for oversize-chunked.png",
+          "status": "passed"
+        },
+        {
+          "title": "StreamText rich Markdown native seams blocks non-HTTP images",
+          "status": "passed"
+        },
+        {
+          "title": "StreamText rich Markdown native seams downsamples large images within decoded pixel limits",
+          "status": "passed"
+        },
+        {
+          "title": "StreamText rich Markdown native seams reuses a decoded image across remounts and does not send request credentials",
+          "status": "passed"
+        },
+        {
+          "title": "StreamText rich Markdown native seams shares an in-flight download between subscribers and limits active requests to two",
+          "status": "passed"
+        },
+        {
+          "title": "StreamText rich Markdown native seams ignores delayed image completion after replace",
+          "status": "passed"
+        },
+        {
+          "title": "StreamText rich Markdown native seams ignores delayed image completion after clear",
+          "status": "passed"
+        },
+        {
+          "title": "StreamText rich Markdown native seams ignores delayed image completion after plain",
+          "status": "passed"
+        },
+        {
+          "title": "StreamText rich Markdown native seams ignores delayed image completion after unmount",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "name": "markdown.harness.tsx",
+      "tests": [
+        {
+          "title": "StreamText native Markdown renders completed content and keeps getText as original Markdown",
+          "status": "passed"
+        },
+        {
+          "title": "StreamText native Markdown projects an unfinished delimiter without raw syntax, then resolves it when completed",
+          "status": "passed"
+        },
+        {
+          "title": "StreamText native Markdown withholds incomplete link and image syntax while open, then restores literals at terminal",
+          "status": "passed"
+        },
+        {
+          "title": "StreamText native Markdown shows a partial GFM table as a rich block and clears it on reset",
+          "status": "passed"
+        },
+        {
+          "title": "StreamText native Markdown reformats earlier reference text when its definition arrives",
+          "status": "passed"
+        },
+        {
+          "title": "StreamText native Markdown flushes a small final update even when the producer stays open",
+          "status": "passed"
+        },
+        {
+          "title": "StreamText native Markdown ends a chunked fenced block with the same layout as one-shot Markdown",
+          "status": "passed"
+        },
+        {
+          "title": "StreamText native Markdown changes format of an imperatively attached finished source",
+          "status": "passed"
+        },
+        {
+          "title": "StreamText native Markdown keeps native updates working while JavaScript is blocked, across UTF-8 splits",
+          "status": "passed"
+        },
+        {
+          "title": "StreamText native Markdown renders useful intermediate snapshots during a continuous native stream",
+          "status": "passed"
+        },
+        {
+          "title": "StreamText native Markdown switches plain/Markdown on a finished source and updates its size",
+          "status": "passed"
+        },
+        {
+          "title": "StreamText native Markdown drops stale worker results after source replacement and clear",
+          "status": "passed"
+        },
+        {
+          "title": "StreamText native Markdown keeps formatting when a completed source is mounted again",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "name": "markdown-progressive.harness.tsx",
+      "tests": [
+        {
+          "title": "StreamText progressive rich block seams shows an image before its label or URL finishes and does not fetch an incomplete URL",
+          "status": "passed"
+        },
+        {
+          "title": "StreamText progressive rich block seams shows the header before any data row and streams cells without a trailing newline",
+          "status": "passed"
+        },
+        {
+          "title": "StreamText progressive rich block seams restores literal unfinished image syntax on done without a new byte",
+          "status": "passed"
+        },
+        {
+          "title": "StreamText progressive rich block seams restores literal unfinished image syntax on error without a new byte",
+          "status": "passed"
+        },
+        {
+          "title": "StreamText progressive rich block seams restores literal unfinished image syntax on cancelled without a new byte",
+          "status": "passed"
+        },
+        {
+          "title": "StreamText progressive rich block seams restores literal unfinished image syntax on truncated without a new byte",
+          "status": "passed"
+        },
+        {
+          "title": "StreamText progressive rich block seams reflows a pending placeholder on resize without starting a load",
+          "status": "passed"
+        },
+        {
+          "title": "StreamText progressive rich block seams treats a closed empty image destination as a final fallback, not an unfinished URL",
+          "status": "passed"
+        },
+        {
+          "title": "StreamText progressive rich block seams does not retain a pending image after an imperative source replacement",
+          "status": "passed"
+        },
+        {
+          "title": "StreamText progressive rich block seams retains a loaded image while a second pending image grows after it",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "name": "markdown-rendering.harness.tsx",
+      "tests": [
+        {
+          "title": "StreamText Markdown native rendering stores completed Markdown styles in the prepared native layout",
+          "status": "passed"
+        },
+        {
+          "title": "StreamText Markdown native rendering keeps task controls accessible in cold and warm prepared layouts",
+          "status": "passed"
+        },
+        {
+          "title": "StreamText Markdown native rendering keeps fenced code styled in a warm prepared canvas",
+          "status": "passed"
+        },
+        {
+          "title": "StreamText Markdown native rendering applies the same styles to an open native stream",
+          "status": "passed"
+        },
+        {
+          "title": "StreamText Markdown native rendering keeps Markdown spans through color and font changes (streaming)",
+          "status": "passed"
+        },
+        {
+          "title": "StreamText Markdown native rendering keeps Markdown spans through color and font changes (prepared)",
+          "status": "passed"
+        },
+        {
+          "title": "StreamText Markdown native rendering restyles an earlier reference when its definition arrives",
+          "status": "passed"
+        },
+        {
+          "title": "StreamText Markdown native rendering keeps safe links and rejects javascript links in native attributes",
+          "status": "passed"
+        },
+        {
+          "title": "StreamText Markdown native rendering keeps native Markdown spans when a prepared canvas falls back on resize",
+          "status": "passed"
+        },
+        {
+          "title": "StreamText Markdown native rendering preserves cached prepared spans through remount and format changes",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "name": "markdown-seams.harness.tsx",
+      "tests": [
+        {
+          "title": "StreamText Markdown ownership seams keeps an imperative source through same-length prop replacement and a format toggle",
+          "status": "passed"
+        },
+        {
+          "title": "StreamText Markdown ownership seams reformats a retained imperative terminal source across flavor and style changes",
+          "status": "passed"
+        },
+        {
+          "title": "StreamText Markdown ownership seams renders an empty Markdown done terminal before reporting it",
+          "status": "passed"
+        },
+        {
+          "title": "StreamText Markdown ownership seams renders an empty Markdown error terminal before reporting it",
+          "status": "passed"
+        },
+        {
+          "title": "StreamText Markdown ownership seams renders an empty Markdown cancelled terminal before reporting it",
+          "status": "passed"
+        },
+        {
+          "title": "StreamText Markdown ownership seams renders an empty Markdown truncated terminal before reporting it",
+          "status": "passed"
+        },
+        {
+          "title": "StreamText Markdown ownership seams does not revive a queued Markdown parse after clear",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "name": "markdown-rich-accessibility.harness.tsx",
+      "tests": [
+        {
+          "title": "StreamText rich Markdown accessibility reads table cell text and image alt text instead of object replacement characters",
+          "status": "passed"
+        },
+        {
+          "title": "StreamText rich Markdown accessibility rebuilds table row geometry for a line-height style change",
+          "status": "passed"
+        },
+        {
+          "title": "StreamText rich Markdown accessibility keeps ordinary plain text intact in the accessibility value",
+          "status": "passed"
+        },
+        {
+          "title": "StreamText rich Markdown accessibility describes native task state while preserving surrounding text",
+          "status": "passed"
+        }
+      ]
+    }
+  ]
+}

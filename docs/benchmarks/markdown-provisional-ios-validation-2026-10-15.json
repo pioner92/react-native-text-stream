@@ -1,0 +1,36 @@
+{
+  "date": "2026-10-15",
+  "device": {
+    "name": "StreamText Markdown",
+    "udid": "3151717D-25E3-40D9-8D93-4BB90C4C6C18",
+    "runtime": "iOS 26.5"
+  },
+  "parserSha256": "b8a58c77079cb55b3f3d4a590b09eb77405f7e7ae0e71fe7ad80aec881c28c18",
+  "nativeBuild": "Debug iphonesimulator rebuilt and installed before tests",
+  "focusedHarness": {
+    "command": "HARNESS_IOS_DEVICE='StreamText Markdown' HARNESS_IOS_VERSION=26.5 HARNESS_METRO_PORT=8082 HARNESS_TEST_TIMEOUT=20000 bun run --cwd example test:harness -- markdown-progressive.harness.tsx",
+    "suites": 1,
+    "passed": 20,
+    "failed": 0,
+    "seconds": 10.447
+  },
+  "fullMarkdownHarness": {
+    "suites": 6,
+    "passed": 76,
+    "failed": 0,
+    "seconds": 43.412
+  },
+  "visualCheckpoints": [
+    "media/markdown-announcement/provisional-table-ios/first-dark-clean.png",
+    "media/markdown-announcement/provisional-table-ios/first-dark.png",
+    "media/markdown-announcement/provisional-table-ios/cells-dark.png",
+    "media/markdown-announcement/provisional-table-ios/separator-dark.png",
+    "media/markdown-announcement/provisional-table-ios/row-dark.png",
+    "media/markdown-announcement/provisional-table-ios/rollback-dark.png",
+    "media/markdown-announcement/provisional-table-ios/fence-dark.png",
+    "media/markdown-announcement/provisional-table-ios/language-dark.png",
+    "media/markdown-announcement/provisional-table-ios/code-dark.png",
+    "media/markdown-announcement/provisional-table-ios/first-light-narrow.png"
+  ],
+  "observed": "Provisional table cells render before the separator, invalid candidates roll back to literal prose, and an empty code surface renders on the opening fence before language or content."
+}

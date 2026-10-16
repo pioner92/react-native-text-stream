@@ -1,0 +1,69 @@
+{
+  "date": "2026-10-15",
+  "target": {
+    "platform": "android",
+    "device": "StreamText_Markdown_Tests",
+    "serial": "emulator-5556"
+  },
+  "source": {
+    "markdownParserSha256": "c737a5907720d9754328b7c7b27bf6e52a6b413253670d3eb2a20738b7b1ae41",
+    "androidMarkdownRendererSha256": "db4f718577ad836ed2e6630c6e435d69696968c0230dc6f1338b88a4224571a3",
+    "androidFlowSha256": "22b5bec7e6883e413450930f9cbc397689ef1a15412c1de2b75c0f6b218dd741"
+  },
+  "build": {
+    "command": "./gradlew :app:assembleDebug",
+    "result": "passed",
+    "durationSeconds": 29
+  },
+  "jvm": {
+    "command": "./gradlew :react-native-text-stream:testDebugUnitTest --tests com.textstream.StreamTextMarkdownTest",
+    "result": "passed",
+    "testsPassed": 27
+  },
+  "instrumentation": {
+    "command": "ANDROID_SERIAL=emulator-5556 ./gradlew :react-native-text-stream:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.textstream.StreamTextFlowTest,com.textstream.StreamTextMarkdownCodeLayoutDeviceTest",
+    "result": "passed",
+    "testsPassed": 5
+  },
+  "markdownHarness": {
+    "parserSha256": "82e514f4574d35480514a92ec2d591cebc6837c6410a835c9a07470704ebfaae",
+    "command": "HARNESS_ANDROID_AVD=StreamText_Markdown_Tests HARNESS_TEST_TIMEOUT=20000 HARNESS_METRO_PORT=8085 HARNESS_APP_PATH=example/android/app/build/outputs/apk/debug/app-debug.apk bun x --no-install react-native-harness --config jest.harness.config.mjs --harnessRunner android --watchman=false --testPathPatterns=markdown[^.]*.harness --json --outputFile=/private/tmp/markdown-review-final-android-harness.json",
+    "result": "passed",
+    "raw": { "suitesPassed": 7, "suitesTotal": 7, "testsPassed": 76, "testsSkipped": 2, "testsTotal": 78 },
+    "effectiveAndroidCoverage": {
+      "testsPassed": 75,
+      "notApplicable": 3,
+      "detail": "Two Jest tests were skipped as iOS-only; one iOS-only test reports Jest pass through an Android no-op."
+    },
+    "resultPath": "/private/tmp/markdown-review-final-android-harness.json",
+    "resultSha256": "2a798bc8dfd90caa40954cd950604e8884382f51b7aebc2a46043c76bf2e5720"
+  },
+  "plainResizeHarness": {
+    "command": "HARNESS_ANDROID_AVD=StreamText_Markdown_Tests HARNESS_TEST_TIMEOUT=20000 HARNESS_METRO_PORT=8085 HARNESS_APP_PATH=example/android/app/build/outputs/apk/debug/app-debug.apk bun x --no-install react-native-harness --config jest.harness.config.mjs --harnessRunner android --watchman=false --testPathPatterns=resize.harness --json --outputFile=/private/tmp/plain-resize-review-final-android-harness.json",
+    "result": "passed",
+    "suitesPassed": 1,
+    "testsPassed": 2,
+    "durationSeconds": 10.417,
+    "resultPath": "/private/tmp/plain-resize-review-final-android-harness.json",
+    "resultSha256": "005eaf4b3be76346d80dcc784862b578c3d0f80d8bbc38c0a445383c2ca751ec"
+  },
+  "visual": {
+    "status": "passed",
+    "currentParserSha256": "c737a5907720d9754328b7c7b27bf6e52a6b413253670d3eb2a20738b7b1ae41",
+    "fixture": "temporary Android harness render (removed after capture)",
+    "harnessResultPath": "/private/tmp/markdown-review-visual-android.json",
+    "harnessResultSha256": "c5c33e59de062c1f5357785ad395647f68de8999f602681bdc30081a0c6c6021",
+    "harnessResult": { "testsPassed": 1, "durationMilliseconds": 32644 },
+    "screenshot": "media/markdown-announcement/review-android/current-header-heading-tasks-table.png",
+    "screenshotSha256": "a3c3ec44310540b80529403d981d256a486c2fb3fa2c0a86cbd50c663386e88a",
+    "finding": "Current native render shows heading scale, checked and unchecked task controls, stable PYTHON header and rounded code surface, and an aligned table."
+  },
+  "incident": {
+    "status": "contained",
+    "detail": "An initial instrumentation invocation selected all three booted Android targets and ran library instrumentation on two physical devices as well as the emulator. It did not install or launch the example app. All subsequent validation was constrained with ANDROID_SERIAL=emulator-5556; no physical device was touched again."
+  },
+  "knownExistingLimitation": {
+    "scope": "top-level task-list continuation indentation",
+    "finding": "The screenshot shows a wrapped task continuation aligned with the checkbox rather than the text label. This predates the task-marker flag work: Android applies MarkdownTaskSpan without a task-specific hanging LeadingMargin, and top-level parser indentation is zero. It is recorded for follow-up and was not changed in this review."
+  }
+}

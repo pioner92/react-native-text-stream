@@ -1,0 +1,31 @@
+{
+  "date": "2026-10-15",
+  "fixture": "announce with host127.0.0.1:9882 and run1760000000000",
+  "fixtureSha256": "9836beb5bd74f13099fc223728456eda009ea20d0bbd7172c84c8c8d254b28e2",
+  "chunkBytes": 8,
+  "chunkIntervalMs": 100,
+  "tableSourceStartByte": 888,
+  "streamingMarkdown": {
+    "source": "https://raw.githubusercontent.com/thetarnav/streaming-markdown/main/smd.js",
+    "sourceSha256": "c0f8378b15e5e26a309a15fd19e04ccbed4b1d6e6d6dfa8b88ae8568140dc609",
+    "firstTableEventByte": 896,
+    "firstImageTokenByte": 264,
+    "firstImageSrcByte": 360
+  },
+  "nativeStreamText": {
+    "parserSha256": "d5ffc7b164204a352fe6e2766b2c60c46ed6bc61dbf80255ceec62cf9ac2ca79",
+    "firstTableBlockByte": 944,
+    "firstTableRows": 2,
+    "firstPendingImageByte": 264,
+    "firstCompleteImageByte": 360
+  },
+  "tableExtraDeliveryIntervals": 6,
+  "tableExtraDeliveryMs": 600,
+  "timingScope": "Deterministic parser callbacks on identical eight-byte chunks; not a measured mobile render latency",
+  "streamdownImage": {
+    "mainSource": "https://raw.githubusercontent.com/vercel/streamdown/main/packages/streamdown/lib/image.tsx",
+    "mainSha256": "f6353ef2afafd1b7d77e487533c760a7a467adee3aa0687b82fca6d9251a32e7",
+    "incompletePlaceholderClasses": "h-24 w-48 animate-pulse rounded-lg bg-muted",
+    "fixedLoadedContainer": false
+  }
+}
